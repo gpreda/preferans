@@ -10,6 +10,7 @@ LANGUAGE = 'Spanish'
 MIN_DIFFICULTY = 1
 MAX_DIFFICULTY = 10
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tongue_state.json')
+CONFIG_FILE = os.path.expanduser('~/.config/tongue/config.json')
 
 # Advancement criteria
 ADVANCE_WINDOW_SIZE = 5       # Number of recent scores to consider
@@ -421,8 +422,24 @@ def load_state():
     return False
 
 
+def load_config():
+    """Load configuration from config file."""
+    if not os.path.exists(CONFIG_FILE):
+        print(f"Error: Config file not found at {CONFIG_FILE}")
+        print(f"Please create it with the following content:")
+        print(f'{{"gemini_api_key": "YOUR_API_KEY_HERE"}}')
+        raise SystemExit(1)
+
+    with open(CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+
 def initialize_gemini():
-    api_key = "REMOVED_API_KEY"
+    config = load_config()
+    api_key = config.get('gemini_api_key')
+    if not api_key:
+        print("Error: gemini_api_key not found in config file")
+        raise SystemExit(1)
     genai.configure(api_key=api_key)
     print(f'Using model: {GEMINI_MODEL}')
     return genai.GenerativeModel(GEMINI_MODEL)
