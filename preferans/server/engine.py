@@ -145,20 +145,32 @@ class GameEngine:
                 is_first_bidder = player_id == auction.first_game_bidder_id
 
                 if is_first_bidder:
-                    # First bidder can hold (match current) or bid exactly one higher
-                    if value != current_high and value != current_high + 1:
-                        raise InvalidMoveError(f"Must hold at {current_high} or bid {current_high + 1}")
+                    # First bidder can ONLY hold (match current), cannot bid higher
+                    if value != current_high:
+                        raise InvalidMoveError(f"Must hold at {current_high}")
                 else:
                     # Other bidders must bid exactly one higher (no jumping)
                     if value != current_high + 1:
                         raise InvalidMoveError(f"Must bid exactly {current_high + 1}")
 
         elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
-            # Other players deciding: can pass, in_hand, betl, or sans
-            if bid_type not in [BidType.PASS, BidType.IN_HAND, BidType.BETL, BidType.SANS]:
-                raise InvalidMoveError("Can only pass or declare in_hand/betl/sans")
-            if bid_type == BidType.IN_HAND and value != 0:
-                raise InvalidMoveError("In_hand intent should not have a value")
+            # Other players deciding based on current highest in_hand bid
+            highest = auction.highest_in_hand_bid
+
+            if highest and highest.is_sans():
+                # Sans is highest - can only pass
+                if bid_type != BidType.PASS:
+                    raise InvalidMoveError("Sans is already bid, can only pass")
+            elif highest and highest.is_betl():
+                # Betl is highest - can only pass or bid sans
+                if bid_type not in [BidType.PASS, BidType.SANS]:
+                    raise InvalidMoveError("Betl is bid, can only pass or bid sans")
+            else:
+                # Undeclared in_hand - can pass, in_hand, betl, or sans
+                if bid_type not in [BidType.PASS, BidType.IN_HAND, BidType.BETL, BidType.SANS]:
+                    raise InvalidMoveError("Can only pass or declare in_hand/betl/sans")
+                if bid_type == BidType.IN_HAND and value != 0:
+                    raise InvalidMoveError("In_hand intent should not have a value")
 
         elif auction.phase == AuctionPhase.IN_HAND_DECLARING:
             # In_hand players declaring their values
@@ -281,6 +293,12 @@ class GameEngine:
             # Update highest in_hand bid
             if auction.highest_in_hand_bid is None or last_bid.effective_value > auction.highest_in_hand_bid.effective_value:
                 auction.highest_in_hand_bid = last_bid
+
+            # If sans is bid, auction completes immediately (nothing higher)
+            if last_bid.is_sans():
+                auction.phase = AuctionPhase.COMPLETE
+                return
+
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
                 auction.in_hand_players.append(last_bid.player_id)
@@ -293,17 +311,36 @@ class GameEngine:
 
         if all_players_decided:
             # Check if any in_hand player needs to declare a value
-            undeclared = [pid for pid in auction.in_hand_players
-                        if not any(b.player_id == pid and b.value > 0
-                                  for b in auction.bids if b.is_in_hand() or b.is_betl() or b.is_sans())]
+            # betl and sans are already declared (value 6 and 7), so they don't need to reveal
+            # If betl or sans is the highest, undeclared players can't beat it (max in_hand is 5)
+            highest = auction.highest_in_hand_bid
+            if highest and (highest.is_betl() or highest.is_sans()):
+                # betl/sans wins - no need for undeclared players to reveal
+                auction.phase = AuctionPhase.COMPLETE
+                return
 
-            if len(auction.in_hand_players) > 1 and undeclared:
-                # Multiple in_hand players with undeclared values - move to declaring
+            def is_declared(player_id):
+                for b in auction.bids:
+                    if b.player_id == player_id:
+                        if b.is_betl() or b.is_sans():
+                            return True  # betl/sans are declared
+                        if b.is_in_hand() and b.value > 0:
+                            return True  # in_hand with value is declared
+                return False
+
+            undeclared = [pid for pid in auction.in_hand_players if not is_declared(pid)]
+
+            if len(undeclared) > 1:
+                # Multiple undeclared in_hand players - move to declaring
                 auction.phase = AuctionPhase.IN_HAND_DECLARING
                 auction.players_bid_this_phase = []
                 self._set_next_bidder_for_in_hand_declaring(auction)
+            elif len(undeclared) == 1:
+                # Single undeclared player - they win with their undeclared value
+                # (will be declared when contract is made)
+                auction.phase = AuctionPhase.COMPLETE
             else:
-                # Single in_hand player or all have declared - auction complete
+                # All have declared - auction complete
                 auction.phase = AuctionPhase.COMPLETE
             return
 
@@ -341,13 +378,14 @@ class GameEngine:
         auction.phase = AuctionPhase.COMPLETE
 
     def _set_next_bidder_for_game_bidding(self, auction: Auction):
-        """Set next bidder for game bidding (clockwise, skip passed players)."""
+        """Set next bidder for game bidding (clockwise, skip passed and current player)."""
         current = self._get_player(auction.current_bidder_id)
         for i in range(1, 4):
             # Clockwise order: position 1→3→2→1
             next_pos = ((current.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_pos)
-            if next_player.id not in auction.passed_players:
+            # Skip passed players AND the current bidder (who just bid)
+            if next_player.id not in auction.passed_players and next_player.id != current.id:
                 auction.current_bidder_id = next_player.id
                 return
 
@@ -748,7 +786,7 @@ class GameEngine:
 
         if auction.phase == AuctionPhase.INITIAL:
             # Initial phase: pass, game 2, in_hand, betl, sans
-            legal_bids.append({"bid_type": "game", "value": 2, "label": "Game 2"})
+            legal_bids.append({"bid_type": "game", "value": 2, "label": "2"})
             legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
             legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
             legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
@@ -763,15 +801,13 @@ class GameEngine:
 
             # Game bids - only sequential (no jumping)
             if is_first_game_bidder:
-                # First game bidder can hold (match current) or bid next value
+                # First game bidder can ONLY hold (match current), not bid higher
                 if current_high >= 2 and current_high <= 5:
-                    legal_bids.append({"bid_type": "game", "value": current_high, "label": f"Hold {current_high}"})
-                if next_value <= 5:
-                    legal_bids.append({"bid_type": "game", "value": next_value, "label": f"Game {next_value}"})
+                    legal_bids.append({"bid_type": "game", "value": current_high, "label": f"{current_high}"})
             else:
                 # Others can only bid exactly next value
                 if next_value <= 5:
-                    legal_bids.append({"bid_type": "game", "value": next_value, "label": f"Game {next_value}"})
+                    legal_bids.append({"bid_type": "game", "value": next_value, "label": f"{next_value}"})
 
             # If this is player's first bid, they can also bid in_hand/betl/sans
             if not player_has_bid:
@@ -789,10 +825,20 @@ class GameEngine:
                     legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
         elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
-            # Pass, in_hand, betl, or sans
-            legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
-            legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
-            legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+            # Options depend on current highest in_hand bid
+            highest = auction.highest_in_hand_bid
+
+            if highest and highest.is_sans():
+                # Sans is highest - can only pass (already included)
+                pass
+            elif highest and highest.is_betl():
+                # Betl is highest - can only pass or bid sans
+                legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+            else:
+                # Undeclared in_hand - can pass, in_hand, betl, or sans
+                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+                legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
+                legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
         elif auction.phase == AuctionPhase.IN_HAND_DECLARING:
             # Declare in_hand value (2-5), must be higher than current
@@ -801,7 +847,7 @@ class GameEngine:
                 min_value = auction.highest_in_hand_bid.value + 1
 
             for value in range(min_value, 6):
-                legal_bids.append({"bid_type": "in_hand", "value": value, "label": f"In Hand {value}"})
+                legal_bids.append({"bid_type": "in_hand", "value": value, "label": f"in_hand {value}"})
 
         return legal_bids
 
