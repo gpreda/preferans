@@ -109,13 +109,35 @@ class GameEngine:
                 pass  # Sans is valid as first bid
 
         elif auction.phase == AuctionPhase.GAME_BIDDING:
-            # Game bidding: must follow sequential progression (no jumping)
-            if bid_type == BidType.IN_HAND:
-                raise InvalidMoveError("Cannot bid in_hand after game bidding has started")
-
             current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 1
 
-            if bid_type == BidType.GAME:
+            # Check if this is the player's first bid (they can still bid in_hand/betl/sans)
+            player_has_bid = any(b.player_id == player_id for b in auction.bids)
+
+            if bid_type == BidType.IN_HAND:
+                # In_hand can only be bid as player's first bid
+                if player_has_bid:
+                    raise InvalidMoveError("Can only bid in_hand as your first bid")
+                if value != 0:
+                    raise InvalidMoveError("In_hand intent should not have a value")
+
+            elif bid_type == BidType.BETL:
+                # Betl as first bid (in_hand variant) - always allowed
+                # Betl as game progression - only after game 5
+                if player_has_bid and current_high < 5:
+                    raise InvalidMoveError("Cannot bid betl until after game 5")
+                if current_high >= 6:
+                    raise InvalidMoveError("Cannot bid betl, already at betl or higher")
+
+            elif bid_type == BidType.SANS:
+                # Sans as first bid (in_hand variant) - always allowed
+                # Sans as game progression - only after betl
+                if player_has_bid and current_high < 6:
+                    raise InvalidMoveError("Cannot bid sans until after betl")
+                if current_high >= 7:
+                    raise InvalidMoveError("Sans already bid")
+
+            elif bid_type == BidType.GAME:
                 if value < 2 or value > 5:
                     raise InvalidMoveError("Game bid must be between 2 and 5")
 
@@ -130,19 +152,6 @@ class GameEngine:
                     # Other bidders must bid exactly one higher (no jumping)
                     if value != current_high + 1:
                         raise InvalidMoveError(f"Must bid exactly {current_high + 1}")
-
-            elif bid_type == BidType.BETL:
-                # Betl (6) only allowed after game 5
-                if current_high < 5:
-                    raise InvalidMoveError("Cannot bid betl until after game 5")
-                if current_high >= 6:
-                    raise InvalidMoveError("Cannot bid betl, already at betl or higher")
-            elif bid_type == BidType.SANS:
-                # Sans (7) only allowed after betl (6)
-                if current_high < 6:
-                    raise InvalidMoveError("Cannot bid sans until after betl")
-                if current_high >= 7:
-                    raise InvalidMoveError("Sans already bid")
 
         elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
             # Other players deciding: can pass, in_hand, betl, or sans
@@ -219,6 +228,32 @@ class GameEngine:
 
     def _handle_game_bidding_advance(self, auction: Auction):
         """Handle advancement during game bidding."""
+        last_bid = auction.bids[-1] if auction.bids else None
+
+        # If someone bid in_hand/betl/sans as their first bid, switch to in_hand deciding
+        if last_bid and (last_bid.is_in_hand() or last_bid.is_betl() or last_bid.is_sans()):
+            # Check if this was their first bid (in_hand variant)
+            player_previous_bids = [b for b in auction.bids[:-1] if b.player_id == last_bid.player_id]
+            if not player_previous_bids:
+                # This was their first bid - it's an in_hand declaration
+                if last_bid.player_id not in auction.in_hand_players:
+                    auction.in_hand_players.append(last_bid.player_id)
+                if last_bid.is_betl() or last_bid.is_sans():
+                    auction.highest_in_hand_bid = last_bid
+                # Check if other players still haven't bid (can also go in_hand)
+                players_without_bids = [p for p in self.game.players
+                                       if not any(b.player_id == p.id for b in auction.bids)
+                                       and p.id not in auction.passed_players]
+                if players_without_bids:
+                    auction.phase = AuctionPhase.IN_HAND_DECIDING
+                    auction.players_bid_this_phase = [last_bid.player_id]
+                    self._set_next_bidder_for_in_hand_deciding(auction)
+                    return
+                else:
+                    # No other players can join in_hand, auction complete
+                    auction.phase = AuctionPhase.COMPLETE
+                    return
+
         active_players = [p for p in self.game.players
                         if p.id not in auction.passed_players]
 
@@ -720,12 +755,15 @@ class GameEngine:
 
         elif auction.phase == AuctionPhase.GAME_BIDDING:
             current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 1
-            is_first_bidder = player_id == auction.first_game_bidder_id
+            is_first_game_bidder = player_id == auction.first_game_bidder_id
             next_value = current_high + 1
 
+            # Check if this is the player's first bid
+            player_has_bid = any(b.player_id == player_id for b in auction.bids)
+
             # Game bids - only sequential (no jumping)
-            if is_first_bidder:
-                # First bidder can hold (match current) or bid next value
+            if is_first_game_bidder:
+                # First game bidder can hold (match current) or bid next value
                 if current_high >= 2 and current_high <= 5:
                     legal_bids.append({"bid_type": "game", "value": current_high, "label": f"Hold {current_high}"})
                 if next_value <= 5:
@@ -735,13 +773,20 @@ class GameEngine:
                 if next_value <= 5:
                     legal_bids.append({"bid_type": "game", "value": next_value, "label": f"Game {next_value}"})
 
-            # Betl (6) - only after game 5
-            if current_high == 5:
+            # If this is player's first bid, they can also bid in_hand/betl/sans
+            if not player_has_bid:
+                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
                 legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
-
-            # Sans (7) - only after betl
-            if current_high == 6:
                 legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+            else:
+                # Player has already bid - betl/sans only as game progression
+                # Betl (6) - only after game 5
+                if current_high == 5:
+                    legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
+
+                # Sans (7) - only after betl
+                if current_high == 6:
+                    legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
         elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
             # Pass, in_hand, betl, or sans
