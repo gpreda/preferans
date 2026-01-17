@@ -38,6 +38,7 @@ header {
 header h1 {
     font-size: 1.5rem;
     color: #e94560;
+    margin-right: auto;
 }
 
 #new-game-btn {
@@ -53,21 +54,6 @@ header h1 {
 
 #new-game-btn:hover {
     background: #ff6b6b;
-}
-
-.lang-selector {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    background: #2d4059;
-    color: white;
-    border: 1px solid #4ecca3;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-left: auto;
-}
-
-.lang-selector:hover {
-    background: #3d5069;
 }
 
 #phase-indicator {
@@ -358,13 +344,38 @@ header h1 {
     cursor: not-allowed;
 }
 
-.bid-btn[data-value="0"] {
+.bid-btn.pass-btn {
     background: #e94560;
 }
 
-.bid-btn[data-value="0"]:hover {
+.bid-btn.pass-btn:hover {
     background: #ff6b6b;
     color: white;
+}
+
+.bid-btn.in-hand-btn {
+    background: #9b59b6;
+}
+
+.bid-btn.in-hand-btn:hover:not(:disabled) {
+    background: #a569bd;
+    color: white;
+}
+
+.bid-btn.special-btn {
+    background: #f39c12;
+    color: #1a1a2e;
+}
+
+.bid-btn.special-btn:hover:not(:disabled) {
+    background: #f1c40f;
+}
+
+.bid-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
 }
 
 /* Exchange Controls */

@@ -52,6 +52,22 @@ class PlayerType(Enum):
     AI = "ai"
 
 
+class BidType(Enum):
+    PASS = "pass"
+    GAME = "game"           # Regular game bid (2-5)
+    IN_HAND = "in_hand"     # Intent to play in_hand (undeclared value)
+    BETL = "betl"           # Bid 6 = betl
+    SANS = "sans"           # Bid 7 = sans
+
+
+class AuctionPhase(Enum):
+    INITIAL = "initial"                 # First bids: pass, game 2, or in_hand
+    GAME_BIDDING = "game_bidding"       # Normal game bidding (2-5, then 6=betl, 7=sans)
+    IN_HAND_DECIDING = "in_hand_deciding"  # Other players decide pass or in_hand
+    IN_HAND_DECLARING = "in_hand_declaring"  # In_hand bidders declare their values
+    COMPLETE = "complete"
+
+
 # === Mappings ===
 
 SUIT_NAMES = {
@@ -214,40 +230,49 @@ class Player:
 @dataclass
 class Bid:
     player_id: int
-    value: int  # 0 for pass, 2-7 for bids
+    bid_type: BidType
+    value: int = 0  # 0 for pass/in_hand intent, 2-5 for game, 6 for betl, 7 for sans
     suit: Optional[Suit] = None
-    is_hand: bool = False
 
     def is_pass(self) -> bool:
-        return self.value == 0
+        return self.bid_type == BidType.PASS
 
-    def beats(self, other: "Bid") -> bool:
-        """Check if this bid beats another bid."""
-        if self.is_pass():
-            return False
-        if other.is_pass():
-            return True
+    def is_in_hand(self) -> bool:
+        return self.bid_type == BidType.IN_HAND
 
-        # Hand bids beat non-hand bids of same value
-        if self.value == other.value:
-            if self.is_hand and not other.is_hand:
-                return True
-            if not self.is_hand and other.is_hand:
-                return False
-            # Same value, same hand status: suit matters
-            if self.suit and other.suit:
-                return self.suit.value > other.suit.value
-            return False
+    def is_game(self) -> bool:
+        return self.bid_type == BidType.GAME
 
-        return self.value > other.value
+    def is_betl(self) -> bool:
+        return self.bid_type == BidType.BETL
+
+    def is_sans(self) -> bool:
+        return self.bid_type == BidType.SANS
+
+    @property
+    def effective_value(self) -> int:
+        """Get the effective bid value for comparison."""
+        if self.bid_type == BidType.PASS:
+            return 0
+        if self.bid_type == BidType.IN_HAND:
+            return self.value if self.value > 0 else 0
+        if self.bid_type == BidType.GAME:
+            return self.value
+        if self.bid_type == BidType.BETL:
+            return 6
+        if self.bid_type == BidType.SANS:
+            return 7
+        return 0
 
     def to_dict(self) -> dict:
         return {
             "player_id": self.player_id,
+            "bid_type": self.bid_type.value,
             "value": self.value,
             "suit": SUIT_NAMES[self.suit] if self.suit else None,
-            "is_hand": self.is_hand,
             "is_pass": self.is_pass(),
+            "is_in_hand": self.is_in_hand(),
+            "effective_value": self.effective_value,
         }
 
 
@@ -255,8 +280,8 @@ class Bid:
 class Contract:
     type: ContractType
     trump_suit: Optional[Suit] = None  # None for betl/sans
-    bid_value: int = 2  # 2-7
-    is_hand: bool = False
+    bid_value: int = 2  # 2-5 for game, 6 for betl, 7 for sans
+    is_in_hand: bool = False  # True if played without picking up talon
 
     @property
     def tricks_required(self) -> int:
@@ -269,7 +294,7 @@ class Contract:
             "type": self.type.value,
             "trump_suit": SUIT_NAMES[self.trump_suit] if self.trump_suit else None,
             "bid_value": self.bid_value,
-            "is_hand": self.is_hand,
+            "is_in_hand": self.is_in_hand,
             "tricks_required": self.tricks_required,
         }
 
@@ -320,29 +345,65 @@ class Trick:
 class Auction:
     bids: list[Bid] = field(default_factory=list)
     current_bidder_id: Optional[int] = None
-    highest_bid: Optional[Bid] = None
+    highest_game_bid: Optional[Bid] = None  # Highest game bid (2-7)
     passed_players: list[int] = field(default_factory=list)
+    phase: AuctionPhase = AuctionPhase.INITIAL
+    # For game bidding: track the original highest bidder (who can "hold")
+    first_game_bidder_id: Optional[int] = None
+    # For in_hand: track players who declared in_hand intent
+    in_hand_players: list[int] = field(default_factory=list)
+    # For in_hand declaring: track the highest in_hand declaration
+    highest_in_hand_bid: Optional[Bid] = None
+    # Track who has already bid in current phase
+    players_bid_this_phase: list[int] = field(default_factory=list)
 
     def add_bid(self, bid: Bid):
         self.bids.append(bid)
         if bid.is_pass():
-            self.passed_players.append(bid.player_id)
-        elif self.highest_bid is None or bid.beats(self.highest_bid):
-            self.highest_bid = bid
+            if bid.player_id not in self.passed_players:
+                self.passed_players.append(bid.player_id)
+        elif bid.is_in_hand():
+            if bid.player_id not in self.in_hand_players:
+                self.in_hand_players.append(bid.player_id)
+            # If in_hand has a value (declaration phase)
+            if bid.value > 0:
+                if self.highest_in_hand_bid is None or bid.value > self.highest_in_hand_bid.value:
+                    self.highest_in_hand_bid = bid
+        elif bid.is_game() or bid.is_betl() or bid.is_sans():
+            # First game bidder can "hold" (match) - their bid becomes highest
+            is_hold = (bid.player_id == self.first_game_bidder_id and
+                      self.highest_game_bid and
+                      bid.effective_value == self.highest_game_bid.effective_value)
 
-    def is_complete(self, num_players: int = 3) -> bool:
-        """Auction is complete when all but one have passed, or all have bid once and no competition."""
-        return len(self.passed_players) >= num_players - 1
+            if self.highest_game_bid is None or bid.effective_value > self.highest_game_bid.effective_value or is_hold:
+                self.highest_game_bid = bid
+                if self.first_game_bidder_id is None:
+                    self.first_game_bidder_id = bid.player_id
 
-    def get_winner(self) -> Optional[Bid]:
-        return self.highest_bid
+    def get_winner_bid(self) -> Optional[Bid]:
+        """Get the winning bid."""
+        if self.highest_in_hand_bid:
+            return self.highest_in_hand_bid
+        return self.highest_game_bid
+
+    def get_winner_player_id(self) -> Optional[int]:
+        """Get the ID of the auction winner."""
+        winner_bid = self.get_winner_bid()
+        return winner_bid.player_id if winner_bid else None
+
+    def is_complete(self) -> bool:
+        return self.phase == AuctionPhase.COMPLETE
 
     def to_dict(self) -> dict:
         return {
             "bids": [b.to_dict() for b in self.bids],
             "current_bidder_id": self.current_bidder_id,
-            "highest_bid": self.highest_bid.to_dict() if self.highest_bid else None,
+            "highest_game_bid": self.highest_game_bid.to_dict() if self.highest_game_bid else None,
+            "highest_in_hand_bid": self.highest_in_hand_bid.to_dict() if self.highest_in_hand_bid else None,
             "passed_players": self.passed_players,
+            "phase": self.phase.value,
+            "in_hand_players": self.in_hand_players,
+            "first_game_bidder_id": self.first_game_bidder_id,
         }
 
 
