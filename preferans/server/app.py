@@ -33,11 +33,6 @@ def index():
     return send_from_directory(WEB_DIR, 'index.html')
 
 
-@app.route('/i18n')
-def i18n_editor():
-    return send_from_directory(WEB_DIR, 'i18n.html')
-
-
 @app.route('/api/health')
 def health():
     return {'status': 'ok'}
@@ -169,12 +164,11 @@ def place_bid():
 
     data = request.get_json()
     player_id = data.get('player_id')
+    bid_type = data.get('bid_type', 'pass')
     value = data.get('value', 0)
-    suit = data.get('suit')
-    is_hand = data.get('is_hand', False)
 
     try:
-        bid = current_engine.place_bid(player_id, value, suit, is_hand)
+        bid = current_engine.place_bid(player_id, bid_type, value)
         return jsonify({
             'success': True,
             'bid': bid.to_dict(),
@@ -294,82 +288,6 @@ def next_round():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
-
-# i18n API
-
-@app.route('/api/i18n/languages')
-def get_languages():
-    """Get all available languages."""
-    from db import get_all_languages
-    languages = get_all_languages()
-    return jsonify([dict(l) for l in languages])
-
-
-@app.route('/api/i18n/languages', methods=['POST'])
-def add_language():
-    """Add a new language."""
-    from db import add_language as db_add_language
-    data = request.get_json()
-    code = data.get('code')
-    name = data.get('name')
-    native_name = data.get('native_name')
-
-    if not code or not name:
-        return jsonify({'error': 'Code and name are required'}), 400
-
-    try:
-        lang = db_add_language(code, name, native_name)
-        return jsonify({'success': True, 'language': dict(lang)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
-
-@app.route('/api/i18n/translations')
-def get_all_translations():
-    """Get all translations for all languages."""
-    from db import get_all_translations as db_get_all_translations
-    return jsonify(db_get_all_translations())
-
-
-@app.route('/api/i18n/translations/<language_code>')
-def get_translations(language_code):
-    """Get translations for a specific language."""
-    from db import get_translations as db_get_translations
-    return jsonify(db_get_translations(language_code))
-
-
-@app.route('/api/i18n/translations/<language_code>', methods=['POST'])
-def update_translation(language_code):
-    """Update or create a translation."""
-    from db import update_translation as db_update_translation
-    data = request.get_json()
-    key = data.get('key')
-    value = data.get('value')
-
-    if not key:
-        return jsonify({'error': 'Key is required'}), 400
-
-    result = db_update_translation(language_code, key, value or '')
-    if result:
-        return jsonify({'success': True, 'translation': dict(result)})
-    return jsonify({'error': 'Language not found'}), 404
-
-
-@app.route('/api/i18n/translations/<language_code>/<path:key>', methods=['DELETE'])
-def delete_translation(language_code, key):
-    """Delete a translation."""
-    from db import delete_translation as db_delete_translation
-    if db_delete_translation(language_code, key):
-        return jsonify({'success': True})
-    return jsonify({'error': 'Translation not found'}), 404
-
-
-@app.route('/api/i18n/keys')
-def get_translation_keys():
-    """Get all unique translation keys."""
-    from db import get_all_translation_keys
-    return jsonify(get_all_translation_keys())
 
 
 if __name__ == '__main__':

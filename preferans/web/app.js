@@ -3,16 +3,12 @@
 let gameState = null;
 let selectedCards = [];
 
-// Shorthand for translation function
-const t = (key, ...args) => window.i18n.t(key, ...args);
-
 // DOM Elements
 const elements = {
     newGameBtn: null,
     phaseIndicator: null,
     status: null,
     messageArea: null,
-    languageSelector: null,
     // Players
     player1: null,
     player2: null,
@@ -35,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.phaseIndicator = document.getElementById('phase-indicator');
     elements.status = document.getElementById('status');
     elements.messageArea = document.getElementById('message-area');
-    elements.languageSelector = document.getElementById('language-selector');
 
     elements.player1 = document.getElementById('player1');
     elements.player2 = document.getElementById('player2');
@@ -54,19 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners
     elements.newGameBtn.addEventListener('click', startNewGame);
 
-    // Language selector
-    elements.languageSelector.value = window.i18n.getLanguage();
-    elements.languageSelector.addEventListener('change', (e) => {
-        window.i18n.setLanguage(e.target.value);
-        if (gameState) {
-            renderGame();
-        }
-    });
-
-    // Bidding buttons
-    document.querySelectorAll('.bid-btn').forEach(btn => {
-        btn.addEventListener('click', () => placeBid(parseInt(btn.dataset.value)));
-    });
+    // Bidding buttons are now dynamically generated
 
     // Exchange buttons
     document.getElementById('pickup-talon-btn').addEventListener('click', pickUpTalon);
@@ -79,9 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Next round button
     document.getElementById('next-round-btn').addEventListener('click', nextRound);
 
-    // Initialize translations
-    window.i18n.updatePageTranslations();
-
     // Check server status
     checkServer();
 });
@@ -90,38 +70,44 @@ async function checkServer() {
     try {
         const response = await fetch('/api/health');
         const data = await response.json();
-        showMessage(t('serverStatus', data.status), 'success');
+        showMessage(`Server: ${data.status}`, 'success');
     } catch (error) {
-        showMessage(t('serverConnectionFailed'), 'error');
+        showMessage('Server connection failed', 'error');
     }
 }
 
 async function startNewGame() {
+    console.log('startNewGame called');
     try {
-        showMessage(t('startingNewGame'));
+        showMessage('Starting new game...');
+        console.log('Fetching /api/game/new...');
         const response = await fetch('/api/game/new', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                players: [t('player1'), t('player2'), t('player3')]
+                players: ['Player 1', 'Player 2', 'Player 3']
             })
         });
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
 
         if (data.success) {
             gameState = data.state;
+            console.log('Game state:', gameState);
             selectedCards = [];
             renderGame();
-            showMessage(t('gameStarted'), 'success');
+            showMessage('Game started! Bidding phase begins.', 'success');
         } else {
-            showMessage(data.error, 'error');
+            showMessage(data.error || 'Unknown error', 'error');
         }
     } catch (error) {
-        showMessage(t('failedToStartGame', error.message), 'error');
+        console.error('Error starting game:', error);
+        showMessage('Failed to start game: ' + error.message, 'error');
     }
 }
 
-async function placeBid(value) {
+async function placeBid(bidType, value) {
     if (!gameState) return;
 
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
@@ -133,8 +119,8 @@ async function placeBid(value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 player_id: currentBidderId,
-                value: value,
-                suit: value > 0 ? 'spades' : null  // Default to spades for simplicity
+                bid_type: bidType,
+                value: value
             })
         });
         const data = await response.json();
@@ -142,15 +128,23 @@ async function placeBid(value) {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            const playerName = getPlayerName(currentBidderId);
-            const msg = value === 0 ? t('playerPassed', playerName) : t('playerBid', playerName, value);
-            showMessage(msg, 'success');
+            const bidText = getBidDescription(bidType, value);
+            showMessage(`Player ${currentBidderId} ${bidText}`, 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToPlaceBid', error.message), 'error');
+        showMessage('Failed to place bid: ' + error.message, 'error');
     }
+}
+
+function getBidDescription(bidType, value) {
+    if (bidType === 'pass') return 'passed';
+    if (bidType === 'game') return `bid Game ${value}`;
+    if (bidType === 'in_hand') return value > 0 ? `declared In Hand ${value}` : 'declared In Hand';
+    if (bidType === 'betl') return 'bid Betl';
+    if (bidType === 'sans') return 'bid Sans';
+    return `bid ${value}`;
 }
 
 async function pickUpTalon() {
@@ -170,14 +164,14 @@ async function pickUpTalon() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            showMessage(t('talonPickedUp'), 'success');
+            showMessage('Talon picked up. Select 2 cards to discard.', 'success');
             // Hide pickup button, show discard section
             document.getElementById('pickup-talon-btn').classList.add('hidden');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToPickUpTalon', error.message), 'error');
+        showMessage('Failed to pick up talon: ' + error.message, 'error');
     }
 }
 
@@ -202,12 +196,12 @@ async function discardSelected() {
             gameState = data.state;
             selectedCards = [];
             renderGame();
-            showMessage(t('cardsDiscarded'), 'success');
+            showMessage('Cards discarded. Announce your contract.', 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToDiscard', error.message), 'error');
+        showMessage('Failed to discard: ' + error.message, 'error');
     }
 }
 
@@ -235,16 +229,12 @@ async function announceContract() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            const contractName = t(contractType);
-            const msg = trumpSuit
-                ? t('contractAnnouncedWithSuit', contractName, t('suits.' + trumpSuit))
-                : t('contractAnnounced', contractName);
-            showMessage(msg, 'success');
+            showMessage(`Contract announced: ${contractType}${trumpSuit ? ' (' + trumpSuit + ')' : ''}`, 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToAnnounceContract', error.message), 'error');
+        showMessage('Failed to announce contract: ' + error.message, 'error');
     }
 }
 
@@ -270,17 +260,16 @@ async function playCard(cardId) {
             renderGame();
 
             if (data.result.trick_complete) {
-                const winnerName = getPlayerName(data.result.trick_winner_id);
-                showMessage(t('trickWonBy', winnerName), 'success');
+                showMessage(`Trick won by Player ${data.result.trick_winner_id}!`, 'success');
             }
             if (data.result.round_complete) {
-                showMessage(t('roundComplete'), 'success');
+                showMessage('Round complete!', 'success');
             }
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToPlayCard', error.message), 'error');
+        showMessage('Failed to play card: ' + error.message, 'error');
     }
 }
 
@@ -293,12 +282,12 @@ async function nextRound() {
             gameState = data.state;
             selectedCards = [];
             renderGame();
-            showMessage(t('newRoundStarted'), 'success');
+            showMessage('New round started!', 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage(t('failedToStartNextRound', error.message), 'error');
+        showMessage('Failed to start next round: ' + error.message, 'error');
     }
 }
 
@@ -324,21 +313,30 @@ function updateTrumpVisibility() {
     trumpSelect.style.display = contractType === 'suit' ? 'block' : 'none';
 }
 
-function getPlayerName(playerId) {
-    const player = gameState?.players?.find(p => p.id === playerId);
-    return player ? player.name : t('player') + ' ' + playerId;
-}
-
 // === Rendering Functions ===
 
 function renderGame() {
+    console.log('renderGame called, gameState:', gameState);
     if (!gameState) return;
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
+    const auctionPhase = gameState.auction_phase;
+    console.log('Phase:', phase, 'Auction phase:', auctionPhase);
 
     // Update phase indicator
-    elements.phaseIndicator.textContent = t('phases.' + phase);
+    let phaseText = phase.toUpperCase();
+    if (phase === 'auction' && auctionPhase) {
+        const auctionPhaseNames = {
+            'initial': 'AUCTION - INITIAL',
+            'game_bidding': 'AUCTION - GAME BIDDING',
+            'in_hand_deciding': 'AUCTION - IN HAND DECIDING',
+            'in_hand_declaring': 'AUCTION - IN HAND DECLARING',
+            'complete': 'AUCTION - COMPLETE'
+        };
+        phaseText = auctionPhaseNames[auctionPhase] || phaseText;
+    }
+    elements.phaseIndicator.textContent = phaseText;
 
     // Render players
     renderPlayers();
@@ -366,15 +364,15 @@ function renderPlayers() {
 
         // Update player info
         playerEl.querySelector('.player-name').textContent = player.name;
-        playerEl.querySelector('.score-value').textContent = player.score;
-        playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
+        playerEl.querySelector('.player-score').textContent = `Score: ${player.score}`;
+        playerEl.querySelector('.player-tricks').textContent = `Tricks: ${player.tricks_won}`;
 
         // Role
         const roleEl = playerEl.querySelector('.player-role');
         if (player.is_declarer) {
-            roleEl.textContent = t('declarer');
+            roleEl.textContent = 'Declarer';
         } else if (player.id === declarerId) {
-            roleEl.textContent = t('declarer');
+            roleEl.textContent = 'Declarer';
         } else {
             roleEl.textContent = '';
         }
@@ -447,7 +445,7 @@ function renderTalon() {
     for (let i = 0; i < talonCount; i++) {
         const img = document.createElement('img');
         img.src = '/api/styles/classic/back';
-        img.alt = t('talonCard');
+        img.alt = 'Talon card';
         img.className = 'card';
         talonContainer.appendChild(img);
     }
@@ -472,8 +470,7 @@ function renderCurrentTrick() {
 
         const label = document.createElement('span');
         label.className = 'trick-card-player';
-        const playerName = getPlayerName(cardPlay.player_id);
-        label.textContent = playerName;
+        label.textContent = `P${cardPlay.player_id}`;
 
         const img = document.createElement('img');
         img.src = `/api/cards/${cardPlay.card.id}/image`;
@@ -490,12 +487,11 @@ function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
     if (contract) {
-        const contractName = t(contract.type);
-        let text = t('contract') + ': ' + contractName;
+        let text = `Contract: ${contract.type}`;
         if (contract.trump_suit) {
-            text += ` (${t('suits.' + contract.trump_suit)})`;
+            text += ` (${contract.trump_suit})`;
         }
-        text += ' - ' + t('needTricks', contract.tricks_required);
+        text += ` - Need ${contract.tricks_required} tricks`;
         elements.contractInfo.textContent = text;
         elements.contractInfo.style.display = 'block';
     } else {
@@ -547,17 +543,36 @@ function showActionPanelForPhase(phase) {
 }
 
 function updateBiddingButtons() {
-    const auction = gameState.current_round?.auction;
-    const highestBid = auction?.highest_bid;
-    const minBid = highestBid && !highestBid.is_pass ? highestBid.value + 1 : 2;
+    const legalBids = gameState.legal_bids || [];
+    const container = document.getElementById('bid-buttons');
+    container.innerHTML = '';
 
-    document.querySelectorAll('.bid-btn').forEach(btn => {
-        const value = parseInt(btn.dataset.value);
-        if (value === 0) {
-            btn.disabled = false; // Can always pass
-        } else {
-            btn.disabled = value < minBid;
+    if (legalBids.length === 0) {
+        container.innerHTML = '<span class="action-label">Waiting for your turn...</span>';
+        return;
+    }
+
+    legalBids.forEach(bid => {
+        const btn = document.createElement('button');
+        btn.className = 'bid-btn';
+        btn.textContent = bid.label;
+        btn.dataset.bidType = bid.bid_type;
+        btn.dataset.value = bid.value;
+
+        // Style pass button differently
+        if (bid.bid_type === 'pass') {
+            btn.classList.add('pass-btn');
         }
+        // Style special bids
+        if (bid.bid_type === 'in_hand') {
+            btn.classList.add('in-hand-btn');
+        }
+        if (bid.bid_type === 'betl' || bid.bid_type === 'sans') {
+            btn.classList.add('special-btn');
+        }
+
+        btn.addEventListener('click', () => placeBid(bid.bid_type, bid.value));
+        container.appendChild(btn);
     });
 }
 
@@ -568,7 +583,7 @@ function showRoundResult() {
 
     if (declarer) {
         const result = document.getElementById('round-result');
-        result.textContent = t('roundOver', declarer.name, declarer.tricks_won);
+        result.textContent = `Round over! ${declarer.name} took ${declarer.tricks_won} tricks.`;
     }
 }
 
@@ -582,7 +597,5 @@ function showMessage(text, type = '') {
 
 function formatCardName(cardId) {
     const [rank, suit] = cardId.split('_');
-    const rankName = t('ranks.' + rank);
-    const suitName = t('suits.' + suit);
-    return t('cardName', rankName, suitName);
+    return `${rank} of ${suit}`;
 }
