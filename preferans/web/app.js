@@ -1,81 +1,553 @@
-document.addEventListener('DOMContentLoaded', async () => {
-    const statusEl = document.getElementById('status');
-    const shuffleBtn = document.getElementById('shuffle-btn');
+// Preferans Game Client
 
-    // Check server health
+let gameState = null;
+let selectedCards = [];
+
+// DOM Elements
+const elements = {
+    newGameBtn: null,
+    phaseIndicator: null,
+    status: null,
+    messageArea: null,
+    // Players
+    player1: null,
+    player2: null,
+    player3: null,
+    // Center
+    talon: null,
+    currentTrick: null,
+    contractInfo: null,
+    // Action panels
+    biddingControls: null,
+    exchangeControls: null,
+    contractControls: null,
+    playControls: null,
+    scoringControls: null,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize DOM references
+    elements.newGameBtn = document.getElementById('new-game-btn');
+    elements.phaseIndicator = document.getElementById('phase-indicator');
+    elements.status = document.getElementById('status');
+    elements.messageArea = document.getElementById('message-area');
+
+    elements.player1 = document.getElementById('player1');
+    elements.player2 = document.getElementById('player2');
+    elements.player3 = document.getElementById('player3');
+
+    elements.talon = document.getElementById('talon');
+    elements.currentTrick = document.getElementById('current-trick');
+    elements.contractInfo = document.getElementById('contract-info');
+
+    elements.biddingControls = document.getElementById('bidding-controls');
+    elements.exchangeControls = document.getElementById('exchange-controls');
+    elements.contractControls = document.getElementById('contract-controls');
+    elements.playControls = document.getElementById('play-controls');
+    elements.scoringControls = document.getElementById('scoring-controls');
+
+    // Event listeners
+    elements.newGameBtn.addEventListener('click', startNewGame);
+
+    // Bidding buttons
+    document.querySelectorAll('.bid-btn').forEach(btn => {
+        btn.addEventListener('click', () => placeBid(parseInt(btn.dataset.value)));
+    });
+
+    // Exchange buttons
+    document.getElementById('pickup-talon-btn').addEventListener('click', pickUpTalon);
+    document.getElementById('discard-btn').addEventListener('click', discardSelected);
+
+    // Contract buttons
+    document.getElementById('contract-type').addEventListener('change', updateTrumpVisibility);
+    document.getElementById('announce-btn').addEventListener('click', announceContract);
+
+    // Next round button
+    document.getElementById('next-round-btn').addEventListener('click', nextRound);
+
+    // Check server status
+    checkServer();
+});
+
+async function checkServer() {
     try {
         const response = await fetch('/api/health');
         const data = await response.json();
-        statusEl.textContent = `Server: ${data.status}`;
+        showMessage(`Server: ${data.status}`, 'success');
     } catch (error) {
-        statusEl.textContent = 'Server connection failed';
+        showMessage('Server connection failed', 'error');
     }
+}
 
-    // Shuffle button click handler
-    shuffleBtn.addEventListener('click', shuffleAndDeal);
+async function startNewGame() {
+    try {
+        showMessage('Starting new game...');
+        const response = await fetch('/api/game/new', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                players: ['Player 1', 'Player 2', 'Player 3']
+            })
+        });
+        const data = await response.json();
 
-    // Initial deal
-    shuffleAndDeal();
-});
+        if (data.success) {
+            gameState = data.state;
+            selectedCards = [];
+            renderGame();
+            showMessage('Game started! Bidding phase begins.', 'success');
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to start game: ' + error.message, 'error');
+    }
+}
 
-async function shuffleAndDeal() {
-    const statusEl = document.getElementById('status');
+async function placeBid(value) {
+    if (!gameState) return;
+
+    const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
+    if (!currentBidderId) return;
 
     try {
-        statusEl.textContent = 'Shuffling...';
+        const response = await fetch('/api/game/bid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player_id: currentBidderId,
+                value: value,
+                suit: value > 0 ? 'spades' : null  // Default to spades for simplicity
+            })
+        });
+        const data = await response.json();
 
-        const response = await fetch('/api/game/shuffle', { method: 'POST' });
-        const deal = await response.json();
-
-        // Clear all player cards
-        clearAllCards();
-
-        // Deal cards to each player
-        renderPlayerCards('player1', deal.player1);
-        renderPlayerCards('player2', deal.player2);
-        renderPlayerCards('player3', deal.player3);
-        renderTalon(deal.talon);
-
-        statusEl.textContent = 'Cards dealt!';
+        if (data.success) {
+            gameState = data.state;
+            renderGame();
+            const bidText = value === 0 ? 'passed' : `bid ${value}`;
+            showMessage(`Player ${currentBidderId} ${bidText}`, 'success');
+        } else {
+            showMessage(data.error, 'error');
+        }
     } catch (error) {
-        statusEl.textContent = 'Failed to shuffle';
-        console.error(error);
+        showMessage('Failed to place bid: ' + error.message, 'error');
     }
 }
 
-function clearAllCards() {
-    document.querySelectorAll('.player-cards, .talon-cards').forEach(el => {
-        el.innerHTML = '';
+async function pickUpTalon() {
+    if (!gameState) return;
+
+    const declarerId = gameState.current_round?.declarer_id;
+    if (!declarerId) return;
+
+    try {
+        const response = await fetch('/api/game/talon', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_id: declarerId })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            gameState = data.state;
+            renderGame();
+            showMessage('Talon picked up. Select 2 cards to discard.', 'success');
+            // Hide pickup button, show discard section
+            document.getElementById('pickup-talon-btn').classList.add('hidden');
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to pick up talon: ' + error.message, 'error');
+    }
+}
+
+async function discardSelected() {
+    if (!gameState || selectedCards.length !== 2) return;
+
+    const declarerId = gameState.current_round?.declarer_id;
+    if (!declarerId) return;
+
+    try {
+        const response = await fetch('/api/game/discard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player_id: declarerId,
+                card_ids: selectedCards
+            })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            gameState = data.state;
+            selectedCards = [];
+            renderGame();
+            showMessage('Cards discarded. Announce your contract.', 'success');
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to discard: ' + error.message, 'error');
+    }
+}
+
+async function announceContract() {
+    if (!gameState) return;
+
+    const declarerId = gameState.current_round?.declarer_id;
+    if (!declarerId) return;
+
+    const contractType = document.getElementById('contract-type').value;
+    const trumpSuit = contractType === 'suit' ? document.getElementById('trump-suit').value : null;
+
+    try {
+        const response = await fetch('/api/game/contract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player_id: declarerId,
+                type: contractType,
+                trump_suit: trumpSuit
+            })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            gameState = data.state;
+            renderGame();
+            showMessage(`Contract announced: ${contractType}${trumpSuit ? ' (' + trumpSuit + ')' : ''}`, 'success');
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to announce contract: ' + error.message, 'error');
+    }
+}
+
+async function playCard(cardId) {
+    if (!gameState) return;
+
+    const currentPlayerId = gameState.current_player_id;
+    if (!currentPlayerId) return;
+
+    try {
+        const response = await fetch('/api/game/play', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player_id: currentPlayerId,
+                card_id: cardId
+            })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            gameState = data.state;
+            renderGame();
+
+            if (data.result.trick_complete) {
+                showMessage(`Trick won by Player ${data.result.trick_winner_id}!`, 'success');
+            }
+            if (data.result.round_complete) {
+                showMessage('Round complete!', 'success');
+            }
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to play card: ' + error.message, 'error');
+    }
+}
+
+async function nextRound() {
+    try {
+        const response = await fetch('/api/game/next-round', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            gameState = data.state;
+            selectedCards = [];
+            renderGame();
+            showMessage('New round started!', 'success');
+        } else {
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('Failed to start next round: ' + error.message, 'error');
+    }
+}
+
+function toggleCardSelection(cardId) {
+    const idx = selectedCards.indexOf(cardId);
+    if (idx >= 0) {
+        selectedCards.splice(idx, 1);
+    } else if (selectedCards.length < 2) {
+        selectedCards.push(cardId);
+    }
+    renderGame();
+    updateDiscardButton();
+}
+
+function updateDiscardButton() {
+    const discardBtn = document.getElementById('discard-btn');
+    discardBtn.disabled = selectedCards.length !== 2;
+}
+
+function updateTrumpVisibility() {
+    const contractType = document.getElementById('contract-type').value;
+    const trumpSelect = document.getElementById('trump-suit');
+    trumpSelect.style.display = contractType === 'suit' ? 'block' : 'none';
+}
+
+// === Rendering Functions ===
+
+function renderGame() {
+    if (!gameState) return;
+
+    const round = gameState.current_round;
+    const phase = round?.phase || 'waiting';
+
+    // Update phase indicator
+    elements.phaseIndicator.textContent = phase.toUpperCase();
+
+    // Render players
+    renderPlayers();
+
+    // Render center area
+    renderTalon();
+    renderCurrentTrick();
+    renderContractInfo();
+
+    // Show appropriate action panel
+    hideAllActionPanels();
+    showActionPanelForPhase(phase);
+}
+
+function renderPlayers() {
+    const players = gameState.players || [];
+    const currentPlayerId = gameState.current_player_id;
+    const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
+    const declarerId = gameState.current_round?.declarer_id;
+    const phase = gameState.current_round?.phase;
+
+    players.forEach(player => {
+        const playerEl = document.getElementById(`player${player.id}`);
+        if (!playerEl) return;
+
+        // Update player info
+        playerEl.querySelector('.player-name').textContent = player.name;
+        playerEl.querySelector('.player-score').textContent = `Score: ${player.score}`;
+        playerEl.querySelector('.player-tricks').textContent = `Tricks: ${player.tricks_won}`;
+
+        // Role
+        const roleEl = playerEl.querySelector('.player-role');
+        if (player.is_declarer) {
+            roleEl.textContent = 'Declarer';
+        } else if (player.id === declarerId) {
+            roleEl.textContent = 'Declarer';
+        } else {
+            roleEl.textContent = '';
+        }
+
+        // Active state
+        playerEl.classList.remove('active', 'declarer');
+        if (phase === 'auction' && player.id === currentBidderId) {
+            playerEl.classList.add('active');
+        } else if (phase === 'playing' && player.id === currentPlayerId) {
+            playerEl.classList.add('active');
+        }
+        if (player.is_declarer) {
+            playerEl.classList.add('declarer');
+        }
+
+        // Render cards
+        renderPlayerCards(player, playerEl);
     });
 }
 
-function renderPlayerCards(playerId, cardIds) {
-    const playerEl = document.getElementById(playerId);
+function renderPlayerCards(player, playerEl) {
     const cardsContainer = playerEl.querySelector('.player-cards');
+    cardsContainer.innerHTML = '';
 
-    cardIds.forEach(cardId => {
-        const img = createCardImage(cardId);
+    const phase = gameState.current_round?.phase;
+    const isExchanging = phase === 'exchanging';
+    const isPlaying = phase === 'playing';
+    const declarerId = gameState.current_round?.declarer_id;
+    const isCurrentPlayer = player.id === gameState.current_player_id;
+    const legalCards = gameState.legal_cards || [];
+    const legalCardIds = legalCards.map(c => c.id);
+
+    player.hand.forEach(card => {
+        const img = document.createElement('img');
+        img.src = `/api/cards/${card.id}/image`;
+        img.alt = card.id;
+        img.className = 'card';
+        img.title = formatCardName(card.id);
+        img.dataset.cardId = card.id;
+
+        // Handle card selection for discarding
+        if (isExchanging && player.id === declarerId && player.hand.length === 12) {
+            img.classList.add('selectable');
+            if (selectedCards.includes(card.id)) {
+                img.classList.add('selected');
+            }
+            img.addEventListener('click', () => toggleCardSelection(card.id));
+        }
+
+        // Handle card playing
+        if (isPlaying && isCurrentPlayer && legalCardIds.includes(card.id)) {
+            img.classList.add('playable');
+            img.addEventListener('click', () => playCard(card.id));
+        }
+
         cardsContainer.appendChild(img);
     });
 }
 
-function renderTalon(cardIds) {
-    const talonEl = document.getElementById('talon');
-    const cardsContainer = talonEl.querySelector('.talon-cards');
+function renderTalon() {
+    const talonContainer = elements.talon.querySelector('.talon-cards');
+    talonContainer.innerHTML = '';
 
-    cardIds.forEach(cardId => {
-        const img = createCardImage(cardId);
-        cardsContainer.appendChild(img);
+    const round = gameState.current_round;
+    if (!round) return;
+
+    const talonCount = round.talon_count || 0;
+
+    // Show card backs for talon
+    for (let i = 0; i < talonCount; i++) {
+        const img = document.createElement('img');
+        img.src = '/api/styles/classic/back';
+        img.alt = 'Talon card';
+        img.className = 'card';
+        talonContainer.appendChild(img);
+    }
+
+    // Hide talon section if no cards
+    elements.talon.style.display = talonCount > 0 ? 'flex' : 'none';
+}
+
+function renderCurrentTrick() {
+    const trickContainer = elements.currentTrick.querySelector('.trick-cards');
+    trickContainer.innerHTML = '';
+
+    const round = gameState.current_round;
+    if (!round || !round.tricks || round.tricks.length === 0) return;
+
+    const currentTrick = round.tricks[round.tricks.length - 1];
+    if (!currentTrick || !currentTrick.cards) return;
+
+    currentTrick.cards.forEach(cardPlay => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'trick-card-wrapper';
+
+        const label = document.createElement('span');
+        label.className = 'trick-card-player';
+        label.textContent = `P${cardPlay.player_id}`;
+
+        const img = document.createElement('img');
+        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.alt = cardPlay.card.id;
+        img.className = 'card';
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(img);
+        trickContainer.appendChild(wrapper);
     });
 }
 
-function createCardImage(cardId) {
-    const img = document.createElement('img');
-    img.src = `/api/cards/${cardId}/image`;
-    img.alt = cardId;
-    img.className = 'card';
-    img.title = formatCardName(cardId);
-    return img;
+function renderContractInfo() {
+    const contract = gameState.current_round?.contract;
+
+    if (contract) {
+        let text = `Contract: ${contract.type}`;
+        if (contract.trump_suit) {
+            text += ` (${contract.trump_suit})`;
+        }
+        text += ` - Need ${contract.tricks_required} tricks`;
+        elements.contractInfo.textContent = text;
+        elements.contractInfo.style.display = 'block';
+    } else {
+        elements.contractInfo.style.display = 'none';
+    }
+}
+
+function hideAllActionPanels() {
+    elements.biddingControls.classList.add('hidden');
+    elements.exchangeControls.classList.add('hidden');
+    elements.contractControls.classList.add('hidden');
+    elements.playControls.classList.add('hidden');
+    elements.scoringControls.classList.add('hidden');
+}
+
+function showActionPanelForPhase(phase) {
+    const round = gameState.current_round;
+    const declarerId = round?.declarer_id;
+
+    switch (phase) {
+        case 'auction':
+            elements.biddingControls.classList.remove('hidden');
+            updateBiddingButtons();
+            break;
+
+        case 'exchanging':
+            const declarer = gameState.players?.find(p => p.id === declarerId);
+            if (declarer && declarer.hand.length === 10) {
+                // Already discarded, show contract controls
+                elements.contractControls.classList.remove('hidden');
+                updateTrumpVisibility();
+            } else {
+                // Show exchange controls
+                elements.exchangeControls.classList.remove('hidden');
+                const pickupBtn = document.getElementById('pickup-talon-btn');
+                pickupBtn.classList.toggle('hidden', declarer && declarer.hand.length === 12);
+            }
+            break;
+
+        case 'playing':
+            elements.playControls.classList.remove('hidden');
+            break;
+
+        case 'scoring':
+            elements.scoringControls.classList.remove('hidden');
+            showRoundResult();
+            break;
+    }
+}
+
+function updateBiddingButtons() {
+    const auction = gameState.current_round?.auction;
+    const highestBid = auction?.highest_bid;
+    const minBid = highestBid && !highestBid.is_pass ? highestBid.value + 1 : 2;
+
+    document.querySelectorAll('.bid-btn').forEach(btn => {
+        const value = parseInt(btn.dataset.value);
+        if (value === 0) {
+            btn.disabled = false; // Can always pass
+        } else {
+            btn.disabled = value < minBid;
+        }
+    });
+}
+
+function showRoundResult() {
+    const players = gameState.players || [];
+    const declarerId = gameState.current_round?.declarer_id;
+    const declarer = players.find(p => p.id === declarerId);
+
+    if (declarer) {
+        const result = document.getElementById('round-result');
+        result.textContent = `Round over! ${declarer.name} took ${declarer.tricks_won} tricks.`;
+    }
+}
+
+function showMessage(text, type = '') {
+    elements.messageArea.textContent = text;
+    elements.messageArea.className = 'message-area';
+    if (type) {
+        elements.messageArea.classList.add(type);
+    }
 }
 
 function formatCardName(cardId) {
