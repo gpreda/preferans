@@ -3,9 +3,6 @@
 let gameState = null;
 let selectedCards = [];
 
-// Shorthand for translation function
-const t = (key, ...args) => window.i18n ? window.i18n.t(key, ...args) : key;
-
 // DOM Elements
 const elements = {
     newGameBtn: null,
