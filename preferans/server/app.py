@@ -122,11 +122,22 @@ def shuffle_and_deal():
     card_ids = [c['card_id'] for c in cards]
     random.shuffle(card_ids)
 
+    # Sort order for display (spades > diamonds > clubs > hearts, 7 > 8 > ... > A)
+    suit_order = {'spades': 4, 'diamonds': 3, 'clubs': 2, 'hearts': 1}
+    rank_order = {'7': 8, '8': 7, '9': 6, '10': 5, 'J': 4, 'Q': 3, 'K': 2, 'A': 1}
+
+    def sort_key(card_id):
+        rank, suit = card_id.split('_')
+        return (suit_order.get(suit, 0), rank_order.get(rank, 0))
+
+    def sort_hand(hand):
+        return sorted(hand, key=sort_key, reverse=True)
+
     # Deal: 10 cards each to 3 players, 2 cards to talon
     return jsonify({
-        'player1': card_ids[0:10],
-        'player2': card_ids[10:20],
-        'player3': card_ids[20:30],
+        'player1': sort_hand(card_ids[0:10]),
+        'player2': sort_hand(card_ids[10:20]),
+        'player3': sort_hand(card_ids[20:30]),
         'talon': card_ids[30:32]
     })
 
