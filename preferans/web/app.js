@@ -77,8 +77,10 @@ async function checkServer() {
 }
 
 async function startNewGame() {
+    console.log('startNewGame called');
     try {
         showMessage('Starting new game...');
+        console.log('Fetching /api/game/new...');
         const response = await fetch('/api/game/new', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -86,17 +88,21 @@ async function startNewGame() {
                 players: ['Player 1', 'Player 2', 'Player 3']
             })
         });
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
 
         if (data.success) {
             gameState = data.state;
+            console.log('Game state:', gameState);
             selectedCards = [];
             renderGame();
             showMessage('Game started! Bidding phase begins.', 'success');
         } else {
-            showMessage(data.error, 'error');
+            showMessage(data.error || 'Unknown error', 'error');
         }
     } catch (error) {
+        console.error('Error starting game:', error);
         showMessage('Failed to start game: ' + error.message, 'error');
     }
 }
@@ -310,11 +316,13 @@ function updateTrumpVisibility() {
 // === Rendering Functions ===
 
 function renderGame() {
+    console.log('renderGame called, gameState:', gameState);
     if (!gameState) return;
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
     const auctionPhase = gameState.auction_phase;
+    console.log('Phase:', phase, 'Auction phase:', auctionPhase);
 
     // Update phase indicator
     let phaseText = phase.toUpperCase();
