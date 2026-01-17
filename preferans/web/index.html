@@ -9,19 +9,23 @@
 <body>
     <div class="game-container">
         <header>
-            <h1>Preferans</h1>
-            <button id="new-game-btn">New Game</button>
+            <h1 data-i18n="title">Preferans</h1>
+            <button id="new-game-btn" data-i18n="newGame">New Game</button>
             <span id="phase-indicator"></span>
             <span id="status"></span>
+            <select id="language-selector" class="lang-selector">
+                <option value="en">EN</option>
+                <option value="sr">SR</option>
+            </select>
         </header>
 
         <div class="table">
             <!-- Player 1: Left side, vertical -->
             <div class="player player-left" id="player1">
                 <div class="player-info">
-                    <span class="player-name">Player 1</span>
-                    <span class="player-score">Score: 0</span>
-                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-name" data-i18n="player1">Player 1</span>
+                    <span class="player-score"><span data-i18n="score">Score</span>: <span class="score-value">0</span></span>
+                    <span class="player-tricks"><span data-i18n="tricks">Tricks</span>: <span class="tricks-value">0</span></span>
                     <span class="player-role"></span>
                 </div>
                 <div class="player-cards"></div>
@@ -30,9 +34,9 @@
             <!-- Player 2: Right side, vertical -->
             <div class="player player-right" id="player2">
                 <div class="player-info">
-                    <span class="player-name">Player 2</span>
-                    <span class="player-score">Score: 0</span>
-                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-name" data-i18n="player2">Player 2</span>
+                    <span class="player-score"><span data-i18n="score">Score</span>: <span class="score-value">0</span></span>
+                    <span class="player-tricks"><span data-i18n="tricks">Tricks</span>: <span class="tricks-value">0</span></span>
                     <span class="player-role"></span>
                 </div>
                 <div class="player-cards"></div>
@@ -42,7 +46,7 @@
             <div class="center-area">
                 <!-- Talon -->
                 <div class="talon" id="talon">
-                    <div class="talon-label">Talon</div>
+                    <div class="talon-label" data-i18n="talon">Talon</div>
                     <div class="talon-cards"></div>
                 </div>
 
@@ -58,9 +62,9 @@
             <!-- Player 3: Bottom, horizontal -->
             <div class="player player-bottom" id="player3">
                 <div class="player-info">
-                    <span class="player-name">Player 3</span>
-                    <span class="player-score">Score: 0</span>
-                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-name" data-i18n="player3">Player 3</span>
+                    <span class="player-score"><span data-i18n="score">Score</span>: <span class="score-value">0</span></span>
+                    <span class="player-tricks"><span data-i18n="tricks">Tricks</span>: <span class="tricks-value">0</span></span>
                     <span class="player-role"></span>
                 </div>
                 <div class="player-cards"></div>
@@ -71,8 +75,8 @@
         <div class="action-panel" id="action-panel">
             <!-- Bidding UI -->
             <div class="bidding-controls hidden" id="bidding-controls">
-                <span class="action-label">Bidding:</span>
-                <button class="bid-btn" data-value="0">Pass</button>
+                <span class="action-label"><span data-i18n="bidding">Bidding</span>:</span>
+                <button class="bid-btn" data-value="0" data-i18n="pass">Pass</button>
                 <button class="bid-btn" data-value="2">2</button>
                 <button class="bid-btn" data-value="3">3</button>
                 <button class="bid-btn" data-value="4">4</button>
@@ -83,43 +87,44 @@
 
             <!-- Exchange UI -->
             <div class="exchange-controls hidden" id="exchange-controls">
-                <button id="pickup-talon-btn">Pick Up Talon</button>
-                <span class="action-label">Select 2 cards to discard, then:</span>
-                <button id="discard-btn" disabled>Discard Selected</button>
+                <button id="pickup-talon-btn" data-i18n="pickUpTalon">Pick Up Talon</button>
+                <span class="action-label" data-i18n="selectCardsToDiscard">Select 2 cards to discard, then:</span>
+                <button id="discard-btn" disabled data-i18n="discardSelected">Discard Selected</button>
             </div>
 
             <!-- Contract UI -->
             <div class="contract-controls hidden" id="contract-controls">
-                <span class="action-label">Announce Contract:</span>
+                <span class="action-label"><span data-i18n="announceContract">Announce Contract</span>:</span>
                 <select id="contract-type">
-                    <option value="suit">Suit</option>
-                    <option value="betl">Betl</option>
-                    <option value="sans">Sans</option>
+                    <option value="suit" data-i18n="suit">Suit</option>
+                    <option value="betl" data-i18n="betl">Betl</option>
+                    <option value="sans" data-i18n="sans">Sans</option>
                 </select>
                 <select id="trump-suit">
-                    <option value="spades">Spades</option>
-                    <option value="hearts">Hearts</option>
-                    <option value="diamonds">Diamonds</option>
-                    <option value="clubs">Clubs</option>
+                    <option value="spades" data-i18n="suits.spades">Spades</option>
+                    <option value="hearts" data-i18n="suits.hearts">Hearts</option>
+                    <option value="diamonds" data-i18n="suits.diamonds">Diamonds</option>
+                    <option value="clubs" data-i18n="suits.clubs">Clubs</option>
                 </select>
-                <button id="announce-btn">Announce</button>
+                <button id="announce-btn" data-i18n="announce">Announce</button>
             </div>
 
             <!-- Play instructions -->
             <div class="play-controls hidden" id="play-controls">
-                <span class="action-label">Click a card to play it</span>
+                <span class="action-label" data-i18n="clickCardToPlay">Click a card to play it</span>
             </div>
 
             <!-- Scoring UI -->
             <div class="scoring-controls hidden" id="scoring-controls">
                 <span class="action-label" id="round-result"></span>
-                <button id="next-round-btn">Next Round</button>
+                <button id="next-round-btn" data-i18n="nextRound">Next Round</button>
             </div>
         </div>
 
         <!-- Message area -->
         <div class="message-area" id="message-area"></div>
     </div>
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

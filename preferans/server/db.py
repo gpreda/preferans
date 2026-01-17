@@ -107,3 +107,114 @@ def get_card_image(card_id: str, style_id: int = None, style_name: str = None):
             'binary': card['image_binary']
         }
     return None
+
+
+# i18n - Languages
+
+def get_all_languages():
+    """Get all available languages."""
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT id, code, name, native_name, is_default, created_at
+            FROM languages ORDER BY is_default DESC, name
+        ''')
+        return cur.fetchall()
+
+
+def get_language(code: str = None, language_id: int = None):
+    """Get a language by code or ID."""
+    with get_db_cursor() as cur:
+        if language_id:
+            cur.execute('SELECT * FROM languages WHERE id = %s', (language_id,))
+        elif code:
+            cur.execute('SELECT * FROM languages WHERE code = %s', (code,))
+        else:
+            cur.execute('SELECT * FROM languages WHERE is_default = TRUE')
+        return cur.fetchone()
+
+
+def add_language(code: str, name: str, native_name: str = None, is_default: bool = False):
+    """Add a new language."""
+    with get_db_cursor(commit=True) as cur:
+        cur.execute('''
+            INSERT INTO languages (code, name, native_name, is_default)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, code, name, native_name, is_default
+        ''', (code, name, native_name or name, is_default))
+        return cur.fetchone()
+
+
+# i18n - Translations
+
+def get_translations(language_code: str):
+    """Get all translations for a language as a dict."""
+    lang = get_language(code=language_code)
+    if not lang:
+        return {}
+
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT key, value FROM translations
+            WHERE language_id = %s
+        ''', (lang['id'],))
+        rows = cur.fetchall()
+        return {row['key']: row['value'] for row in rows}
+
+
+def get_all_translations():
+    """Get all translations for all languages."""
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT l.code as language_code, t.key, t.value
+            FROM translations t
+            JOIN languages l ON t.language_id = l.id
+            ORDER BY l.code, t.key
+        ''')
+        rows = cur.fetchall()
+
+        result = {}
+        for row in rows:
+            lang = row['language_code']
+            if lang not in result:
+                result[lang] = {}
+            result[lang][row['key']] = row['value']
+        return result
+
+
+def get_all_translation_keys():
+    """Get all unique translation keys."""
+    with get_db_cursor() as cur:
+        cur.execute('SELECT DISTINCT key FROM translations ORDER BY key')
+        return [row['key'] for row in cur.fetchall()]
+
+
+def update_translation(language_code: str, key: str, value: str):
+    """Update or insert a translation."""
+    lang = get_language(code=language_code)
+    if not lang:
+        return None
+
+    with get_db_cursor(commit=True) as cur:
+        cur.execute('''
+            INSERT INTO translations (language_id, key, value)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (language_id, key) DO UPDATE SET
+                value = EXCLUDED.value,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id, key, value
+        ''', (lang['id'], key, value))
+        return cur.fetchone()
+
+
+def delete_translation(language_code: str, key: str):
+    """Delete a translation."""
+    lang = get_language(code=language_code)
+    if not lang:
+        return False
+
+    with get_db_cursor(commit=True) as cur:
+        cur.execute('''
+            DELETE FROM translations
+            WHERE language_id = %s AND key = %s
+        ''', (lang['id'], key))
+        return cur.rowcount > 0
