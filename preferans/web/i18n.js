@@ -12,18 +12,58 @@ const fallbackTranslations = {
         player3: 'Player 3',
         score: 'Score',
         tricks: 'Tricks',
-        serverConnectionFailed: 'Server connection failed'
+        declarer: 'Declarer',
+        serverConnectionFailed: 'Server connection failed',
+        // Bid labels
+        pass: 'Pass',
+        game: 'Game',
+        inHand: 'In Hand',
+        betl: 'Betl',
+        sans: 'Sans',
+        hold: 'Hold',
+        bidding: 'Bidding',
+        biddingHistory: 'Bidding',
+        // Phases
+        'phases.auction': 'Auction',
+        'phases.exchanging': 'Exchange',
+        'phases.playing': 'Playing',
+        'phases.scoring': 'Scoring',
+        // Suits
+        'suits.spades': 'Spades',
+        'suits.hearts': 'Hearts',
+        'suits.diamonds': 'Diamonds',
+        'suits.clubs': 'Clubs'
     },
     sr: {
         title: 'Preferans',
         newGame: 'Nova igra',
-        player: 'Igrac',
-        player1: 'Igrac 1',
-        player2: 'Igrac 2',
-        player3: 'Igrac 3',
+        player: 'Igrač',
+        player1: 'Igrač 1',
+        player2: 'Igrač 2',
+        player3: 'Igrač 3',
         score: 'Poeni',
-        tricks: 'Stihovi',
-        serverConnectionFailed: 'Neuspesna konekcija sa serverom'
+        tricks: 'Štihovi',
+        declarer: 'Igrač',
+        serverConnectionFailed: 'Neuspešna konekcija sa serverom',
+        // Bid labels
+        pass: 'Pas',
+        game: 'Igra',
+        inHand: 'Iz ruke',
+        betl: 'Betl',
+        sans: 'Sans',
+        hold: 'Držim',
+        bidding: 'Licitacija',
+        biddingHistory: 'Licitacija',
+        // Phases
+        'phases.auction': 'Licitacija',
+        'phases.exchanging': 'Razmena',
+        'phases.playing': 'Igra',
+        'phases.scoring': 'Bodovanje',
+        // Suits
+        'suits.spades': 'Pik',
+        'suits.hearts': 'Herc',
+        'suits.diamonds': 'Karo',
+        'suits.clubs': 'Tref'
     }
 };
 

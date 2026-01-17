@@ -487,3 +487,69 @@ header h1 {
 .message-area.success {
     color: #4ecca3;
 }
+
+/* Bidding History */
+.bidding-history {
+    display: none;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    padding: 0.5rem;
+    min-width: 150px;
+    max-width: 200px;
+    max-height: 150px;
+}
+
+.bidding-history-title {
+    font-size: 0.75rem;
+    color: #aaa;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+}
+
+.bidding-history-list {
+    overflow-y: auto;
+    max-height: 120px;
+}
+
+.bid-line {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+    margin: 0.1rem 0;
+    border-radius: 3px;
+}
+
+.bid-player {
+    color: #aaa;
+    font-weight: 500;
+}
+
+.bid-value {
+    color: #fff;
+    font-weight: bold;
+}
+
+.bid-line.bid-pass .bid-value {
+    color: #e94560;
+}
+
+.bid-line.bid-in-hand .bid-value {
+    color: #9b59b6;
+}
+
+.bid-line.bid-special .bid-value {
+    color: #f39c12;
+}
+
+/* Language selector */
+.lang-selector {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
+    background: #2d4059;
+    color: white;
+    border: 1px solid #4ecca3;
+    border-radius: 4px;
+    cursor: pointer;
+}
