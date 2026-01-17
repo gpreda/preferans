@@ -1,0 +1,1 @@
+# Preferans integration tests
