@@ -20,6 +20,8 @@ body {
     flex-direction: column;
     height: 100vh;
     padding: 1rem;
+    max-width: min(100%, 100vh);
+    margin: 0 auto;
 }
 
 /* Header */
