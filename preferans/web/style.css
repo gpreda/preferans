@@ -9,49 +9,172 @@ body {
     background: #1a1a2e;
     color: #eee;
     min-height: 100vh;
+}
+
+.game-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 1rem;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: #16213e;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+header h1 {
+    font-size: 1.5rem;
+    color: #e94560;
+    margin-right: auto;
+}
+
+#shuffle-btn {
+    padding: 0.5rem 1.5rem;
+    font-size: 1rem;
+    background: #e94560;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#shuffle-btn:hover {
+    background: #ff6b6b;
+}
+
+#status {
+    font-size: 0.9rem;
+    color: #4ecca3;
+}
+
+/* Game Table */
+.table {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 100px 1fr 100px;
+    grid-template-rows: 1fr 150px;
+    gap: 1rem;
+    background: #0f3d3e;
+    border-radius: 12px;
+    padding: 1rem;
+    position: relative;
+}
+
+/* Player areas */
+.player {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.player-label {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.player-cards {
+    display: flex;
+    gap: 2px;
+}
+
+/* Player 1: Left side, vertical cards */
+.player-left {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    justify-content: center;
+}
+
+.player-left .player-cards {
+    flex-direction: column;
+}
+
+.player-left .card {
+    margin-top: -50px;
+}
+
+.player-left .card:first-child {
+    margin-top: 0;
+}
+
+/* Player 2: Right side, vertical cards */
+.player-right {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    justify-content: center;
+}
+
+.player-right .player-cards {
+    flex-direction: column;
+}
+
+.player-right .card {
+    margin-top: -50px;
+}
+
+.player-right .card:first-child {
+    margin-top: 0;
+}
+
+/* Player 3: Bottom, horizontal cards */
+.player-bottom {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.player-bottom .player-cards {
+    flex-direction: row;
+    justify-content: center;
+}
+
+.player-bottom .card {
+    margin-left: -30px;
+}
+
+.player-bottom .card:first-child {
+    margin-left: 0;
+}
+
+/* Talon: Center of table */
+.talon {
+    grid-column: 2;
+    grid-row: 1;
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
-.container {
-    text-align: center;
-    padding: 2rem;
-}
-
-h1 {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    color: #e94560;
-}
-
-p {
-    font-size: 1.2rem;
-    color: #aaa;
-}
-
-#status {
-    margin-top: 1rem;
-    font-size: 0.9rem;
-    color: #4ecca3;
-}
-
-.cards-grid {
+.talon-cards {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.5rem;
-    margin-top: 2rem;
-    max-width: 900px;
+    gap: 10px;
 }
 
+/* Card styling */
 .card {
     width: 60px;
     height: 84px;
-    cursor: pointer;
-    transition: transform 0.2s;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, margin 0.2s;
 }
 
 .card:hover {
-    transform: translateY(-5px);
+    transform: scale(1.1);
+    z-index: 10;
+}
+
+.talon .card {
+    width: 70px;
+    height: 98px;
 }

@@ -1,6 +1,7 @@
 from flask import Flask, send_from_directory, jsonify, Response, request
 from flask_cors import CORS
 import os
+import random
 
 # Get absolute path to web folder
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -106,6 +107,28 @@ def get_card_image(card_id):
     style_name = request.args.get('style')
     image_data = db_get_card_image(card_id, style_name=style_name)
     return get_image_response(image_data)
+
+
+# Game API
+
+@app.route('/api/game/shuffle', methods=['POST'])
+def shuffle_and_deal():
+    """Shuffle deck and deal cards to 3 players + talon (2 cards)."""
+    from db import get_all_cards
+    style_name = request.args.get('style')
+    cards = get_all_cards(style_name=style_name)
+
+    # Get card IDs and shuffle
+    card_ids = [c['card_id'] for c in cards]
+    random.shuffle(card_ids)
+
+    # Deal: 10 cards each to 3 players, 2 cards to talon
+    return jsonify({
+        'player1': card_ids[0:10],
+        'player2': card_ids[10:20],
+        'player3': card_ids[20:30],
+        'talon': card_ids[30:32]
+    })
 
 
 if __name__ == '__main__':
