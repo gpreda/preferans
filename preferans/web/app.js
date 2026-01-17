@@ -3,12 +3,16 @@
 let gameState = null;
 let selectedCards = [];
 
+// Shorthand for translation function
+const t = (key, ...args) => window.i18n ? window.i18n.t(key, ...args) : key;
+
 // DOM Elements
 const elements = {
     newGameBtn: null,
     phaseIndicator: null,
     status: null,
     messageArea: null,
+    languageSelector: null,
     // Players
     player1: null,
     player2: null,
@@ -31,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.phaseIndicator = document.getElementById('phase-indicator');
     elements.status = document.getElementById('status');
     elements.messageArea = document.getElementById('message-area');
+    elements.languageSelector = document.getElementById('language-selector');
 
     elements.player1 = document.getElementById('player1');
     elements.player2 = document.getElementById('player2');
@@ -48,6 +53,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event listeners
     elements.newGameBtn.addEventListener('click', startNewGame);
+
+    // Language selector
+    if (elements.languageSelector && window.i18n) {
+        elements.languageSelector.value = window.i18n.getLanguage();
+        elements.languageSelector.addEventListener('change', (e) => {
+            window.i18n.setLanguage(e.target.value);
+            if (gameState) {
+                renderGame();
+            }
+        });
+    }
 
     // Bidding buttons are now dynamically generated
 
@@ -70,40 +86,34 @@ async function checkServer() {
     try {
         const response = await fetch('/api/health');
         const data = await response.json();
-        showMessage(`Server: ${data.status}`, 'success');
+        showMessage(t('serverStatus', data.status), 'success');
     } catch (error) {
-        showMessage('Server connection failed', 'error');
+        showMessage(t('serverConnectionFailed'), 'error');
     }
 }
 
 async function startNewGame() {
-    console.log('startNewGame called');
     try {
-        showMessage('Starting new game...');
-        console.log('Fetching /api/game/new...');
+        showMessage(t('startingNewGame'));
         const response = await fetch('/api/game/new', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                players: ['Player 1', 'Player 2', 'Player 3']
+                players: [t('player1'), t('player2'), t('player3')]
             })
         });
-        console.log('Response status:', response.status);
         const data = await response.json();
-        console.log('Response data:', data);
 
         if (data.success) {
             gameState = data.state;
-            console.log('Game state:', gameState);
             selectedCards = [];
             renderGame();
-            showMessage('Game started! Bidding phase begins.', 'success');
+            showMessage(t('gameStarted'), 'success');
         } else {
             showMessage(data.error || 'Unknown error', 'error');
         }
     } catch (error) {
-        console.error('Error starting game:', error);
-        showMessage('Failed to start game: ' + error.message, 'error');
+        showMessage(t('failedToStartGame', error.message), 'error');
     }
 }
 
@@ -128,19 +138,20 @@ async function placeBid(bidType, value) {
         if (data.success) {
             gameState = data.state;
             renderGame();
+            const playerName = getPlayerName(currentBidderId);
             const bidText = getBidDescription(bidType, value);
-            showMessage(`Player ${currentBidderId} ${bidText}`, 'success');
+            showMessage(`${playerName} ${bidText}`, 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to place bid: ' + error.message, 'error');
+        showMessage(t('failedToPlaceBid', error.message), 'error');
     }
 }
 
 function getBidDescription(bidType, value) {
-    if (bidType === 'pass') return 'passed';
-    if (bidType === 'game') return `bid Game ${value}`;
+    if (bidType === 'pass') return t('playerPassed', '').replace('{0} ', '');
+    if (bidType === 'game') return `${t('playerBid', '', value).replace('{0} ', '')}`;
     if (bidType === 'in_hand') return value > 0 ? `declared In Hand ${value}` : 'declared In Hand';
     if (bidType === 'betl') return 'bid Betl';
     if (bidType === 'sans') return 'bid Sans';
@@ -164,14 +175,14 @@ async function pickUpTalon() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            showMessage('Talon picked up. Select 2 cards to discard.', 'success');
+            showMessage(t('talonPickedUp'), 'success');
             // Hide pickup button, show discard section
             document.getElementById('pickup-talon-btn').classList.add('hidden');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to pick up talon: ' + error.message, 'error');
+        showMessage(t('failedToPickUpTalon', error.message), 'error');
     }
 }
 
@@ -196,12 +207,12 @@ async function discardSelected() {
             gameState = data.state;
             selectedCards = [];
             renderGame();
-            showMessage('Cards discarded. Announce your contract.', 'success');
+            showMessage(t('cardsDiscarded'), 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to discard: ' + error.message, 'error');
+        showMessage(t('failedToDiscard', error.message), 'error');
     }
 }
 
@@ -229,12 +240,16 @@ async function announceContract() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            showMessage(`Contract announced: ${contractType}${trumpSuit ? ' (' + trumpSuit + ')' : ''}`, 'success');
+            const contractName = t(contractType);
+            const msg = trumpSuit
+                ? t('contractAnnouncedWithSuit', contractName, t('suits.' + trumpSuit))
+                : t('contractAnnounced', contractName);
+            showMessage(msg, 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to announce contract: ' + error.message, 'error');
+        showMessage(t('failedToAnnounceContract', error.message), 'error');
     }
 }
 
@@ -260,16 +275,17 @@ async function playCard(cardId) {
             renderGame();
 
             if (data.result.trick_complete) {
-                showMessage(`Trick won by Player ${data.result.trick_winner_id}!`, 'success');
+                const winnerName = getPlayerName(data.result.trick_winner_id);
+                showMessage(t('trickWonBy', winnerName), 'success');
             }
             if (data.result.round_complete) {
-                showMessage('Round complete!', 'success');
+                showMessage(t('roundComplete'), 'success');
             }
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to play card: ' + error.message, 'error');
+        showMessage(t('failedToPlayCard', error.message), 'error');
     }
 }
 
@@ -282,12 +298,12 @@ async function nextRound() {
             gameState = data.state;
             selectedCards = [];
             renderGame();
-            showMessage('New round started!', 'success');
+            showMessage(t('newRoundStarted'), 'success');
         } else {
             showMessage(data.error, 'error');
         }
     } catch (error) {
-        showMessage('Failed to start next round: ' + error.message, 'error');
+        showMessage(t('failedToStartNextRound', error.message), 'error');
     }
 }
 
@@ -313,28 +329,31 @@ function updateTrumpVisibility() {
     trumpSelect.style.display = contractType === 'suit' ? 'block' : 'none';
 }
 
+function getPlayerName(playerId) {
+    const player = gameState?.players?.find(p => p.id === playerId);
+    return player ? player.name : t('player') + ' ' + playerId;
+}
+
 // === Rendering Functions ===
 
 function renderGame() {
-    console.log('renderGame called, gameState:', gameState);
     if (!gameState) return;
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
     const auctionPhase = gameState.auction_phase;
-    console.log('Phase:', phase, 'Auction phase:', auctionPhase);
 
     // Update phase indicator
-    let phaseText = phase.toUpperCase();
+    let phaseText = t('phases.' + phase);
     if (phase === 'auction' && auctionPhase) {
-        const auctionPhaseNames = {
-            'initial': 'AUCTION - INITIAL',
-            'game_bidding': 'AUCTION - GAME BIDDING',
-            'in_hand_deciding': 'AUCTION - IN HAND DECIDING',
-            'in_hand_declaring': 'AUCTION - IN HAND DECLARING',
-            'complete': 'AUCTION - COMPLETE'
+        const auctionPhaseKeys = {
+            'initial': 'phases.auction',
+            'game_bidding': 'phases.auction',
+            'in_hand_deciding': 'phases.auction',
+            'in_hand_declaring': 'phases.auction',
+            'complete': 'phases.auction'
         };
-        phaseText = auctionPhaseNames[auctionPhase] || phaseText;
+        phaseText = t(auctionPhaseKeys[auctionPhase] || 'phases.auction');
     }
     elements.phaseIndicator.textContent = phaseText;
 
@@ -364,15 +383,15 @@ function renderPlayers() {
 
         // Update player info
         playerEl.querySelector('.player-name').textContent = player.name;
-        playerEl.querySelector('.player-score').textContent = `Score: ${player.score}`;
-        playerEl.querySelector('.player-tricks').textContent = `Tricks: ${player.tricks_won}`;
+        playerEl.querySelector('.score-value').textContent = player.score;
+        playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
 
         // Role
         const roleEl = playerEl.querySelector('.player-role');
         if (player.is_declarer) {
-            roleEl.textContent = 'Declarer';
+            roleEl.textContent = t('declarer');
         } else if (player.id === declarerId) {
-            roleEl.textContent = 'Declarer';
+            roleEl.textContent = t('declarer');
         } else {
             roleEl.textContent = '';
         }
@@ -445,7 +464,7 @@ function renderTalon() {
     for (let i = 0; i < talonCount; i++) {
         const img = document.createElement('img');
         img.src = '/api/styles/classic/back';
-        img.alt = 'Talon card';
+        img.alt = t('talonCard');
         img.className = 'card';
         talonContainer.appendChild(img);
     }
@@ -470,7 +489,8 @@ function renderCurrentTrick() {
 
         const label = document.createElement('span');
         label.className = 'trick-card-player';
-        label.textContent = `P${cardPlay.player_id}`;
+        const playerName = getPlayerName(cardPlay.player_id);
+        label.textContent = playerName;
 
         const img = document.createElement('img');
         img.src = `/api/cards/${cardPlay.card.id}/image`;
@@ -487,11 +507,12 @@ function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
     if (contract) {
-        let text = `Contract: ${contract.type}`;
+        const contractName = t(contract.type);
+        let text = t('contract') + ': ' + contractName;
         if (contract.trump_suit) {
-            text += ` (${contract.trump_suit})`;
+            text += ` (${t('suits.' + contract.trump_suit)})`;
         }
-        text += ` - Need ${contract.tricks_required} tricks`;
+        text += ' - ' + t('needTricks', contract.tricks_required);
         elements.contractInfo.textContent = text;
         elements.contractInfo.style.display = 'block';
     } else {
@@ -548,7 +569,7 @@ function updateBiddingButtons() {
     container.innerHTML = '';
 
     if (legalBids.length === 0) {
-        container.innerHTML = '<span class="action-label">Waiting for your turn...</span>';
+        container.innerHTML = `<span class="action-label">${t('clickCardToPlay')}</span>`;
         return;
     }
 
@@ -583,7 +604,7 @@ function showRoundResult() {
 
     if (declarer) {
         const result = document.getElementById('round-result');
-        result.textContent = `Round over! ${declarer.name} took ${declarer.tricks_won} tricks.`;
+        result.textContent = t('roundOver', declarer.name, declarer.tricks_won);
     }
 }
 
@@ -597,5 +618,7 @@ function showMessage(text, type = '') {
 
 function formatCardName(cardId) {
     const [rank, suit] = cardId.split('_');
-    return `${rank} of ${suit}`;
+    const rankName = t('ranks.' + rank);
+    const suitName = t('suits.' + suit);
+    return t('cardName', rankName, suitName);
 }
