@@ -1,7 +1,7 @@
 from flask import Flask, send_from_directory, jsonify, Response, request
 from flask_cors import CORS
 import os
-import random
+import uuid
 
 # Get absolute path to web folder
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -9,6 +9,10 @@ WEB_DIR = os.path.join(BASE_DIR, 'web')
 
 app = Flask(__name__, static_folder=WEB_DIR, static_url_path='')
 CORS(app)
+
+# Store current game in memory (single game session for now)
+current_game = None
+current_engine = None
 
 
 def get_image_response(image_data):
@@ -111,35 +115,180 @@ def get_card_image(card_id):
 
 # Game API
 
-@app.route('/api/game/shuffle', methods=['POST'])
-def shuffle_and_deal():
-    """Shuffle deck and deal cards to 3 players + talon (2 cards)."""
-    from db import get_all_cards
-    style_name = request.args.get('style')
-    cards = get_all_cards(style_name=style_name)
+@app.route('/api/game/new', methods=['POST'])
+def new_game():
+    """Start a new game with 3 human players."""
+    global current_game, current_engine
+    from models import Game
+    from engine import GameEngine
 
-    # Get card IDs and shuffle
-    card_ids = [c['card_id'] for c in cards]
-    random.shuffle(card_ids)
+    # Get player names from request or use defaults
+    data = request.get_json() or {}
+    player_names = data.get('players', ['Player 1', 'Player 2', 'Player 3'])
 
-    # Sort order for display (spades > diamonds > clubs > hearts, 7 > 8 > ... > A)
-    suit_order = {'spades': 4, 'diamonds': 3, 'clubs': 2, 'hearts': 1}
-    rank_order = {'7': 8, '8': 7, '9': 6, '10': 5, 'J': 4, 'Q': 3, 'K': 2, 'A': 1}
+    # Create new game
+    current_game = Game(id=str(uuid.uuid4()))
+    for name in player_names[:3]:
+        current_game.add_human_player(name)
 
-    def sort_key(card_id):
-        rank, suit = card_id.split('_')
-        return (suit_order.get(suit, 0), rank_order.get(rank, 0))
+    # Create engine and start game
+    current_engine = GameEngine(current_game)
+    current_engine.start_game()
 
-    def sort_hand(hand):
-        return sorted(hand, key=sort_key, reverse=True)
-
-    # Deal: 10 cards each to 3 players, 2 cards to talon
     return jsonify({
-        'player1': sort_hand(card_ids[0:10]),
-        'player2': sort_hand(card_ids[10:20]),
-        'player3': sort_hand(card_ids[20:30]),
-        'talon': card_ids[30:32]
+        'success': True,
+        'game_id': current_game.id,
+        'state': current_engine.get_game_state()
     })
+
+
+@app.route('/api/game/state')
+def game_state():
+    """Get current game state."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    viewer_id = request.args.get('player_id', type=int)
+    return jsonify(current_engine.get_game_state(viewer_id=viewer_id))
+
+
+@app.route('/api/game/bid', methods=['POST'])
+def place_bid():
+    """Place a bid during auction phase."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+    value = data.get('value', 0)
+    suit = data.get('suit')
+    is_hand = data.get('is_hand', False)
+
+    try:
+        bid = current_engine.place_bid(player_id, value, suit, is_hand)
+        return jsonify({
+            'success': True,
+            'bid': bid.to_dict(),
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/talon', methods=['POST'])
+def pick_up_talon():
+    """Declarer picks up talon cards."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+
+    try:
+        cards = current_engine.pick_up_talon(player_id)
+        return jsonify({
+            'success': True,
+            'talon': [c.to_dict() for c in cards],
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/discard', methods=['POST'])
+def discard_cards():
+    """Declarer discards two cards."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+    card_ids = data.get('card_ids', [])
+
+    try:
+        discarded = current_engine.discard_cards(player_id, card_ids)
+        return jsonify({
+            'success': True,
+            'discarded': [c.to_dict() for c in discarded],
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/contract', methods=['POST'])
+def announce_contract():
+    """Declarer announces contract."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+    contract_type = data.get('type')
+    trump_suit = data.get('trump_suit')
+
+    try:
+        current_engine.announce_contract(player_id, contract_type, trump_suit)
+        return jsonify({
+            'success': True,
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/play', methods=['POST'])
+def play_card():
+    """Play a card to the current trick."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+    card_id = data.get('card_id')
+
+    try:
+        result = current_engine.play_card(player_id, card_id)
+        return jsonify({
+            'success': True,
+            'result': result,
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/next-round', methods=['POST'])
+def next_round():
+    """Start the next round after scoring."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    try:
+        current_engine.start_next_round()
+        return jsonify({
+            'success': True,
+            'state': current_engine.get_game_state()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 if __name__ == '__main__':

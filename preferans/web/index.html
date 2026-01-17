@@ -10,34 +10,115 @@
     <div class="game-container">
         <header>
             <h1>Preferans</h1>
-            <button id="shuffle-btn">Shuffle & Deal</button>
+            <button id="new-game-btn">New Game</button>
+            <span id="phase-indicator"></span>
             <span id="status"></span>
         </header>
 
         <div class="table">
             <!-- Player 1: Left side, vertical -->
             <div class="player player-left" id="player1">
-                <div class="player-label">Player 1</div>
+                <div class="player-info">
+                    <span class="player-name">Player 1</span>
+                    <span class="player-score">Score: 0</span>
+                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-role"></span>
+                </div>
                 <div class="player-cards"></div>
             </div>
 
             <!-- Player 2: Right side, vertical -->
             <div class="player player-right" id="player2">
-                <div class="player-label">Player 2</div>
+                <div class="player-info">
+                    <span class="player-name">Player 2</span>
+                    <span class="player-score">Score: 0</span>
+                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-role"></span>
+                </div>
                 <div class="player-cards"></div>
             </div>
 
-            <!-- Talon: Center -->
-            <div class="talon" id="talon">
-                <div class="talon-cards"></div>
+            <!-- Center area: Talon + Current Trick -->
+            <div class="center-area">
+                <!-- Talon -->
+                <div class="talon" id="talon">
+                    <div class="talon-label">Talon</div>
+                    <div class="talon-cards"></div>
+                </div>
+
+                <!-- Current Trick -->
+                <div class="current-trick" id="current-trick">
+                    <div class="trick-cards"></div>
+                </div>
+
+                <!-- Contract Info -->
+                <div class="contract-info" id="contract-info"></div>
             </div>
 
             <!-- Player 3: Bottom, horizontal -->
             <div class="player player-bottom" id="player3">
-                <div class="player-label">Player 3</div>
+                <div class="player-info">
+                    <span class="player-name">Player 3</span>
+                    <span class="player-score">Score: 0</span>
+                    <span class="player-tricks">Tricks: 0</span>
+                    <span class="player-role"></span>
+                </div>
                 <div class="player-cards"></div>
             </div>
         </div>
+
+        <!-- Action Panel - shows context-sensitive controls -->
+        <div class="action-panel" id="action-panel">
+            <!-- Bidding UI -->
+            <div class="bidding-controls hidden" id="bidding-controls">
+                <span class="action-label">Bidding:</span>
+                <button class="bid-btn" data-value="0">Pass</button>
+                <button class="bid-btn" data-value="2">2</button>
+                <button class="bid-btn" data-value="3">3</button>
+                <button class="bid-btn" data-value="4">4</button>
+                <button class="bid-btn" data-value="5">5</button>
+                <button class="bid-btn" data-value="6">6</button>
+                <button class="bid-btn" data-value="7">7</button>
+            </div>
+
+            <!-- Exchange UI -->
+            <div class="exchange-controls hidden" id="exchange-controls">
+                <button id="pickup-talon-btn">Pick Up Talon</button>
+                <span class="action-label">Select 2 cards to discard, then:</span>
+                <button id="discard-btn" disabled>Discard Selected</button>
+            </div>
+
+            <!-- Contract UI -->
+            <div class="contract-controls hidden" id="contract-controls">
+                <span class="action-label">Announce Contract:</span>
+                <select id="contract-type">
+                    <option value="suit">Suit</option>
+                    <option value="betl">Betl</option>
+                    <option value="sans">Sans</option>
+                </select>
+                <select id="trump-suit">
+                    <option value="spades">Spades</option>
+                    <option value="hearts">Hearts</option>
+                    <option value="diamonds">Diamonds</option>
+                    <option value="clubs">Clubs</option>
+                </select>
+                <button id="announce-btn">Announce</button>
+            </div>
+
+            <!-- Play instructions -->
+            <div class="play-controls hidden" id="play-controls">
+                <span class="action-label">Click a card to play it</span>
+            </div>
+
+            <!-- Scoring UI -->
+            <div class="scoring-controls hidden" id="scoring-controls">
+                <span class="action-label" id="round-result"></span>
+                <button id="next-round-btn">Next Round</button>
+            </div>
+        </div>
+
+        <!-- Message area -->
+        <div class="message-area" id="message-area"></div>
     </div>
     <script src="app.js"></script>
 </body>
