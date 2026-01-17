@@ -91,6 +91,25 @@ RANK_NAMES = {
 NAME_TO_SUIT = {v: k for k, v in SUIT_NAMES.items()}
 NAME_TO_RANK = {v: k for k, v in RANK_NAMES.items()}
 
+# Sort order for hand display (spades > diamonds > clubs > hearts, 7 > 8 > ... > A)
+SUIT_SORT_ORDER = {
+    Suit.SPADES: 4,
+    Suit.DIAMONDS: 3,
+    Suit.CLUBS: 2,
+    Suit.HEARTS: 1,
+}
+
+RANK_SORT_ORDER = {
+    Rank.SEVEN: 8,
+    Rank.EIGHT: 7,
+    Rank.NINE: 6,
+    Rank.TEN: 5,
+    Rank.JACK: 4,
+    Rank.QUEEN: 3,
+    Rank.KING: 2,
+    Rank.ACE: 1,
+}
+
 
 # === Models ===
 
@@ -182,8 +201,8 @@ class Player:
         return [c for c in self.hand if c.suit == suit]
 
     def sort_hand(self):
-        """Sort hand by suit (descending) then rank (descending)."""
-        self.hand.sort(key=lambda c: (c.suit_value, c.rank_value), reverse=True)
+        """Sort hand by suit (spades > diamonds > clubs > hearts) then rank (7 > 8 > ... > A)."""
+        self.hand.sort(key=lambda c: (SUIT_SORT_ORDER[c.suit], RANK_SORT_ORDER[c.rank]), reverse=True)
 
     def reset_for_round(self):
         self.hand = []
