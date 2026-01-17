@@ -11,6 +11,10 @@ body {
     min-height: 100vh;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .game-container {
     display: flex;
     flex-direction: column;
@@ -18,6 +22,7 @@ body {
     padding: 1rem;
 }
 
+/* Header */
 header {
     display: flex;
     align-items: center;
@@ -34,7 +39,7 @@ header h1 {
     margin-right: auto;
 }
 
-#shuffle-btn {
+#new-game-btn {
     padding: 0.5rem 1.5rem;
     font-size: 1rem;
     background: #e94560;
@@ -45,26 +50,37 @@ header h1 {
     transition: background 0.2s;
 }
 
-#shuffle-btn:hover {
+#new-game-btn:hover {
     background: #ff6b6b;
+}
+
+#phase-indicator {
+    padding: 0.3rem 0.8rem;
+    background: #4ecca3;
+    color: #1a1a2e;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    text-transform: uppercase;
 }
 
 #status {
     font-size: 0.9rem;
-    color: #4ecca3;
+    color: #aaa;
 }
 
 /* Game Table */
 .table {
     flex: 1;
     display: grid;
-    grid-template-columns: 100px 1fr 100px;
-    grid-template-rows: 1fr 150px;
-    gap: 1rem;
+    grid-template-columns: 120px 1fr 120px;
+    grid-template-rows: 1fr 180px;
+    gap: 0.5rem;
     background: #0f3d3e;
     border-radius: 12px;
     padding: 1rem;
     position: relative;
+    min-height: 400px;
 }
 
 /* Player areas */
@@ -74,12 +90,42 @@ header h1 {
     align-items: center;
 }
 
-.player-label {
-    font-size: 0.85rem;
-    color: #aaa;
+.player-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
     margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    min-width: 100px;
+}
+
+.player-name {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+.player-score, .player-tricks {
+    font-size: 0.75rem;
+    color: #aaa;
+}
+
+.player-role {
+    font-size: 0.7rem;
+    color: #e94560;
+    font-weight: bold;
     text-transform: uppercase;
-    letter-spacing: 1px;
+}
+
+.player.active .player-info {
+    border: 2px solid #4ecca3;
+}
+
+.player.declarer .player-name {
+    color: #ffd700;
 }
 
 .player-cards {
@@ -139,25 +185,74 @@ header h1 {
 }
 
 .player-bottom .card {
-    margin-left: -30px;
+    margin-left: -25px;
 }
 
 .player-bottom .card:first-child {
     margin-left: 0;
 }
 
-/* Talon: Center of table */
-.talon {
+/* Center area */
+.center-area {
     grid-column: 2;
     grid-row: 1;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+/* Talon */
+.talon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.talon-label {
+    font-size: 0.75rem;
+    color: #aaa;
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
 }
 
 .talon-cards {
     display: flex;
     gap: 10px;
+}
+
+/* Current Trick */
+.current-trick {
+    min-height: 100px;
+}
+
+.trick-cards {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.trick-card-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.trick-card-player {
+    font-size: 0.7rem;
+    color: #aaa;
+    margin-bottom: 0.2rem;
+}
+
+/* Contract Info */
+.contract-info {
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #ffd700;
+    text-align: center;
 }
 
 /* Card styling */
@@ -166,7 +261,8 @@ header h1 {
     height: 84px;
     border-radius: 4px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s, margin 0.2s;
+    transition: transform 0.2s, margin 0.2s, box-shadow 0.2s;
+    cursor: pointer;
 }
 
 .card:hover {
@@ -174,7 +270,193 @@ header h1 {
     z-index: 10;
 }
 
+.card.selectable {
+    cursor: pointer;
+}
+
+.card.selectable:hover {
+    box-shadow: 0 0 10px #4ecca3;
+}
+
+.card.selected {
+    box-shadow: 0 0 15px #e94560;
+    transform: translateY(-10px);
+}
+
+.card.playable {
+    cursor: pointer;
+}
+
+.card.playable:hover {
+    box-shadow: 0 0 15px #4ecca3;
+}
+
 .talon .card {
     width: 70px;
     height: 98px;
+}
+
+/* Action Panel */
+.action-panel {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #16213e;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    min-height: 60px;
+}
+
+.action-label {
+    color: #aaa;
+    font-size: 0.9rem;
+}
+
+/* Bidding Controls */
+.bidding-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.bid-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    background: #2d4059;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.bid-btn:hover:not(:disabled) {
+    background: #4ecca3;
+    color: #1a1a2e;
+}
+
+.bid-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.bid-btn[data-value="0"] {
+    background: #e94560;
+}
+
+.bid-btn[data-value="0"]:hover {
+    background: #ff6b6b;
+    color: white;
+}
+
+/* Exchange Controls */
+.exchange-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+#pickup-talon-btn, #discard-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    background: #4ecca3;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#pickup-talon-btn:hover, #discard-btn:hover:not(:disabled) {
+    background: #7fffd4;
+}
+
+#discard-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Contract Controls */
+.contract-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.contract-controls select {
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    background: #2d4059;
+    color: white;
+    border: 1px solid #4ecca3;
+    border-radius: 4px;
+}
+
+#announce-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    background: #ffd700;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#announce-btn:hover {
+    background: #ffed4a;
+}
+
+/* Play Controls */
+.play-controls {
+    display: flex;
+    align-items: center;
+}
+
+/* Scoring Controls */
+.scoring-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+#round-result {
+    color: #ffd700;
+    font-weight: bold;
+}
+
+#next-round-btn {
+    padding: 0.5rem 1.5rem;
+    font-size: 0.9rem;
+    background: #e94560;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#next-round-btn:hover {
+    background: #ff6b6b;
+}
+
+/* Message Area */
+.message-area {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #aaa;
+    text-align: center;
+    min-height: 30px;
+}
+
+.message-area.error {
+    color: #e94560;
+}
+
+.message-area.success {
+    color: #4ecca3;
 }
