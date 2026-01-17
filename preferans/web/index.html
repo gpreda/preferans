@@ -97,16 +97,8 @@
             <!-- Contract UI -->
             <div class="contract-controls hidden" id="contract-controls">
                 <span class="action-label"><span data-i18n="announceContract">Announce Contract</span>:</span>
-                <select id="contract-type">
-                    <option value="suit" data-i18n="suit">Suit</option>
-                    <option value="betl" data-i18n="betl">Betl</option>
-                    <option value="sans" data-i18n="sans">Sans</option>
-                </select>
-                <select id="trump-suit">
-                    <option value="spades" data-i18n="suits.spades">Spades</option>
-                    <option value="hearts" data-i18n="suits.hearts">Hearts</option>
-                    <option value="diamonds" data-i18n="suits.diamonds">Diamonds</option>
-                    <option value="clubs" data-i18n="suits.clubs">Clubs</option>
+                <select id="contract-select">
+                    <!-- Options populated dynamically based on winning bid -->
                 </select>
                 <button id="announce-btn" data-i18n="announce">Announce</button>
             </div>
