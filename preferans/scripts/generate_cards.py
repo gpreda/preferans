@@ -17,19 +17,19 @@ def generate_card_svg(rank: str, suit: str) -> str:
     color = suit_info['color']
 
     # Adjust position for 10 (wider)
-    rank_x = 12 if rank != '10' else 8
+    rank_x = 10 if rank != '10' else 4
 
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
   <!-- Card background -->
   <rect x="1" y="1" width="78" height="110" rx="6" ry="6" fill="white" stroke="#ccc" stroke-width="1"/>
 
   <!-- Top left rank and suit -->
-  <text x="{rank_x}" y="22" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="{color}">{rank}</text>
-  <text x="10" y="38" font-family="Arial, sans-serif" font-size="14" fill="{color}">{symbol}</text>
+  <text x="{rank_x}" y="26" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="{color}">{rank}</text>
+  <text x="8" y="48" font-family="Arial, sans-serif" font-size="21" fill="{color}">{symbol}</text>
 
   <!-- Bottom right rank and suit (inverted) -->
-  <text x="{80 - rank_x - (8 if rank != '10' else 16)}" y="98" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="{color}" transform="rotate(180, {80 - rank_x - (4 if rank != '10' else 8)}, 94)">{rank}</text>
-  <text x="60" y="82" font-family="Arial, sans-serif" font-size="14" fill="{color}" transform="rotate(180, 64, 78)">{symbol}</text>
+  <text x="{80 - rank_x - (12 if rank != '10' else 24)}" y="94" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="{color}" transform="rotate(180, {80 - rank_x - (6 if rank != '10' else 12)}, 88)">{rank}</text>
+  <text x="51" y="72" font-family="Arial, sans-serif" font-size="21" fill="{color}" transform="rotate(180, 59, 66)">{symbol}</text>
 
   <!-- Center suit symbol -->
   <text x="40" y="65" font-family="Arial, sans-serif" font-size="36" fill="{color}" text-anchor="middle">{symbol}</text>

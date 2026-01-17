@@ -58,8 +58,8 @@ header h1 {
 .table {
     flex: 1;
     display: grid;
-    grid-template-columns: 100px 1fr 100px;
-    grid-template-rows: 1fr 150px;
+    grid-template-columns: 12vmin 1fr 12vmin;
+    grid-template-rows: 1fr 18vmin;
     gap: 1rem;
     background: #0f3d3e;
     border-radius: 12px;
@@ -99,7 +99,7 @@ header h1 {
 }
 
 .player-left .card {
-    margin-top: -50px;
+    margin-top: -6vmin;
 }
 
 .player-left .card:first-child {
@@ -118,7 +118,7 @@ header h1 {
 }
 
 .player-right .card {
-    margin-top: -50px;
+    margin-top: -6vmin;
 }
 
 .player-right .card:first-child {
@@ -139,7 +139,7 @@ header h1 {
 }
 
 .player-bottom .card {
-    margin-left: -30px;
+    margin-left: -4vmin;
 }
 
 .player-bottom .card:first-child {
@@ -162,10 +162,10 @@ header h1 {
 
 /* Card styling */
 .card {
-    width: 60px;
-    height: 84px;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    width: 8vmin;
+    height: 11.2vmin;
+    border-radius: 0.5vmin;
+    box-shadow: 0 0.3vmin 0.5vmin rgba(0, 0, 0, 0.3);
     transition: transform 0.2s, margin 0.2s;
 }
 
@@ -175,6 +175,6 @@ header h1 {
 }
 
 .talon .card {
-    width: 70px;
-    height: 98px;
+    width: 10vmin;
+    height: 14vmin;
 }
