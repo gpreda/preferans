@@ -1,0 +1,450 @@
+"""Game models for Preferans."""
+from enum import IntEnum, Enum
+from dataclasses import dataclass, field
+from typing import Optional
+import random
+
+
+# === Enums ===
+
+class Suit(IntEnum):
+    CLUBS = 1
+    DIAMONDS = 2
+    HEARTS = 3
+    SPADES = 4
+
+
+class Rank(IntEnum):
+    SEVEN = 1
+    EIGHT = 2
+    NINE = 3
+    TEN = 4
+    JACK = 5
+    QUEEN = 6
+    KING = 7
+    ACE = 8
+
+
+class ContractType(Enum):
+    SUIT = "suit"
+    BETL = "betl"
+    SANS = "sans"
+
+
+class GameStatus(Enum):
+    WAITING = "waiting"
+    BIDDING = "bidding"
+    PLAYING = "playing"
+    SCORING = "scoring"
+    FINISHED = "finished"
+
+
+class RoundPhase(Enum):
+    DEALING = "dealing"
+    AUCTION = "auction"
+    EXCHANGING = "exchanging"
+    PLAYING = "playing"
+    SCORING = "scoring"
+
+
+# === Mappings ===
+
+SUIT_NAMES = {
+    Suit.CLUBS: "clubs",
+    Suit.DIAMONDS: "diamonds",
+    Suit.HEARTS: "hearts",
+    Suit.SPADES: "spades",
+}
+
+RANK_NAMES = {
+    Rank.SEVEN: "7",
+    Rank.EIGHT: "8",
+    Rank.NINE: "9",
+    Rank.TEN: "10",
+    Rank.JACK: "J",
+    Rank.QUEEN: "Q",
+    Rank.KING: "K",
+    Rank.ACE: "A",
+}
+
+NAME_TO_SUIT = {v: k for k, v in SUIT_NAMES.items()}
+NAME_TO_RANK = {v: k for k, v in RANK_NAMES.items()}
+
+
+# === Models ===
+
+@dataclass
+class Card:
+    rank: Rank
+    suit: Suit
+
+    @property
+    def id(self) -> str:
+        return f"{RANK_NAMES[self.rank]}_{SUIT_NAMES[self.suit]}"
+
+    @property
+    def rank_value(self) -> int:
+        return self.rank.value
+
+    @property
+    def suit_value(self) -> int:
+        return self.suit.value
+
+    def beats(self, other: "Card", trump_suit: Optional[Suit] = None, led_suit: Optional[Suit] = None) -> bool:
+        """Check if this card beats another card."""
+        # Trump beats non-trump
+        if trump_suit:
+            if self.suit == trump_suit and other.suit != trump_suit:
+                return True
+            if self.suit != trump_suit and other.suit == trump_suit:
+                return False
+
+        # Same suit: higher rank wins
+        if self.suit == other.suit:
+            return self.rank_value > other.rank_value
+
+        # Different suits (no trump involved): led suit wins
+        if led_suit:
+            if self.suit == led_suit and other.suit != led_suit:
+                return True
+            if self.suit != led_suit and other.suit == led_suit:
+                return False
+
+        # Different suits, neither is led: first card wins (shouldn't happen in valid play)
+        return False
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "rank": RANK_NAMES[self.rank],
+            "suit": SUIT_NAMES[self.suit],
+            "rank_value": self.rank_value,
+            "suit_value": self.suit_value,
+        }
+
+    @classmethod
+    def from_id(cls, card_id: str) -> "Card":
+        rank_str, suit_str = card_id.split("_")
+        return cls(rank=NAME_TO_RANK[rank_str], suit=NAME_TO_SUIT[suit_str])
+
+
+@dataclass
+class Player:
+    id: int
+    name: str
+    position: int = 0  # 1=forehand, 2=middlehand, 3=dealer
+    hand: list[Card] = field(default_factory=list)
+    tricks_won: int = 0
+    score: int = 0
+    is_declarer: bool = False
+    has_dropped_out: bool = False
+
+    def add_card(self, card: Card):
+        self.hand.append(card)
+
+    def remove_card(self, card: Card):
+        self.hand.remove(card)
+
+    def has_suit(self, suit: Suit) -> bool:
+        return any(c.suit == suit for c in self.hand)
+
+    def get_cards_of_suit(self, suit: Suit) -> list[Card]:
+        return [c for c in self.hand if c.suit == suit]
+
+    def sort_hand(self):
+        """Sort hand by suit (descending) then rank (descending)."""
+        self.hand.sort(key=lambda c: (c.suit_value, c.rank_value), reverse=True)
+
+    def reset_for_round(self):
+        self.hand = []
+        self.tricks_won = 0
+        self.is_declarer = False
+        self.has_dropped_out = False
+
+    def to_dict(self, hide_hand: bool = False) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "position": self.position,
+            "hand": [] if hide_hand else [c.to_dict() for c in self.hand],
+            "hand_count": len(self.hand),
+            "tricks_won": self.tricks_won,
+            "score": self.score,
+            "is_declarer": self.is_declarer,
+            "has_dropped_out": self.has_dropped_out,
+        }
+
+
+@dataclass
+class Bid:
+    player_id: int
+    value: int  # 0 for pass, 2-7 for bids
+    suit: Optional[Suit] = None
+    is_hand: bool = False
+
+    def is_pass(self) -> bool:
+        return self.value == 0
+
+    def beats(self, other: "Bid") -> bool:
+        """Check if this bid beats another bid."""
+        if self.is_pass():
+            return False
+        if other.is_pass():
+            return True
+
+        # Hand bids beat non-hand bids of same value
+        if self.value == other.value:
+            if self.is_hand and not other.is_hand:
+                return True
+            if not self.is_hand and other.is_hand:
+                return False
+            # Same value, same hand status: suit matters
+            if self.suit and other.suit:
+                return self.suit.value > other.suit.value
+            return False
+
+        return self.value > other.value
+
+    def to_dict(self) -> dict:
+        return {
+            "player_id": self.player_id,
+            "value": self.value,
+            "suit": SUIT_NAMES[self.suit] if self.suit else None,
+            "is_hand": self.is_hand,
+            "is_pass": self.is_pass(),
+        }
+
+
+@dataclass
+class Contract:
+    type: ContractType
+    trump_suit: Optional[Suit] = None  # None for betl/sans
+    bid_value: int = 2  # 2-7
+    is_hand: bool = False
+
+    @property
+    def tricks_required(self) -> int:
+        if self.type == ContractType.BETL:
+            return 0
+        return 6  # suit and sans
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type.value,
+            "trump_suit": SUIT_NAMES[self.trump_suit] if self.trump_suit else None,
+            "bid_value": self.bid_value,
+            "is_hand": self.is_hand,
+            "tricks_required": self.tricks_required,
+        }
+
+
+@dataclass
+class Trick:
+    number: int
+    lead_player_id: int
+    cards: list[tuple[int, Card]] = field(default_factory=list)  # [(player_id, card), ...]
+    winner_id: Optional[int] = None
+
+    @property
+    def suit_led(self) -> Optional[Suit]:
+        if self.cards:
+            return self.cards[0][1].suit
+        return None
+
+    def add_card(self, player_id: int, card: Card):
+        self.cards.append((player_id, card))
+
+    def determine_winner(self, trump_suit: Optional[Suit] = None) -> int:
+        """Determine the winner of the trick."""
+        if not self.cards:
+            raise ValueError("No cards in trick")
+
+        winning_player_id, winning_card = self.cards[0]
+        led_suit = winning_card.suit
+
+        for player_id, card in self.cards[1:]:
+            if card.beats(winning_card, trump_suit=trump_suit, led_suit=led_suit):
+                winning_player_id = player_id
+                winning_card = card
+
+        self.winner_id = winning_player_id
+        return winning_player_id
+
+    def to_dict(self) -> dict:
+        return {
+            "number": self.number,
+            "lead_player_id": self.lead_player_id,
+            "cards": [{"player_id": pid, "card": c.to_dict()} for pid, c in self.cards],
+            "winner_id": self.winner_id,
+            "suit_led": SUIT_NAMES[self.suit_led] if self.suit_led else None,
+        }
+
+
+@dataclass
+class Auction:
+    bids: list[Bid] = field(default_factory=list)
+    current_bidder_id: Optional[int] = None
+    highest_bid: Optional[Bid] = None
+    passed_players: list[int] = field(default_factory=list)
+
+    def add_bid(self, bid: Bid):
+        self.bids.append(bid)
+        if bid.is_pass():
+            self.passed_players.append(bid.player_id)
+        elif self.highest_bid is None or bid.beats(self.highest_bid):
+            self.highest_bid = bid
+
+    def is_complete(self, num_players: int = 3) -> bool:
+        """Auction is complete when all but one have passed, or all have bid once and no competition."""
+        return len(self.passed_players) >= num_players - 1
+
+    def get_winner(self) -> Optional[Bid]:
+        return self.highest_bid
+
+    def to_dict(self) -> dict:
+        return {
+            "bids": [b.to_dict() for b in self.bids],
+            "current_bidder_id": self.current_bidder_id,
+            "highest_bid": self.highest_bid.to_dict() if self.highest_bid else None,
+            "passed_players": self.passed_players,
+        }
+
+
+@dataclass
+class Round:
+    id: int
+    talon: list[Card] = field(default_factory=list)
+    discarded: list[Card] = field(default_factory=list)
+    declarer_id: Optional[int] = None
+    contract: Optional[Contract] = None
+    tricks: list[Trick] = field(default_factory=list)
+    auction: Auction = field(default_factory=Auction)
+    phase: RoundPhase = RoundPhase.DEALING
+
+    @property
+    def current_trick(self) -> Optional[Trick]:
+        if self.tricks:
+            return self.tricks[-1]
+        return None
+
+    def start_new_trick(self, lead_player_id: int) -> Trick:
+        trick = Trick(number=len(self.tricks) + 1, lead_player_id=lead_player_id)
+        self.tricks.append(trick)
+        return trick
+
+    def to_dict(self, hide_talon: bool = True) -> dict:
+        return {
+            "id": self.id,
+            "talon": [] if hide_talon else [c.to_dict() for c in self.talon],
+            "talon_count": len(self.talon),
+            "discarded": [c.to_dict() for c in self.discarded],
+            "declarer_id": self.declarer_id,
+            "contract": self.contract.to_dict() if self.contract else None,
+            "tricks": [t.to_dict() for t in self.tricks],
+            "auction": self.auction.to_dict(),
+            "phase": self.phase.value,
+        }
+
+
+@dataclass
+class Game:
+    id: str
+    players: list[Player] = field(default_factory=list)
+    bulls: int = 0
+    dealer_index: int = 0
+    current_round: Optional[Round] = None
+    round_number: int = 0
+    status: GameStatus = GameStatus.WAITING
+
+    def add_player(self, player: Player) -> bool:
+        if len(self.players) >= 3:
+            return False
+        player.id = len(self.players) + 1
+        self.players.append(player)
+        return True
+
+    def get_player(self, player_id: int) -> Optional[Player]:
+        for p in self.players:
+            if p.id == player_id:
+                return p
+        return None
+
+    def rotate_dealer(self):
+        self.dealer_index = (self.dealer_index + 1) % 3
+
+    def assign_positions(self):
+        """Assign positions based on dealer."""
+        for i, player in enumerate(self.players):
+            # Position relative to dealer: dealer=3, forehand=1, middlehand=2
+            pos = (i - self.dealer_index) % 3
+            player.position = pos + 1 if pos > 0 else 3
+
+    def create_deck(self) -> list[Card]:
+        """Create a standard 32-card deck."""
+        deck = []
+        for suit in Suit:
+            for rank in Rank:
+                deck.append(Card(rank=rank, suit=suit))
+        return deck
+
+    def shuffle_and_deal(self):
+        """Shuffle deck and deal cards: 3 - talon(2) - 4 - 3."""
+        # Reset players
+        for player in self.players:
+            player.reset_for_round()
+
+        # Create and shuffle deck
+        deck = self.create_deck()
+        random.shuffle(deck)
+
+        # Create new round
+        self.round_number += 1
+        self.current_round = Round(id=self.round_number)
+
+        # Deal: 3 - talon - 4 - 3
+        idx = 0
+        player_order = sorted(self.players, key=lambda p: p.position)
+
+        # First 3 cards to each player
+        for player in player_order:
+            for _ in range(3):
+                player.add_card(deck[idx])
+                idx += 1
+
+        # 2 cards to talon
+        self.current_round.talon = [deck[idx], deck[idx + 1]]
+        idx += 2
+
+        # Next 4 cards to each player
+        for player in player_order:
+            for _ in range(4):
+                player.add_card(deck[idx])
+                idx += 1
+
+        # Final 3 cards to each player
+        for player in player_order:
+            for _ in range(3):
+                player.add_card(deck[idx])
+                idx += 1
+
+        # Sort hands
+        for player in self.players:
+            player.sort_hand()
+
+        self.current_round.phase = RoundPhase.AUCTION
+        self.status = GameStatus.BIDDING
+
+    def to_dict(self, viewer_id: Optional[int] = None) -> dict:
+        """Convert to dict, optionally hiding other players' hands."""
+        return {
+            "id": self.id,
+            "players": [
+                p.to_dict(hide_hand=(viewer_id is not None and p.id != viewer_id))
+                for p in self.players
+            ],
+            "bulls": self.bulls,
+            "dealer_index": self.dealer_index,
+            "current_round": self.current_round.to_dict() if self.current_round else None,
+            "round_number": self.round_number,
+            "status": self.status.value,
+        }
