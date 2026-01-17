@@ -69,11 +69,36 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('discard-btn').addEventListener('click', discardSelected);
 
     // Contract buttons
-    document.getElementById('contract-type').addEventListener('change', updateTrumpVisibility);
     document.getElementById('announce-btn').addEventListener('click', announceContract);
 
     // Next round button
     document.getElementById('next-round-btn').addEventListener('click', nextRound);
+
+    // Play area drop zone
+    const playArea = document.getElementById('play-area');
+    if (playArea) {
+        playArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            playArea.classList.add('drag-over');
+        });
+
+        playArea.addEventListener('dragleave', (e) => {
+            // Only remove if leaving the play area entirely
+            if (!playArea.contains(e.relatedTarget)) {
+                playArea.classList.remove('drag-over');
+            }
+        });
+
+        playArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            playArea.classList.remove('drag-over');
+            const cardId = e.dataTransfer.getData('text/plain');
+            if (cardId) {
+                playCard(cardId);
+            }
+        });
+    }
 
     // Check server status
     checkServer();
@@ -219,8 +244,22 @@ async function announceContract() {
     const declarerId = gameState.current_round?.declarer_id;
     if (!declarerId) return;
 
-    const contractType = document.getElementById('contract-type').value;
-    const trumpSuit = contractType === 'suit' ? document.getElementById('trump-suit').value : null;
+    const contractSelect = document.getElementById('contract-select');
+    const selectedValue = contractSelect.value;
+
+    // Parse the selected value (format: "suit-spades", "betl", "sans")
+    let contractType, trumpSuit = null;
+    if (selectedValue === 'betl') {
+        contractType = 'betl';
+    } else if (selectedValue === 'sans') {
+        contractType = 'sans';
+    } else if (selectedValue.startsWith('suit-')) {
+        contractType = 'suit';
+        trumpSuit = selectedValue.replace('suit-', '');
+    } else {
+        showMessage('Invalid contract selection', 'error');
+        return;
+    }
 
     try {
         const response = await fetch('/api/game/contract', {
@@ -237,11 +276,8 @@ async function announceContract() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            const contractName = t(contractType);
-            const msg = trumpSuit
-                ? t('contractAnnouncedWithSuit', contractName, t('suits.' + trumpSuit))
-                : t('contractAnnounced', contractName);
-            showMessage(msg, 'success');
+            const contractName = trumpSuit ? t('suits.' + trumpSuit) : t(contractType);
+            showMessage(t('contractAnnounced', contractName), 'success');
         } else {
             showMessage(data.error, 'error');
         }
@@ -320,10 +356,54 @@ function updateDiscardButton() {
     discardBtn.disabled = selectedCards.length !== 2;
 }
 
-function updateTrumpVisibility() {
-    const contractType = document.getElementById('contract-type').value;
-    const trumpSelect = document.getElementById('trump-suit');
-    trumpSelect.style.display = contractType === 'suit' ? 'block' : 'none';
+function populateContractOptions() {
+    const contractSelect = document.getElementById('contract-select');
+    contractSelect.innerHTML = '';
+
+    const auction = gameState.current_round?.auction;
+    const winnerBid = auction?.highest_game_bid || auction?.highest_in_hand_bid;
+
+    if (!winnerBid) {
+        // Default to game 2 options
+        addSuitOptions(contractSelect, 2);
+        return;
+    }
+
+    const bidType = winnerBid.bid_type;
+    const bidValue = winnerBid.effective_value || winnerBid.value || 2;
+
+    if (bidType === 'betl') {
+        // Betl bid - only betl and sans allowed
+        addOption(contractSelect, 'betl', t('betl'));
+        addOption(contractSelect, 'sans', t('sans'));
+    } else if (bidType === 'sans') {
+        // Sans bid - only sans allowed
+        addOption(contractSelect, 'sans', t('sans'));
+    } else {
+        // Game or in_hand bid - show suits at bid level and higher, plus betl/sans
+        for (let level = bidValue; level <= 5; level++) {
+            addSuitOptions(contractSelect, level);
+        }
+        addOption(contractSelect, 'betl', t('betl'));
+        addOption(contractSelect, 'sans', t('sans'));
+    }
+}
+
+function addSuitOptions(select, level) {
+    // Suit order: Spades (lowest multiplier in traditional) to Hearts (highest)
+    // But we'll just show them in a logical order
+    const suits = ['spades', 'clubs', 'diamonds', 'hearts'];
+    suits.forEach(suit => {
+        const label = `${level} ${t('suits.' + suit)}`;
+        addOption(select, `suit-${suit}`, label);
+    });
+}
+
+function addOption(select, value, label) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
 }
 
 function getPlayerName(playerId) {
@@ -362,6 +442,16 @@ function renderGame() {
     renderCurrentTrick();
     renderContractInfo();
     renderBiddingHistory();
+
+    // Show/hide drop hint based on phase
+    const playArea = document.getElementById('play-area');
+    if (playArea) {
+        const isPlaying = phase === 'playing';
+        const hasLegalCards = (gameState.legal_cards || []).length > 0;
+        const trickCards = gameState.current_round?.tricks?.slice(-1)[0]?.cards || [];
+        const showHint = isPlaying && hasLegalCards && trickCards.length === 0;
+        playArea.classList.toggle('show-drop-hint', showHint);
+    }
 
     // Show appropriate action panel
     hideAllActionPanels();
@@ -449,10 +539,26 @@ function renderPlayerCards(player, playerEl) {
             img.addEventListener('click', () => toggleCardSelection(card.id));
         }
 
-        // Handle card playing
+        // Handle card playing (click or drag)
         if (isPlaying && isCurrentPlayer && legalCardIds.includes(card.id)) {
             img.classList.add('playable');
+            img.draggable = true;
             img.addEventListener('click', () => playCard(card.id));
+
+            // Drag events
+            img.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', card.id);
+                e.dataTransfer.effectAllowed = 'move';
+                img.classList.add('dragging');
+                const playArea = document.getElementById('play-area');
+                if (playArea) playArea.classList.add('drag-over');
+            });
+
+            img.addEventListener('dragend', () => {
+                img.classList.remove('dragging');
+                const playArea = document.getElementById('play-area');
+                if (playArea) playArea.classList.remove('drag-over');
+            });
         }
 
         cardsContainer.appendChild(img);
@@ -617,7 +723,7 @@ function showActionPanelForPhase(phase) {
             if (declarer && declarer.hand.length === 10) {
                 // Already discarded, show contract controls
                 elements.contractControls.classList.remove('hidden');
-                updateTrumpVisibility();
+                populateContractOptions();
             } else {
                 // Show exchange controls
                 elements.exchangeControls.classList.remove('hidden');

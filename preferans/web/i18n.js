@@ -23,6 +23,7 @@ const fallbackTranslations = {
         hold: 'Hold',
         bidding: 'Bidding',
         biddingHistory: 'Bidding',
+        dropCardHere: 'Drop card here',
         // Phases
         'phases.auction': 'Auction',
         'phases.exchanging': 'Exchange',
@@ -54,6 +55,7 @@ const fallbackTranslations = {
         hold: 'Držim',
         bidding: 'Licitacija',
         biddingHistory: 'Licitacija',
+        dropCardHere: 'Spusti kartu ovde',
         // Phases
         'phases.auction': 'Licitacija',
         'phases.exchanging': 'Razmena',

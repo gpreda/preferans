@@ -202,7 +202,32 @@ header h1 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
+}
+
+/* Play Area - grayish table surface */
+.play-area {
+    background: linear-gradient(145deg, #4a5568, #2d3748);
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-width: 25vmin;
+    min-height: 25vmin;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        0 4px 8px rgba(0, 0, 0, 0.4);
+    border: 2px solid #1a202c;
+    position: relative;
+}
+
+.play-area.drag-over {
+    border-color: #4ecca3;
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        0 0 20px rgba(78, 204, 163, 0.5);
 }
 
 /* Talon */
@@ -214,7 +239,7 @@ header h1 {
 
 .talon-label {
     font-size: 0.75rem;
-    color: #aaa;
+    color: #a0aec0;
     margin-bottom: 0.3rem;
     text-transform: uppercase;
 }
@@ -226,13 +251,41 @@ header h1 {
 
 /* Current Trick */
 .current-trick {
-    min-height: 100px;
+    min-height: 14vmin;
+    min-width: 20vmin;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
 }
 
 .trick-cards {
     display: flex;
     gap: 10px;
     justify-content: center;
+}
+
+.drop-hint {
+    display: none;
+    font-size: 0.8rem;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.play-area.show-drop-hint .drop-hint {
+    display: block;
+}
+
+.play-area.drag-over .drop-hint {
+    color: #4ecca3;
+    font-weight: bold;
 }
 
 .trick-card-wrapper {
@@ -286,11 +339,20 @@ header h1 {
 }
 
 .card.playable {
-    cursor: pointer;
+    cursor: grab;
 }
 
 .card.playable:hover {
     box-shadow: 0 0 15px #4ecca3;
+}
+
+.card.playable:active {
+    cursor: grabbing;
+}
+
+.card.dragging {
+    opacity: 0.5;
+    transform: scale(1.1);
 }
 
 .talon .card {
