@@ -328,7 +328,7 @@ function updateTrumpVisibility() {
 
 function getPlayerName(playerId) {
     const player = gameState?.players?.find(p => p.id === playerId);
-    return player ? player.name : t('player') + ' ' + playerId;
+    return player ? getTranslatedPlayerName(player) : t('player') + ' ' + playerId;
 }
 
 // === Rendering Functions ===
@@ -361,10 +361,21 @@ function renderGame() {
     renderTalon();
     renderCurrentTrick();
     renderContractInfo();
+    renderBiddingHistory();
 
     // Show appropriate action panel
     hideAllActionPanels();
     showActionPanelForPhase(phase);
+}
+
+function getTranslatedPlayerName(player) {
+    // Use translated default names for Player 1/2/3
+    // This allows language switching to update player names
+    const defaultNames = ['Player 1', 'Player 2', 'Player 3', 'Igrac 1', 'Igrac 2', 'Igrac 3'];
+    if (defaultNames.includes(player.name) || player.name === t('player' + player.id)) {
+        return t('player' + player.id);
+    }
+    return player.name;
 }
 
 function renderPlayers() {
@@ -378,8 +389,8 @@ function renderPlayers() {
         const playerEl = document.getElementById(`player${player.id}`);
         if (!playerEl) return;
 
-        // Update player info
-        playerEl.querySelector('.player-name').textContent = player.name;
+        // Update player info - use translated name
+        playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
         playerEl.querySelector('.score-value').textContent = player.score;
         playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
 
@@ -517,6 +528,72 @@ function renderContractInfo() {
     }
 }
 
+function renderBiddingHistory() {
+    const historyContainer = document.getElementById('bidding-history');
+    const historyList = document.getElementById('bidding-history-list');
+
+    if (!historyContainer || !historyList) return;
+
+    const auction = gameState.current_round?.auction;
+    const phase = gameState.current_round?.phase;
+
+    // Show bidding history during auction and briefly after
+    if (!auction || !auction.bids || auction.bids.length === 0) {
+        historyContainer.style.display = 'none';
+        return;
+    }
+
+    historyContainer.style.display = 'block';
+    historyList.innerHTML = '';
+
+    // Render each bid on a separate line
+    auction.bids.forEach(bid => {
+        const bidLine = document.createElement('div');
+        bidLine.className = 'bid-line';
+
+        const playerName = getPlayerName(bid.player_id);
+        const bidText = formatBidForHistory(bid);
+
+        bidLine.innerHTML = `<span class="bid-player">${playerName}:</span> <span class="bid-value">${bidText}</span>`;
+
+        // Add styling based on bid type
+        if (bid.is_pass) {
+            bidLine.classList.add('bid-pass');
+        } else if (bid.bid_type === 'in_hand') {
+            bidLine.classList.add('bid-in-hand');
+        } else if (bid.bid_type === 'betl' || bid.bid_type === 'sans') {
+            bidLine.classList.add('bid-special');
+        }
+
+        historyList.appendChild(bidLine);
+    });
+
+    // Auto-scroll to bottom
+    historyList.scrollTop = historyList.scrollHeight;
+}
+
+function formatBidForHistory(bid) {
+    if (bid.is_pass || bid.bid_type === 'pass') {
+        return t('pass');
+    }
+    if (bid.bid_type === 'game') {
+        return bid.value.toString();
+    }
+    if (bid.bid_type === 'in_hand') {
+        if (bid.value > 0) {
+            return t('inHand') + ' ' + bid.value;
+        }
+        return t('inHand');
+    }
+    if (bid.bid_type === 'betl') {
+        return t('betl');
+    }
+    if (bid.bid_type === 'sans') {
+        return t('sans');
+    }
+    return bid.effective_value?.toString() || '?';
+}
+
 function hideAllActionPanels() {
     elements.biddingControls.classList.add('hidden');
     elements.exchangeControls.classList.add('hidden');
@@ -560,6 +637,18 @@ function showActionPanelForPhase(phase) {
     }
 }
 
+function translateBidLabel(bid) {
+    // Translate bid labels from server to current language
+    if (bid.bid_type === 'pass') return t('pass');
+    if (bid.bid_type === 'game') return t('game') + ' ' + bid.value;
+    if (bid.bid_type === 'in_hand') return bid.value > 0 ? t('inHand') + ' ' + bid.value : t('inHand');
+    if (bid.bid_type === 'betl') return t('betl');
+    if (bid.bid_type === 'sans') return t('sans');
+    // Check for "Hold" prefix
+    if (bid.label && bid.label.startsWith('Hold')) return t('hold') + ' ' + bid.value;
+    return bid.label;
+}
+
 function updateBiddingButtons() {
     const legalBids = gameState.legal_bids || [];
     const container = document.getElementById('bid-buttons');
@@ -573,7 +662,7 @@ function updateBiddingButtons() {
     legalBids.forEach(bid => {
         const btn = document.createElement('button');
         btn.className = 'bid-btn';
-        btn.textContent = bid.label;
+        btn.textContent = translateBidLabel(bid);
         btn.dataset.bidType = bid.bid_type;
         btn.dataset.value = bid.value;
 
