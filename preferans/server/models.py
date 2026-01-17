@@ -47,6 +47,11 @@ class RoundPhase(Enum):
     SCORING = "scoring"
 
 
+class PlayerType(Enum):
+    HUMAN = "human"
+    AI = "ai"
+
+
 # === Mappings ===
 
 SUIT_NAMES = {
@@ -132,12 +137,21 @@ class Card:
 class Player:
     id: int
     name: str
+    player_type: PlayerType = PlayerType.HUMAN
     position: int = 0  # 1=forehand, 2=middlehand, 3=dealer
     hand: list[Card] = field(default_factory=list)
     tricks_won: int = 0
     score: int = 0
     is_declarer: bool = False
     has_dropped_out: bool = False
+
+    @property
+    def is_human(self) -> bool:
+        return self.player_type == PlayerType.HUMAN
+
+    @property
+    def is_ai(self) -> bool:
+        return self.player_type == PlayerType.AI
 
     def add_card(self, card: Card):
         self.hand.append(card)
@@ -165,6 +179,9 @@ class Player:
         return {
             "id": self.id,
             "name": self.name,
+            "player_type": self.player_type.value,
+            "is_human": self.is_human,
+            "is_ai": self.is_ai,
             "position": self.position,
             "hand": [] if hide_hand else [c.to_dict() for c in self.hand],
             "hand_count": len(self.hand),
@@ -363,6 +380,38 @@ class Game:
         self.players.append(player)
         return True
 
+    def add_human_player(self, name: str) -> Optional[Player]:
+        """Add a human player to the game."""
+        if len(self.players) >= 3:
+            return None
+        player = Player(id=0, name=name, player_type=PlayerType.HUMAN)
+        self.add_player(player)
+        return player
+
+    def add_ai_player(self, name: str = None) -> Optional[Player]:
+        """Add an AI player to the game."""
+        if len(self.players) >= 3:
+            return None
+        ai_number = sum(1 for p in self.players if p.is_ai) + 1
+        if name is None:
+            name = f"AI Player {ai_number}"
+        player = Player(id=0, name=name, player_type=PlayerType.AI)
+        self.add_player(player)
+        return player
+
+    def fill_with_ai(self):
+        """Fill remaining slots with AI players."""
+        while len(self.players) < 3:
+            self.add_ai_player()
+
+    def get_human_players(self) -> list[Player]:
+        """Get all human players."""
+        return [p for p in self.players if p.is_human]
+
+    def get_ai_players(self) -> list[Player]:
+        """Get all AI players."""
+        return [p for p in self.players if p.is_ai]
+
     def get_player(self, player_id: int) -> Optional[Player]:
         for p in self.players:
             if p.id == player_id:
@@ -373,11 +422,18 @@ class Game:
         self.dealer_index = (self.dealer_index + 1) % 3
 
     def assign_positions(self):
-        """Assign positions based on dealer."""
+        """Assign positions based on dealer.
+
+        Positions: 1=forehand (left of dealer), 2=middlehand, 3=dealer
+        """
         for i, player in enumerate(self.players):
-            # Position relative to dealer: dealer=3, forehand=1, middlehand=2
-            pos = (i - self.dealer_index) % 3
-            player.position = pos + 1 if pos > 0 else 3
+            offset = (i - self.dealer_index) % 3
+            if offset == 0:
+                player.position = 3  # dealer
+            elif offset == 1:
+                player.position = 1  # forehand (plays first)
+            else:
+                player.position = 2  # middlehand
 
     def create_deck(self) -> list[Card]:
         """Create a standard 32-card deck."""
