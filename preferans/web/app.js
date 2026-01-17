@@ -49,10 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners
     elements.newGameBtn.addEventListener('click', startNewGame);
 
-    // Bidding buttons
-    document.querySelectorAll('.bid-btn').forEach(btn => {
-        btn.addEventListener('click', () => placeBid(parseInt(btn.dataset.value)));
-    });
+    // Bidding buttons are now dynamically generated
 
     // Exchange buttons
     document.getElementById('pickup-talon-btn').addEventListener('click', pickUpTalon);
@@ -104,7 +101,7 @@ async function startNewGame() {
     }
 }
 
-async function placeBid(value) {
+async function placeBid(bidType, value) {
     if (!gameState) return;
 
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
@@ -116,8 +113,8 @@ async function placeBid(value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 player_id: currentBidderId,
-                value: value,
-                suit: value > 0 ? 'spades' : null  // Default to spades for simplicity
+                bid_type: bidType,
+                value: value
             })
         });
         const data = await response.json();
@@ -125,7 +122,7 @@ async function placeBid(value) {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            const bidText = value === 0 ? 'passed' : `bid ${value}`;
+            const bidText = getBidDescription(bidType, value);
             showMessage(`Player ${currentBidderId} ${bidText}`, 'success');
         } else {
             showMessage(data.error, 'error');
@@ -133,6 +130,15 @@ async function placeBid(value) {
     } catch (error) {
         showMessage('Failed to place bid: ' + error.message, 'error');
     }
+}
+
+function getBidDescription(bidType, value) {
+    if (bidType === 'pass') return 'passed';
+    if (bidType === 'game') return `bid Game ${value}`;
+    if (bidType === 'in_hand') return value > 0 ? `declared In Hand ${value}` : 'declared In Hand';
+    if (bidType === 'betl') return 'bid Betl';
+    if (bidType === 'sans') return 'bid Sans';
+    return `bid ${value}`;
 }
 
 async function pickUpTalon() {
@@ -308,9 +314,21 @@ function renderGame() {
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
+    const auctionPhase = gameState.auction_phase;
 
     // Update phase indicator
-    elements.phaseIndicator.textContent = phase.toUpperCase();
+    let phaseText = phase.toUpperCase();
+    if (phase === 'auction' && auctionPhase) {
+        const auctionPhaseNames = {
+            'initial': 'AUCTION - INITIAL',
+            'game_bidding': 'AUCTION - GAME BIDDING',
+            'in_hand_deciding': 'AUCTION - IN HAND DECIDING',
+            'in_hand_declaring': 'AUCTION - IN HAND DECLARING',
+            'complete': 'AUCTION - COMPLETE'
+        };
+        phaseText = auctionPhaseNames[auctionPhase] || phaseText;
+    }
+    elements.phaseIndicator.textContent = phaseText;
 
     // Render players
     renderPlayers();
@@ -517,17 +535,36 @@ function showActionPanelForPhase(phase) {
 }
 
 function updateBiddingButtons() {
-    const auction = gameState.current_round?.auction;
-    const highestBid = auction?.highest_bid;
-    const minBid = highestBid && !highestBid.is_pass ? highestBid.value + 1 : 2;
+    const legalBids = gameState.legal_bids || [];
+    const container = document.getElementById('bid-buttons');
+    container.innerHTML = '';
 
-    document.querySelectorAll('.bid-btn').forEach(btn => {
-        const value = parseInt(btn.dataset.value);
-        if (value === 0) {
-            btn.disabled = false; // Can always pass
-        } else {
-            btn.disabled = value < minBid;
+    if (legalBids.length === 0) {
+        container.innerHTML = '<span class="action-label">Waiting for your turn...</span>';
+        return;
+    }
+
+    legalBids.forEach(bid => {
+        const btn = document.createElement('button');
+        btn.className = 'bid-btn';
+        btn.textContent = bid.label;
+        btn.dataset.bidType = bid.bid_type;
+        btn.dataset.value = bid.value;
+
+        // Style pass button differently
+        if (bid.bid_type === 'pass') {
+            btn.classList.add('pass-btn');
         }
+        // Style special bids
+        if (bid.bid_type === 'in_hand') {
+            btn.classList.add('in-hand-btn');
+        }
+        if (bid.bid_type === 'betl' || bid.bid_type === 'sans') {
+            btn.classList.add('special-btn');
+        }
+
+        btn.addEventListener('click', () => placeBid(bid.bid_type, bid.value));
+        container.appendChild(btn);
     });
 }
 

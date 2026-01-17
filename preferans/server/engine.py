@@ -3,6 +3,7 @@ from typing import Optional
 from models import (
     Game, Player, Card, Round, Trick, Bid, Contract, Auction,
     Suit, Rank, ContractType, GameStatus, RoundPhase, PlayerType,
+    BidType, AuctionPhase,
     SUIT_NAMES, NAME_TO_SUIT
 )
 
@@ -49,8 +50,14 @@ class GameEngine:
 
     # === Bidding Phase ===
 
-    def place_bid(self, player_id: int, value: int, suit: Optional[str] = None, is_hand: bool = False) -> Bid:
-        """Place a bid during the auction phase."""
+    def place_bid(self, player_id: int, bid_type: str, value: int = 0) -> Bid:
+        """Place a bid during the auction phase.
+
+        Args:
+            player_id: The player making the bid
+            bid_type: One of "pass", "game", "in_hand", "betl", "sans"
+            value: For game bids (2-5), or in_hand declarations (2-5)
+        """
         self._validate_phase(RoundPhase.AUCTION)
         player = self._get_player(player_id)
         auction = self.game.current_round.auction
@@ -63,57 +70,295 @@ class GameEngine:
         if player_id in auction.passed_players:
             raise InvalidMoveError("Player has already passed")
 
-        # Create bid
-        suit_enum = NAME_TO_SUIT.get(suit) if suit else None
-        bid = Bid(player_id=player_id, value=value, suit=suit_enum, is_hand=is_hand)
+        # Parse bid type
+        try:
+            btype = BidType(bid_type)
+        except ValueError:
+            raise InvalidMoveError(f"Invalid bid type: {bid_type}")
 
-        # Validate bid value
-        if not bid.is_pass():
-            if value < 2 or value > 7:
-                raise InvalidMoveError("Bid value must be between 2 and 7")
-            if auction.highest_bid and not bid.beats(auction.highest_bid):
-                raise InvalidMoveError("Bid must be higher than current highest bid")
+        # Validate bid based on auction phase
+        self._validate_bid(player_id, btype, value, auction)
 
-        # Record bid
+        # Create and record bid
+        bid = Bid(player_id=player_id, bid_type=btype, value=value)
         auction.add_bid(bid)
+        auction.players_bid_this_phase.append(player_id)
 
-        # Move to next bidder or end auction
+        # Advance auction state
         self._advance_auction()
 
         return bid
+
+    def _validate_bid(self, player_id: int, bid_type: BidType, value: int, auction: Auction):
+        """Validate a bid based on the current auction phase and rules."""
+
+        if bid_type == BidType.PASS:
+            return  # Pass is always valid
+
+        if auction.phase == AuctionPhase.INITIAL:
+            # Initial phase: can bid pass, game (must be 2), in_hand, betl, or sans
+            if bid_type == BidType.GAME:
+                if value != 2:
+                    raise InvalidMoveError("First game bid must be 2")
+            elif bid_type == BidType.IN_HAND:
+                if value != 0:
+                    raise InvalidMoveError("In_hand intent should not have a value")
+            elif bid_type == BidType.BETL:
+                pass  # Betl is valid as first bid
+            elif bid_type == BidType.SANS:
+                pass  # Sans is valid as first bid
+
+        elif auction.phase == AuctionPhase.GAME_BIDDING:
+            # Game bidding: must follow the progression
+            if bid_type == BidType.IN_HAND:
+                raise InvalidMoveError("Cannot bid in_hand after game bidding has started")
+
+            current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 1
+
+            if bid_type == BidType.GAME:
+                if value < 2 or value > 5:
+                    raise InvalidMoveError("Game bid must be between 2 and 5")
+
+                # Check if this is the first game bidder (can "hold")
+                is_first_bidder = player_id == auction.first_game_bidder_id
+
+                if is_first_bidder:
+                    # First bidder can match (hold) or raise
+                    if value < current_high:
+                        raise InvalidMoveError(f"Bid must be at least {current_high}")
+                else:
+                    # Other bidders must raise
+                    if value <= current_high:
+                        raise InvalidMoveError(f"Bid must be higher than {current_high}")
+
+            elif bid_type == BidType.BETL:
+                if current_high >= 6:
+                    raise InvalidMoveError("Cannot bid betl, already at betl or higher")
+            elif bid_type == BidType.SANS:
+                if current_high >= 7:
+                    raise InvalidMoveError("Sans already bid")
+
+        elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
+            # Other players deciding: can pass, in_hand, betl, or sans
+            if bid_type not in [BidType.PASS, BidType.IN_HAND, BidType.BETL, BidType.SANS]:
+                raise InvalidMoveError("Can only pass or declare in_hand/betl/sans")
+            if bid_type == BidType.IN_HAND and value != 0:
+                raise InvalidMoveError("In_hand intent should not have a value")
+
+        elif auction.phase == AuctionPhase.IN_HAND_DECLARING:
+            # In_hand players declaring their values
+            if bid_type != BidType.IN_HAND and bid_type != BidType.PASS:
+                raise InvalidMoveError("Must declare in_hand value or pass")
+            if bid_type == BidType.IN_HAND:
+                if value < 2 or value > 5:
+                    raise InvalidMoveError("In_hand value must be between 2 and 5")
+                if auction.highest_in_hand_bid and value <= auction.highest_in_hand_bid.value:
+                    raise InvalidMoveError(f"Must bid higher than {auction.highest_in_hand_bid.value}")
 
     def _advance_auction(self):
         """Advance to the next bidder or end the auction."""
         auction = self.game.current_round.auction
         round = self.game.current_round
 
-        # Check if auction is complete (2 players passed)
-        active_players = [p for p in self.game.players if p.id not in auction.passed_players]
+        # Handle phase transitions based on last bid
+        last_bid = auction.bids[-1] if auction.bids else None
 
+        if auction.phase == AuctionPhase.INITIAL:
+            self._handle_initial_phase_advance(auction, last_bid)
+        elif auction.phase == AuctionPhase.GAME_BIDDING:
+            self._handle_game_bidding_advance(auction)
+        elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
+            self._handle_in_hand_deciding_advance(auction)
+        elif auction.phase == AuctionPhase.IN_HAND_DECLARING:
+            self._handle_in_hand_declaring_advance(auction)
+
+        # Check if auction is complete
+        if auction.phase == AuctionPhase.COMPLETE:
+            self._finalize_auction()
+
+    def _handle_initial_phase_advance(self, auction: Auction, last_bid: Bid):
+        """Handle advancement from initial phase."""
+        # If someone bid in_hand, betl, or sans, switch to in_hand_deciding for others
+        # (betl and sans in initial phase are in_hand variants)
+        if last_bid and (last_bid.is_in_hand() or last_bid.is_betl() or last_bid.is_sans()):
+            # Mark as in_hand player
+            if last_bid.player_id not in auction.in_hand_players:
+                auction.in_hand_players.append(last_bid.player_id)
+            # Set their declared value for betl/sans
+            if last_bid.is_betl() or last_bid.is_sans():
+                auction.highest_in_hand_bid = last_bid
+            auction.phase = AuctionPhase.IN_HAND_DECIDING
+            auction.players_bid_this_phase = [last_bid.player_id]
+            self._set_next_bidder_for_in_hand_deciding(auction)
+            return
+
+        # If someone bid a game, switch to game_bidding
+        if last_bid and last_bid.is_game():
+            auction.phase = AuctionPhase.GAME_BIDDING
+            auction.players_bid_this_phase = [last_bid.player_id]
+            self._set_next_bidder_for_game_bidding(auction)
+            return
+
+        # If pass, check if all players in initial phase have bid
+        all_initial = len(auction.players_bid_this_phase) >= 3
+        if all_initial:
+            # Everyone passed in initial - everyone passed overall
+            if len(auction.passed_players) >= 3:
+                # Redeal
+                auction.phase = AuctionPhase.COMPLETE
+                return
+
+        # Move to next player in initial phase
+        self._set_next_bidder_initial(auction)
+
+    def _handle_game_bidding_advance(self, auction: Auction):
+        """Handle advancement during game bidding."""
+        active_players = [p for p in self.game.players
+                        if p.id not in auction.passed_players]
+
+        # If only one player left, auction complete
         if len(active_players) == 1:
-            # Auction complete - one player remaining
-            winner = active_players[0]
-            winner.is_declarer = True
-            round.declarer_id = winner.id
-            round.phase = RoundPhase.EXCHANGING
+            auction.phase = AuctionPhase.COMPLETE
             return
 
+        # If no active players, redeal
         if len(active_players) == 0:
-            # Everyone passed - special case: dealer must play or pay penalty
-            # For simplicity, we'll force a redeal
-            self.start_new_round()
+            auction.phase = AuctionPhase.COMPLETE
             return
 
-        # Find next bidder (rotate through positions)
-        current_player = self._get_player(auction.current_bidder_id)
-        next_position = (current_player.position % 3) + 1
+        # Move to next active bidder
+        self._set_next_bidder_for_game_bidding(auction)
 
-        for _ in range(3):
-            next_player = self._get_player_by_position(next_position)
+    def _handle_in_hand_deciding_advance(self, auction: Auction):
+        """Handle advancement during in_hand deciding phase."""
+        last_bid = auction.bids[-1] if auction.bids else None
+
+        # If someone just bid betl/sans, mark them as in_hand player
+        if last_bid and (last_bid.is_betl() or last_bid.is_sans()):
+            if last_bid.player_id not in auction.in_hand_players:
+                auction.in_hand_players.append(last_bid.player_id)
+            # Update highest in_hand bid
+            if auction.highest_in_hand_bid is None or last_bid.effective_value > auction.highest_in_hand_bid.effective_value:
+                auction.highest_in_hand_bid = last_bid
+        elif last_bid and last_bid.is_in_hand():
+            if last_bid.player_id not in auction.in_hand_players:
+                auction.in_hand_players.append(last_bid.player_id)
+
+        # Check if all non-passed players have decided
+        all_players_decided = all(
+            p.id in auction.players_bid_this_phase or p.id in auction.passed_players
+            for p in self.game.players
+        )
+
+        if all_players_decided:
+            # Check if any in_hand player needs to declare a value
+            undeclared = [pid for pid in auction.in_hand_players
+                        if not any(b.player_id == pid and b.value > 0
+                                  for b in auction.bids if b.is_in_hand() or b.is_betl() or b.is_sans())]
+
+            if len(auction.in_hand_players) > 1 and undeclared:
+                # Multiple in_hand players with undeclared values - move to declaring
+                auction.phase = AuctionPhase.IN_HAND_DECLARING
+                auction.players_bid_this_phase = []
+                self._set_next_bidder_for_in_hand_declaring(auction)
+            else:
+                # Single in_hand player or all have declared - auction complete
+                auction.phase = AuctionPhase.COMPLETE
+            return
+
+        # Move to next player who hasn't decided
+        self._set_next_bidder_for_in_hand_deciding(auction)
+
+    def _handle_in_hand_declaring_advance(self, auction: Auction):
+        """Handle advancement during in_hand declaring phase."""
+        last_bid = auction.bids[-1] if auction.bids else None
+
+        # Check if all in_hand players have declared
+        in_hand_declared = [
+            p_id for p_id in auction.in_hand_players
+            if p_id in auction.players_bid_this_phase
+        ]
+
+        if len(in_hand_declared) >= len(auction.in_hand_players):
+            auction.phase = AuctionPhase.COMPLETE
+            return
+
+        # Move to next in_hand player
+        self._set_next_bidder_for_in_hand_declaring(auction)
+
+    def _set_next_bidder_initial(self, auction: Auction):
+        """Set next bidder in initial phase (position order)."""
+        current = self._get_player(auction.current_bidder_id)
+        for i in range(1, 4):
+            next_pos = (current.position % 3) + 1
+            next_pos = ((current.position - 1 + i) % 3) + 1
+            next_player = self._get_player_by_position(next_pos)
+            if next_player.id not in auction.players_bid_this_phase:
+                auction.current_bidder_id = next_player.id
+                return
+        # All have bid
+        auction.phase = AuctionPhase.COMPLETE
+
+    def _set_next_bidder_for_game_bidding(self, auction: Auction):
+        """Set next bidder for game bidding (skip passed players)."""
+        current = self._get_player(auction.current_bidder_id)
+        for i in range(1, 4):
+            next_pos = ((current.position - 1 + i) % 3) + 1
+            next_player = self._get_player_by_position(next_pos)
             if next_player.id not in auction.passed_players:
                 auction.current_bidder_id = next_player.id
                 return
-            next_position = (next_position % 3) + 1
+
+    def _set_next_bidder_for_in_hand_deciding(self, auction: Auction):
+        """Set next bidder for in_hand deciding phase."""
+        current = self._get_player(auction.current_bidder_id)
+        for i in range(1, 4):
+            next_pos = ((current.position - 1 + i) % 3) + 1
+            next_player = self._get_player_by_position(next_pos)
+            if (next_player.id not in auction.players_bid_this_phase and
+                next_player.id not in auction.passed_players):
+                auction.current_bidder_id = next_player.id
+                return
+
+    def _set_next_bidder_for_in_hand_declaring(self, auction: Auction):
+        """Set next bidder for in_hand declaring phase (in_hand players only, by position)."""
+        current = self._get_player(auction.current_bidder_id)
+        for i in range(1, 4):
+            next_pos = ((current.position - 1 + i) % 3) + 1
+            next_player = self._get_player_by_position(next_pos)
+            if (next_player.id in auction.in_hand_players and
+                next_player.id not in auction.players_bid_this_phase):
+                auction.current_bidder_id = next_player.id
+                return
+
+    def _finalize_auction(self):
+        """Finalize the auction and set up the declarer."""
+        auction = self.game.current_round.auction
+        round = self.game.current_round
+
+        winner_bid = auction.get_winner_bid()
+
+        if not winner_bid or (len(auction.passed_players) >= 3 and not auction.in_hand_players):
+            # Everyone passed - redeal
+            self.start_new_round()
+            return
+
+        winner = self._get_player(winner_bid.player_id)
+        winner.is_declarer = True
+        round.declarer_id = winner.id
+
+        # Check if this is an in_hand game (in_hand bid, or betl/sans from in_hand_players)
+        is_in_hand = winner_bid.is_in_hand() or (
+            (winner_bid.is_betl() or winner_bid.is_sans()) and
+            winner_bid.player_id in auction.in_hand_players
+        )
+
+        if is_in_hand:
+            # Skip exchange phase for in_hand games
+            round.phase = RoundPhase.PLAYING
+            round.start_new_trick(lead_player_id=winner.id)
+        else:
+            round.phase = RoundPhase.EXCHANGING
 
     # === Exchange Phase ===
 
@@ -165,16 +410,21 @@ class GameEngine:
         return discarded
 
     def announce_contract(self, player_id: int, contract_type: str, trump_suit: Optional[str] = None):
-        """Declarer announces the contract after discarding."""
-        self._validate_phase(RoundPhase.EXCHANGING)
+        """Declarer announces the contract after discarding (or for in_hand, at any time)."""
         round = self.game.current_round
 
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can announce contract")
 
-        player = self._get_player(player_id)
-        if len(player.hand) != 10:
-            raise InvalidMoveError("Must discard before announcing contract")
+        winner_bid = round.auction.get_winner_bid()
+        is_in_hand = winner_bid and winner_bid.is_in_hand()
+
+        # For regular games, must be in exchanging phase and have discarded
+        if not is_in_hand:
+            self._validate_phase(RoundPhase.EXCHANGING)
+            player = self._get_player(player_id)
+            if len(player.hand) != 10:
+                raise InvalidMoveError("Must discard before announcing contract")
 
         # Parse contract type
         try:
@@ -194,14 +444,22 @@ class GameEngine:
             raise InvalidMoveError(f"{contract_type} contract cannot have trump suit")
 
         # Get bid value from auction
-        bid_value = round.auction.highest_bid.value if round.auction.highest_bid else 2
+        if winner_bid:
+            if winner_bid.is_betl():
+                bid_value = 6
+            elif winner_bid.is_sans():
+                bid_value = 7
+            else:
+                bid_value = winner_bid.value if winner_bid.value > 0 else 2
+        else:
+            bid_value = 2
 
         # Create contract
         round.contract = Contract(
             type=ctype,
             trump_suit=trump,
             bid_value=bid_value,
-            is_hand=round.auction.highest_bid.is_hand if round.auction.highest_bid else False
+            is_in_hand=is_in_hand
         )
 
         # Move to playing phase
@@ -431,7 +689,7 @@ class GameEngine:
     # === Game State Queries ===
 
     def get_legal_bids(self, player_id: int) -> list[dict]:
-        """Get all legal bids for a player."""
+        """Get all legal bids for a player based on auction phase."""
         if self.game.current_round.phase != RoundPhase.AUCTION:
             return []
 
@@ -439,14 +697,56 @@ class GameEngine:
         if auction.current_bidder_id != player_id:
             return []
 
-        legal_bids = [{"value": 0, "label": "Pass"}]
+        if auction.phase == AuctionPhase.COMPLETE:
+            return []
 
-        min_bid = 2
-        if auction.highest_bid and not auction.highest_bid.is_pass():
-            min_bid = auction.highest_bid.value + 1
+        legal_bids = [{"bid_type": "pass", "value": 0, "label": "Pass"}]
 
-        for value in range(min_bid, 8):
-            legal_bids.append({"value": value, "label": f"Bid {value}"})
+        if auction.phase == AuctionPhase.INITIAL:
+            # Initial phase: pass, game 2, in_hand, betl, sans
+            legal_bids.append({"bid_type": "game", "value": 2, "label": "Game 2"})
+            legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+            legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
+            legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+
+        elif auction.phase == AuctionPhase.GAME_BIDDING:
+            current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 1
+            is_first_bidder = player_id == auction.first_game_bidder_id
+
+            # Game bids (2-5)
+            for value in range(2, 6):
+                if is_first_bidder:
+                    # First bidder can hold (match) or raise
+                    if value >= current_high:
+                        label = f"Hold {value}" if value == current_high else f"Game {value}"
+                        legal_bids.append({"bid_type": "game", "value": value, "label": label})
+                else:
+                    # Others must raise
+                    if value > current_high:
+                        legal_bids.append({"bid_type": "game", "value": value, "label": f"Game {value}"})
+
+            # Betl (after 5)
+            if current_high < 6:
+                legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
+
+            # Sans (after betl)
+            if current_high < 7:
+                legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+
+        elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
+            # Pass, in_hand, betl, or sans
+            legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+            legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
+            legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
+
+        elif auction.phase == AuctionPhase.IN_HAND_DECLARING:
+            # Declare in_hand value (2-5), must be higher than current
+            min_value = 2
+            if auction.highest_in_hand_bid:
+                min_value = auction.highest_in_hand_bid.value + 1
+
+            for value in range(min_value, 6):
+                legal_bids.append({"bid_type": "in_hand", "value": value, "label": f"In Hand {value}"})
 
         return legal_bids
 
@@ -492,15 +792,19 @@ class GameEngine:
 
             # Add context based on phase
             if round.phase == RoundPhase.AUCTION:
-                state["current_bidder_id"] = round.auction.current_bidder_id
-                if viewer_id:
-                    state["legal_bids"] = self.get_legal_bids(viewer_id)
+                current_bidder_id = round.auction.current_bidder_id
+                state["current_bidder_id"] = current_bidder_id
+                state["auction_phase"] = round.auction.phase.value
+                # Always include legal_bids for the current bidder
+                if current_bidder_id:
+                    state["legal_bids"] = self.get_legal_bids(current_bidder_id)
 
             elif round.phase == RoundPhase.PLAYING:
                 trick = round.current_trick
                 if trick:
-                    state["current_player_id"] = self._get_next_player_in_trick(trick)
-                    if viewer_id:
-                        state["legal_cards"] = [c.to_dict() for c in self.get_legal_cards(viewer_id)]
+                    current_player_id = self._get_next_player_in_trick(trick)
+                    state["current_player_id"] = current_player_id
+                    # Always include legal_cards for current player
+                    state["legal_cards"] = [c.to_dict() for c in self.get_legal_cards(current_player_id)]
 
         return state
