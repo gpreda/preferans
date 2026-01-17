@@ -38,6 +38,79 @@ def health():
     return {'status': 'ok'}
 
 
+# i18n Editor Page
+
+@app.route('/i18n')
+def i18n_editor():
+    """Serve the i18n editor page."""
+    return send_from_directory(WEB_DIR, 'i18n.html')
+
+
+# i18n API
+
+@app.route('/api/i18n/languages', methods=['GET', 'POST'])
+def i18n_languages():
+    """Get all languages or add a new one."""
+    from db import get_all_languages, add_language
+
+    if request.method == 'POST':
+        data = request.get_json()
+        code = data.get('code')
+        name = data.get('name')
+        native_name = data.get('native_name')
+        is_default = data.get('is_default', False)
+
+        if not code or not name:
+            return jsonify({'error': 'code and name are required'}), 400
+
+        try:
+            lang_id = add_language(code, name, native_name, is_default)
+            return jsonify({'success': True, 'id': lang_id})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    languages = get_all_languages()
+    return jsonify([dict(l) for l in languages])
+
+
+@app.route('/api/i18n/translations')
+def i18n_all_translations():
+    """Get all translations for all languages."""
+    from db import get_all_translations
+    return jsonify(get_all_translations())
+
+
+@app.route('/api/i18n/translations/<language_code>', methods=['GET', 'POST'])
+def i18n_translations(language_code):
+    """Get or update translations for a language."""
+    from db import get_translations, update_translation
+
+    if request.method == 'POST':
+        data = request.get_json()
+        key = data.get('key')
+        value = data.get('value')
+
+        if not key:
+            return jsonify({'error': 'key is required'}), 400
+
+        try:
+            update_translation(language_code, key, value)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    translations = get_translations(language_code)
+    return jsonify(translations)
+
+
+@app.route('/api/i18n/keys')
+def i18n_keys():
+    """Get all unique translation keys."""
+    from db import get_all_translation_keys
+    keys = get_all_translation_keys()
+    return jsonify(keys)
+
+
 # Deck Styles API
 
 @app.route('/api/styles')
