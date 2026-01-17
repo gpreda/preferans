@@ -68,7 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pickup-talon-btn').addEventListener('click', pickUpTalon);
     document.getElementById('discard-btn').addEventListener('click', discardSelected);
 
-    // Contract buttons
+    // Contract controls
+    document.getElementById('contract-level').addEventListener('change', updateTrumpSuitVisibility);
     document.getElementById('announce-btn').addEventListener('click', announceContract);
 
     // Next round button
@@ -244,18 +245,19 @@ async function announceContract() {
     const declarerId = gameState.current_round?.declarer_id;
     if (!declarerId) return;
 
-    const contractSelect = document.getElementById('contract-select');
-    const selectedValue = contractSelect.value;
+    const levelSelect = document.getElementById('contract-level');
+    const suitSelect = document.getElementById('trump-suit');
+    const selectedLevel = levelSelect.value;
 
-    // Parse the selected value (format: "suit-spades", "betl", "sans")
+    // Determine contract type and trump suit based on level
     let contractType, trumpSuit = null;
-    if (selectedValue === 'betl') {
+    if (selectedLevel === '6') {
         contractType = 'betl';
-    } else if (selectedValue === 'sans') {
+    } else if (selectedLevel === '7') {
         contractType = 'sans';
-    } else if (selectedValue.startsWith('suit-')) {
+    } else if (['2', '3', '4', '5'].includes(selectedLevel)) {
         contractType = 'suit';
-        trumpSuit = selectedValue.replace('suit-', '');
+        trumpSuit = suitSelect.value;
     } else {
         showMessage('Invalid contract selection', 'error');
         return;
@@ -357,46 +359,46 @@ function updateDiscardButton() {
 }
 
 function populateContractOptions() {
-    const contractSelect = document.getElementById('contract-select');
-    contractSelect.innerHTML = '';
+    const levelSelect = document.getElementById('contract-level');
+    levelSelect.innerHTML = '';
 
     const auction = gameState.current_round?.auction;
     const winnerBid = auction?.highest_game_bid || auction?.highest_in_hand_bid;
 
-    if (!winnerBid) {
-        // Default to game 2 options
-        addSuitOptions(contractSelect, 2);
-        return;
+    // Determine minimum level from winning bid
+    let minLevel = 2;
+    if (winnerBid) {
+        const bidValue = winnerBid.effective_value || winnerBid.value || 2;
+        minLevel = Math.max(2, Math.min(bidValue, 7));
     }
 
-    const bidType = winnerBid.bid_type;
-    const bidValue = winnerBid.effective_value || winnerBid.value || 2;
-
-    if (bidType === 'betl') {
-        // Betl bid - only betl and sans allowed
-        addOption(contractSelect, 'betl', t('betl'));
-        addOption(contractSelect, 'sans', t('sans'));
-    } else if (bidType === 'sans') {
-        // Sans bid - only sans allowed
-        addOption(contractSelect, 'sans', t('sans'));
-    } else {
-        // Game or in_hand bid - show suits at bid level and higher, plus betl/sans
-        for (let level = bidValue; level <= 5; level++) {
-            addSuitOptions(contractSelect, level);
-        }
-        addOption(contractSelect, 'betl', t('betl'));
-        addOption(contractSelect, 'sans', t('sans'));
+    // Add level options starting from minimum
+    for (let level = minLevel; level <= 5; level++) {
+        addOption(levelSelect, level.toString(), level.toString());
     }
+
+    // Add Betl (6) if minimum allows
+    if (minLevel <= 6) {
+        addOption(levelSelect, '6', `6 (${t('betl')})`);
+    }
+
+    // Add Sans (7) if minimum allows
+    if (minLevel <= 7) {
+        addOption(levelSelect, '7', `7 (${t('sans')})`);
+    }
+
+    // Update trump suit visibility based on initial selection
+    updateTrumpSuitVisibility();
 }
 
-function addSuitOptions(select, level) {
-    // Suit order: Spades (lowest multiplier in traditional) to Hearts (highest)
-    // But we'll just show them in a logical order
-    const suits = ['spades', 'clubs', 'diamonds', 'hearts'];
-    suits.forEach(suit => {
-        const label = `${level} ${t('suits.' + suit)}`;
-        addOption(select, `suit-${suit}`, label);
-    });
+function updateTrumpSuitVisibility() {
+    const levelSelect = document.getElementById('contract-level');
+    const suitSelect = document.getElementById('trump-suit');
+    const selectedLevel = levelSelect.value;
+
+    // Show trump suit selector only for levels 2-5
+    const needsSuit = ['2', '3', '4', '5'].includes(selectedLevel);
+    suitSelect.classList.toggle('hidden', !needsSuit);
 }
 
 function addOption(select, value, label) {
