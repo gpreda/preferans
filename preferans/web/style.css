@@ -342,13 +342,38 @@ header h1 {
     cursor: not-allowed;
 }
 
-.bid-btn[data-value="0"] {
+.bid-btn.pass-btn {
     background: #e94560;
 }
 
-.bid-btn[data-value="0"]:hover {
+.bid-btn.pass-btn:hover {
     background: #ff6b6b;
     color: white;
+}
+
+.bid-btn.in-hand-btn {
+    background: #9b59b6;
+}
+
+.bid-btn.in-hand-btn:hover:not(:disabled) {
+    background: #a569bd;
+    color: white;
+}
+
+.bid-btn.special-btn {
+    background: #f39c12;
+    color: #1a1a2e;
+}
+
+.bid-btn.special-btn:hover:not(:disabled) {
+    background: #f1c40f;
+}
+
+.bid-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
 }
 
 /* Exchange Controls */

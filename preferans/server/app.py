@@ -164,12 +164,11 @@ def place_bid():
 
     data = request.get_json()
     player_id = data.get('player_id')
+    bid_type = data.get('bid_type', 'pass')
     value = data.get('value', 0)
-    suit = data.get('suit')
-    is_hand = data.get('is_hand', False)
 
     try:
-        bid = current_engine.place_bid(player_id, value, suit, is_hand)
+        bid = current_engine.place_bid(player_id, bid_type, value)
         return jsonify({
             'success': True,
             'bid': bid.to_dict(),
