@@ -287,11 +287,11 @@ class GameEngine:
         self._set_next_bidder_for_in_hand_declaring(auction)
 
     def _set_next_bidder_initial(self, auction: Auction):
-        """Set next bidder in initial phase (position order)."""
+        """Set next bidder in initial phase (clockwise: 1→3→2)."""
         current = self._get_player(auction.current_bidder_id)
         for i in range(1, 4):
-            next_pos = (current.position % 3) + 1
-            next_pos = ((current.position - 1 + i) % 3) + 1
+            # Clockwise order: position 1→3→2→1
+            next_pos = ((current.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_pos)
             if next_player.id not in auction.players_bid_this_phase:
                 auction.current_bidder_id = next_player.id
@@ -300,20 +300,22 @@ class GameEngine:
         auction.phase = AuctionPhase.COMPLETE
 
     def _set_next_bidder_for_game_bidding(self, auction: Auction):
-        """Set next bidder for game bidding (skip passed players)."""
+        """Set next bidder for game bidding (clockwise, skip passed players)."""
         current = self._get_player(auction.current_bidder_id)
         for i in range(1, 4):
-            next_pos = ((current.position - 1 + i) % 3) + 1
+            # Clockwise order: position 1→3→2→1
+            next_pos = ((current.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_pos)
             if next_player.id not in auction.passed_players:
                 auction.current_bidder_id = next_player.id
                 return
 
     def _set_next_bidder_for_in_hand_deciding(self, auction: Auction):
-        """Set next bidder for in_hand deciding phase."""
+        """Set next bidder for in_hand deciding phase (clockwise)."""
         current = self._get_player(auction.current_bidder_id)
         for i in range(1, 4):
-            next_pos = ((current.position - 1 + i) % 3) + 1
+            # Clockwise order: position 1→3→2→1
+            next_pos = ((current.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_pos)
             if (next_player.id not in auction.players_bid_this_phase and
                 next_player.id not in auction.passed_players):
@@ -321,10 +323,11 @@ class GameEngine:
                 return
 
     def _set_next_bidder_for_in_hand_declaring(self, auction: Auction):
-        """Set next bidder for in_hand declaring phase (in_hand players only, by position)."""
+        """Set next bidder for in_hand declaring phase (clockwise, in_hand players only)."""
         current = self._get_player(auction.current_bidder_id)
         for i in range(1, 4):
-            next_pos = ((current.position - 1 + i) % 3) + 1
+            # Clockwise order: position 1→3→2→1
+            next_pos = ((current.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_pos)
             if (next_player.id in auction.in_hand_players and
                 next_player.id not in auction.players_bid_this_phase):
