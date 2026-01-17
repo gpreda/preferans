@@ -109,7 +109,7 @@ class GameEngine:
                 pass  # Sans is valid as first bid
 
         elif auction.phase == AuctionPhase.GAME_BIDDING:
-            # Game bidding: must follow the progression
+            # Game bidding: must follow sequential progression (no jumping)
             if bid_type == BidType.IN_HAND:
                 raise InvalidMoveError("Cannot bid in_hand after game bidding has started")
 
@@ -123,18 +123,24 @@ class GameEngine:
                 is_first_bidder = player_id == auction.first_game_bidder_id
 
                 if is_first_bidder:
-                    # First bidder can match (hold) or raise
-                    if value < current_high:
-                        raise InvalidMoveError(f"Bid must be at least {current_high}")
+                    # First bidder can hold (match current) or bid exactly one higher
+                    if value != current_high and value != current_high + 1:
+                        raise InvalidMoveError(f"Must hold at {current_high} or bid {current_high + 1}")
                 else:
-                    # Other bidders must raise
-                    if value <= current_high:
-                        raise InvalidMoveError(f"Bid must be higher than {current_high}")
+                    # Other bidders must bid exactly one higher (no jumping)
+                    if value != current_high + 1:
+                        raise InvalidMoveError(f"Must bid exactly {current_high + 1}")
 
             elif bid_type == BidType.BETL:
+                # Betl (6) only allowed after game 5
+                if current_high < 5:
+                    raise InvalidMoveError("Cannot bid betl until after game 5")
                 if current_high >= 6:
                     raise InvalidMoveError("Cannot bid betl, already at betl or higher")
             elif bid_type == BidType.SANS:
+                # Sans (7) only allowed after betl (6)
+                if current_high < 6:
+                    raise InvalidMoveError("Cannot bid sans until after betl")
                 if current_high >= 7:
                     raise InvalidMoveError("Sans already bid")
 
@@ -715,25 +721,26 @@ class GameEngine:
         elif auction.phase == AuctionPhase.GAME_BIDDING:
             current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 1
             is_first_bidder = player_id == auction.first_game_bidder_id
+            next_value = current_high + 1
 
-            # Game bids (2-5)
-            for value in range(2, 6):
-                if is_first_bidder:
-                    # First bidder can hold (match) or raise
-                    if value >= current_high:
-                        label = f"Hold {value}" if value == current_high else f"Game {value}"
-                        legal_bids.append({"bid_type": "game", "value": value, "label": label})
-                else:
-                    # Others must raise
-                    if value > current_high:
-                        legal_bids.append({"bid_type": "game", "value": value, "label": f"Game {value}"})
+            # Game bids - only sequential (no jumping)
+            if is_first_bidder:
+                # First bidder can hold (match current) or bid next value
+                if current_high >= 2 and current_high <= 5:
+                    legal_bids.append({"bid_type": "game", "value": current_high, "label": f"Hold {current_high}"})
+                if next_value <= 5:
+                    legal_bids.append({"bid_type": "game", "value": next_value, "label": f"Game {next_value}"})
+            else:
+                # Others can only bid exactly next value
+                if next_value <= 5:
+                    legal_bids.append({"bid_type": "game", "value": next_value, "label": f"Game {next_value}"})
 
-            # Betl (after 5)
-            if current_high < 6:
+            # Betl (6) - only after game 5
+            if current_high == 5:
                 legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
 
-            # Sans (after betl)
-            if current_high < 7:
+            # Sans (7) - only after betl
+            if current_high == 6:
                 legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
         elif auction.phase == AuctionPhase.IN_HAND_DECIDING:
