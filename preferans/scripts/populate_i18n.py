@@ -2,11 +2,13 @@
 import os
 import sys
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent and server directories to path for imports
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, 'server'))
 
 import psycopg2
-from server.db import get_db_connection
+from db import get_db_connection
 
 # Language definitions
 LANGUAGES = [
@@ -286,26 +288,25 @@ def populate_translations(cursor, language_ids):
 
 
 def main():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    try:
-        print("Populating languages...")
-        language_ids = populate_languages(cursor)
+        try:
+            print("Populating languages...")
+            language_ids = populate_languages(cursor)
 
-        print("Populating translations...")
-        populate_translations(cursor, language_ids)
+            print("Populating translations...")
+            populate_translations(cursor, language_ids)
 
-        conn.commit()
-        print("i18n data populated successfully!")
+            conn.commit()
+            print("i18n data populated successfully!")
 
-    except Exception as e:
-        conn.rollback()
-        print(f"Error: {e}")
-        raise
-    finally:
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error: {e}")
+            raise
+        finally:
+            cursor.close()
 
 
 if __name__ == '__main__':
