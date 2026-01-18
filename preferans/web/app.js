@@ -1071,19 +1071,34 @@ function renderTalon() {
     const round = gameState.current_round;
     if (!round) return;
 
+    const talonCards = round.talon || [];
     const talonCount = round.talon_count || 0;
 
-    // Show card backs for talon
-    for (let i = 0; i < talonCount; i++) {
-        const img = document.createElement('img');
-        img.src = '/api/styles/classic/back';
-        img.alt = t('talonCard');
-        img.className = 'card';
-        talonContainer.appendChild(img);
+    if (talonCards.length > 0) {
+        // Show actual talon cards face-up (during exchange before pickup)
+        talonCards.forEach(card => {
+            const img = document.createElement('img');
+            img.src = `/api/cards/${card.id}/image`;
+            img.alt = card.id;
+            img.className = 'card';
+            img.title = formatCardName(card.id);
+            talonContainer.appendChild(img);
+        });
+        elements.talon.style.display = 'flex';
+    } else if (talonCount > 0) {
+        // Show card backs when talon exists but is hidden (during auction)
+        for (let i = 0; i < talonCount; i++) {
+            const img = document.createElement('img');
+            img.src = '/api/styles/classic/back';
+            img.alt = t('talonCard');
+            img.className = 'card';
+            talonContainer.appendChild(img);
+        }
+        elements.talon.style.display = 'flex';
+    } else {
+        // Hide talon section if no cards
+        elements.talon.style.display = 'none';
     }
-
-    // Hide talon section if no cards
-    elements.talon.style.display = talonCount > 0 ? 'flex' : 'none';
 }
 
 function renderCurrentTrick() {
