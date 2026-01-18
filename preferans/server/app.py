@@ -327,7 +327,7 @@ def announce_contract():
         trump_suit = current_engine.get_best_trump_suit(player_id)
 
     try:
-        current_engine.announce_contract(player_id, contract_type, trump_suit)
+        current_engine.announce_contract(player_id, contract_type, trump_suit, level=level)
         return jsonify({
             'success': True,
             'state': current_engine.get_game_state()
@@ -343,11 +343,13 @@ def play_card():
     if not current_engine:
         return jsonify({'error': 'No active game'}), 400
 
-    from engine import InvalidMoveError, InvalidPhaseError
+    from engine import InvalidMoveError, InvalidPhaseError, GameError
 
     data = request.get_json()
     player_id = data.get('player_id')
     card_id = data.get('card_id')
+
+    print(f"[API play_card] player_id={player_id}, card_id={card_id}")
 
     try:
         result = current_engine.play_card(player_id, card_id)
@@ -356,7 +358,8 @@ def play_card():
             'result': result,
             'state': current_engine.get_game_state()
         })
-    except (InvalidMoveError, InvalidPhaseError) as e:
+    except (InvalidMoveError, InvalidPhaseError, GameError) as e:
+        print(f"[API play_card] ERROR: {type(e).__name__}: {e}")
         return jsonify({'error': str(e)}), 400
 
 

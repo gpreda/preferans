@@ -967,15 +967,16 @@ function renderPlayers() {
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
     const declarerId = gameState.current_round?.declarer_id;
     const phase = gameState.current_round?.phase;
+    const dealerIndex = gameState.dealer_index;
 
-    players.forEach(player => {
+    players.forEach((player, index) => {
         const playerEl = document.getElementById(`player${player.id}`);
         if (!playerEl) return;
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
-        playerEl.querySelector('.score-value').textContent = player.score;
-        playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
+        const tricksEl = playerEl.querySelector('.tricks-value');
+        if (tricksEl) tricksEl.textContent = player.tricks_won;
 
         // Role
         const roleEl = playerEl.querySelector('.player-role');
@@ -987,8 +988,8 @@ function renderPlayers() {
             roleEl.textContent = '';
         }
 
-        // Active state
-        playerEl.classList.remove('active', 'declarer');
+        // Active state and dealer
+        playerEl.classList.remove('active', 'declarer', 'dealer');
         if (phase === 'auction' && player.id === currentBidderId) {
             playerEl.classList.add('active');
         } else if (phase === 'playing' && player.id === currentPlayerId) {
@@ -996,6 +997,11 @@ function renderPlayers() {
         }
         if (player.is_declarer) {
             playerEl.classList.add('declarer');
+        }
+
+        // Mark dealer (dealer_index is the index in players array)
+        if (index === dealerIndex) {
+            playerEl.classList.add('dealer');
         }
 
         // Render cards
