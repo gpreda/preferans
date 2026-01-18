@@ -493,7 +493,6 @@ function renderPlayers() {
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
-        playerEl.querySelector('.score-value').textContent = player.score;
         playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
 
         // Role
