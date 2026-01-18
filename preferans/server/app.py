@@ -300,7 +300,7 @@ def discard_cards():
 
 @app.route('/api/game/contract', methods=['POST'])
 def announce_contract():
-    """Declarer announces contract."""
+    """Declarer announces contract by level (2-7)."""
     global current_engine
     if not current_engine:
         return jsonify({'error': 'No active game'}), 400
@@ -309,8 +309,22 @@ def announce_contract():
 
     data = request.get_json()
     player_id = data.get('player_id')
-    contract_type = data.get('type')
-    trump_suit = data.get('trump_suit')
+    level = data.get('level')
+
+    if level is None or level < 2 or level > 7:
+        return jsonify({'error': 'Invalid contract level (must be 2-7)'}), 400
+
+    # Map level to contract type
+    if level == 6:
+        contract_type = 'betl'
+        trump_suit = None
+    elif level == 7:
+        contract_type = 'sans'
+        trump_suit = None
+    else:
+        # Levels 2-5 are suit contracts (trump determined by most common suit in hand)
+        contract_type = 'suit'
+        trump_suit = current_engine.get_best_trump_suit(player_id)
 
     try:
         current_engine.announce_contract(player_id, contract_type, trump_suit)
