@@ -1,10 +1,10 @@
 // Preferans Game Client
 
 let gameState = null;
-let selectedCards = [];  // Cards selected for discard
+let selectedCards = [];
 
 // Debug logging utility
-const DEBUG = true;
+const DEBUG = false;
 function debug(category, message, data = null) {
     if (!DEBUG) return;
     const timestamp = new Date().toISOString().substr(11, 12);
@@ -200,8 +200,6 @@ async function checkServer() {
 
 async function startNewGame() {
     debug('GAME', 'startNewGame: initiating new game');
-    // Clear state
-    selectedCards = [];
     try {
         showMessage(t('startingNewGame'));
         const response = await fetch('/api/game/new', {
@@ -320,8 +318,6 @@ function getBidDescription(bidType, value) {
 
 async function pickUpTalon() {
     debug('EXCHANGE', 'pickUpTalon: attempting to pick up talon');
-    // Clear any previous discard selection
-    selectedCards = [];
 
     if (!gameState) {
         debugError('EXCHANGE', 'pickUpTalon: no game state');
@@ -378,17 +374,6 @@ async function pickUpTalon() {
     }
 }
 
-// Update the discard button state
-function updateDiscardButton() {
-    const discardBtn = document.getElementById('discard-btn');
-    if (discardBtn) {
-        discardBtn.disabled = selectedCards.length !== 2;
-        discardBtn.textContent = selectedCards.length === 2
-            ? t('confirmDiscard')
-            : t('selectTwoCards', 2 - selectedCards.length);
-    }
-}
-
 async function discardSelected() {
     debug('EXCHANGE', 'discardSelected: attempting to discard', { selectedCards });
 
@@ -435,6 +420,10 @@ async function discardSelected() {
                 return;
             }
             gameState = data.state;
+            const declarer = gameState.players?.find(p => p.id === declarerId);
+            debug('EXCHANGE', 'discardSelected: success', {
+                declarerHandSize: declarer?.hand?.length
+            });
             selectedCards = [];
             renderGame();
             showMessage(t('cardsDiscarded'), 'success');
@@ -821,6 +810,11 @@ function toggleCardSelection(cardId) {
     updateDiscardButton();
 }
 
+function updateDiscardButton() {
+    const discardBtn = document.getElementById('discard-btn');
+    discardBtn.disabled = selectedCards.length !== 2;
+}
+
 function populateContractOptions() {
     const levelSelect = document.getElementById('contract-level');
     levelSelect.innerHTML = '';
@@ -871,7 +865,6 @@ function getPlayerName(playerId) {
 // === Rendering Functions ===
 
 function renderGame() {
-    console.log('=== RENDER GAME ===', gameState?.current_round?.phase);
     debug('RENDER', 'renderGame: starting render');
 
     if (!gameState) {
@@ -881,7 +874,6 @@ function renderGame() {
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
-    console.log('=== PHASE:', phase, '===');
     const auctionPhase = gameState.auction_phase;
 
     debug('RENDER', 'renderGame: phase info', {
@@ -975,14 +967,16 @@ function renderPlayers() {
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
     const declarerId = gameState.current_round?.declarer_id;
     const phase = gameState.current_round?.phase;
+    const dealerIndex = gameState.dealer_index;
 
-    players.forEach(player => {
+    players.forEach((player, index) => {
         const playerEl = document.getElementById(`player${player.id}`);
         if (!playerEl) return;
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
-        playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
+        const tricksEl = playerEl.querySelector('.tricks-value');
+        if (tricksEl) tricksEl.textContent = player.tricks_won;
 
         // Role
         const roleEl = playerEl.querySelector('.player-role');
@@ -994,8 +988,8 @@ function renderPlayers() {
             roleEl.textContent = '';
         }
 
-        // Active state
-        playerEl.classList.remove('active', 'declarer');
+        // Active state and dealer
+        playerEl.classList.remove('active', 'declarer', 'dealer');
         if (phase === 'auction' && player.id === currentBidderId) {
             playerEl.classList.add('active');
         } else if (phase === 'playing' && player.id === currentPlayerId) {
@@ -1003,6 +997,11 @@ function renderPlayers() {
         }
         if (player.is_declarer) {
             playerEl.classList.add('declarer');
+        }
+
+        // Mark dealer (dealer_index is the index in players array)
+        if (index === dealerIndex) {
+            playerEl.classList.add('dealer');
         }
 
         // Render cards
@@ -1022,9 +1021,6 @@ function renderPlayerCards(player, playerEl) {
     const legalCards = gameState.legal_cards || [];
     const legalCardIds = legalCards.map(c => c.id);
 
-    // Discard mode: declarer has 12 cards and needs to discard 2
-    const isDiscardMode = isExchanging && player.id === declarerId && player.hand.length === 12;
-
     player.hand.forEach(card => {
         const img = document.createElement('img');
         img.src = `/api/cards/${card.id}/image`;
@@ -1033,13 +1029,12 @@ function renderPlayerCards(player, playerEl) {
         img.title = formatCardName(card.id);
         img.dataset.cardId = card.id;
 
-        // Handle card selection for discard mode
-        if (isDiscardMode) {
-            const isSelected = selectedCards.includes(card.id);
-            if (isSelected) {
-                img.classList.add('selected-for-discard');
-            }
+        // Handle card selection for discarding
+        if (isExchanging && player.id === declarerId && player.hand.length === 12) {
             img.classList.add('selectable');
+            if (selectedCards.includes(card.id)) {
+                img.classList.add('selected');
+            }
             img.addEventListener('click', () => toggleCardSelection(card.id));
         }
 
@@ -1076,37 +1071,19 @@ function renderTalon() {
     const round = gameState.current_round;
     if (!round) return;
 
-    const talonCards = round.talon || [];
     const talonCount = round.talon_count || 0;
 
-    elements.talon.classList.remove('exchange-mode');
-    elements.talon.querySelector('.talon-label').textContent = 'Talon';
-
-    if (talonCards.length > 0) {
-        // Show actual talon cards face-up (during exchange before pickup)
-        talonCards.forEach(card => {
-            const img = document.createElement('img');
-            img.src = `/api/cards/${card.id}/image`;
-            img.alt = card.id;
-            img.className = 'card';
-            img.title = formatCardName(card.id);
-            talonContainer.appendChild(img);
-        });
-        elements.talon.style.display = 'flex';
-    } else if (talonCount > 0) {
-        // Show card backs when talon exists but is hidden (during auction)
-        for (let i = 0; i < talonCount; i++) {
-            const img = document.createElement('img');
-            img.src = '/api/styles/classic/back';
-            img.alt = t('talonCard');
-            img.className = 'card';
-            talonContainer.appendChild(img);
-        }
-        elements.talon.style.display = 'flex';
-    } else {
-        // Hide talon section if no cards
-        elements.talon.style.display = 'none';
+    // Show card backs for talon
+    for (let i = 0; i < talonCount; i++) {
+        const img = document.createElement('img');
+        img.src = '/api/styles/classic/back';
+        img.alt = t('talonCard');
+        img.className = 'card';
+        talonContainer.appendChild(img);
     }
+
+    // Hide talon section if no cards
+    elements.talon.style.display = talonCount > 0 ? 'flex' : 'none';
 }
 
 function renderCurrentTrick() {
@@ -1323,11 +1300,11 @@ function showActionPanelForPhase(phase) {
 
         case 'exchanging':
             const declarer = gameState.players?.find(p => p.id === declarerId);
-            const talonCards = round?.talon || [];
             const discarded = round?.discarded || [];
+            const talonCount = round?.talon_count || 0;
 
             if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
-                // Exchange complete, show contract controls
+                // Exchange complete (picked up talon and discarded 2), show contract controls
                 elements.contractControls.classList.remove('hidden');
                 populateContractOptions();
             } else if (declarer && declarer.hand.length === 12) {
@@ -1336,8 +1313,8 @@ function showActionPanelForPhase(phase) {
                 document.getElementById('pickup-talon-btn').classList.add('hidden');
                 document.getElementById('discard-btn').classList.remove('hidden');
                 updateDiscardButton();
-            } else if (talonCards.length > 0) {
-                // Talon visible, need to pick up
+            } else if (talonCount > 0) {
+                // Talon not picked up yet, show pickup button
                 elements.exchangeControls.classList.remove('hidden');
                 document.getElementById('pickup-talon-btn').classList.remove('hidden');
                 document.getElementById('discard-btn').classList.add('hidden');
