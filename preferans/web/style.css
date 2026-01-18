@@ -340,10 +340,13 @@ header h1 {
 
 .card.playable {
     cursor: grab;
+    border: 3px solid #4ecca3;
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.6);
 }
 
 .card.playable:hover {
     box-shadow: 0 0 15px #4ecca3;
+    border-color: #7fffd4;
 }
 
 .card.playable:active {
@@ -353,17 +356,6 @@ header h1 {
 .card.dragging {
     opacity: 0.5;
     transform: scale(1.1);
-}
-
-.card.not-playable {
-    opacity: 0.4;
-    filter: grayscale(50%);
-    cursor: not-allowed;
-}
-
-.card.not-playable:hover {
-    transform: none;
-    box-shadow: 0 0.3vmin 0.5vmin rgba(0, 0, 0, 0.3);
 }
 
 .talon .card {
