@@ -110,7 +110,7 @@ header h1 {
     color: #fff;
 }
 
-.player-score, .player-tricks {
+.player-tricks {
     font-size: 0.75rem;
     color: #aaa;
 }
