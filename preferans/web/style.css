@@ -26,9 +26,9 @@
     --talon-card-width: var(--card-width);
     --talon-card-height: var(--card-height);
 
-    /* Card overlap ratios (increased spacing by 10%) */
-    --horizontal-visible: 0.275;  /* Show ~27.5% of card width */
-    --vertical-visible: 0.22;     /* Show ~22% of card height */
+    /* Card overlap ratios (increased spacing by 10% again) */
+    --horizontal-visible: 0.30;  /* Show ~30% of card width */
+    --vertical-visible: 0.24;    /* Show ~24% of card height */
 
     /* Spacing */
     --spacing-xs: calc(var(--base) * 1);
