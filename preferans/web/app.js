@@ -1139,6 +1139,71 @@ function renderCurrentTrick() {
     });
 }
 
+function renderLastTrick() {
+    const lastTrickEl = document.getElementById('last-trick');
+    if (!lastTrickEl) return;
+
+    const cardsContainer = lastTrickEl.querySelector('.last-trick-cards');
+    cardsContainer.innerHTML = '';
+
+    const round = gameState.current_round;
+
+    // Hide last trick when round ends (scoring phase)
+    if (round?.phase === 'scoring') {
+        lastTrickEl.classList.remove('visible');
+        return;
+    }
+
+    if (!round || !round.tricks || round.tricks.length < 2) {
+        if (round?.tricks?.length === 1 && round.tricks[0].cards?.length === 3) {
+            // First trick is complete, show it
+        } else {
+            lastTrickEl.classList.remove('visible');
+            return;
+        }
+    }
+
+    // Find the last completed trick
+    let lastCompletedTrick = null;
+    const currentTrick = round.tricks[round.tricks.length - 1];
+    if (currentTrick?.cards?.length === 3) {
+        lastCompletedTrick = currentTrick;
+    } else if (round.tricks.length >= 2) {
+        lastCompletedTrick = round.tricks[round.tricks.length - 2];
+    } else if (round.tricks.length === 1 && round.tricks[0].cards?.length === 3) {
+        lastCompletedTrick = round.tricks[0];
+    }
+
+    if (!lastCompletedTrick || !lastCompletedTrick.cards || lastCompletedTrick.cards.length !== 3) {
+        lastTrickEl.classList.remove('visible');
+        return;
+    }
+
+    lastTrickEl.classList.add('visible');
+
+    lastCompletedTrick.cards.forEach(cardPlay => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'trick-card-wrapper';
+
+        const label = document.createElement('span');
+        label.className = 'trick-card-player';
+        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
+            label.classList.add('trick-card-winner');
+        }
+        const playerName = getPlayerName(cardPlay.player_id);
+        label.textContent = playerName.split(' ')[0].substring(0, 3);
+
+        const img = document.createElement('img');
+        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.alt = cardPlay.card.id;
+        img.className = 'card';
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(img);
+        cardsContainer.appendChild(wrapper);
+    });
+}
+
 function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
