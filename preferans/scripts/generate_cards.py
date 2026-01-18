@@ -144,9 +144,9 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     # Suit size for corner symbols (reduced by 25% again)
     suit_size = 29
 
-    # Rank position for top-left (2 pixels farther from margins)
+    # Rank position for top-left (2px from top edge of card)
     rank_x = 3
-    rank_y = 30
+    rank_y = 18
 
     # Suit position - 2px from margins
     suit_margin = 2
