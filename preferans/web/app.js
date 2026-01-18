@@ -447,6 +447,7 @@ function renderGame() {
     // Render center area
     renderTalon();
     renderCurrentTrick();
+    renderLastTrick();
     renderContractInfo();
     renderBiddingHistory();
 
@@ -621,6 +622,78 @@ function renderCurrentTrick() {
         wrapper.appendChild(label);
         wrapper.appendChild(img);
         trickContainer.appendChild(wrapper);
+    });
+}
+
+function renderLastTrick() {
+    const lastTrickEl = document.getElementById('last-trick');
+    const cardsContainer = lastTrickEl.querySelector('.last-trick-cards');
+    cardsContainer.innerHTML = '';
+
+    const round = gameState.current_round;
+    if (!round || !round.tricks || round.tricks.length < 2) {
+        // No completed trick yet (need at least 2 tricks - one complete, one in progress)
+        // Or if only 1 trick and it's complete, show it
+        if (round?.tricks?.length === 1 && round.tricks[0].cards?.length === 3) {
+            // First trick is complete, show it
+        } else {
+            lastTrickEl.classList.remove('visible');
+            return;
+        }
+    }
+
+    // Find the last completed trick (one with 3 cards that's not the current trick)
+    let lastCompletedTrick = null;
+    for (let i = round.tricks.length - 1; i >= 0; i--) {
+        const trick = round.tricks[i];
+        if (trick.cards && trick.cards.length === 3) {
+            // This is a completed trick
+            // If it's the last trick and there are more tricks, or if there's only one trick
+            if (i < round.tricks.length - 1 || round.tricks.length === 1 ||
+                (i === round.tricks.length - 1 && trick.cards.length === 3)) {
+                lastCompletedTrick = trick;
+                break;
+            }
+        }
+    }
+
+    // If the current trick has 3 cards, it's actually the last completed trick
+    const currentTrick = round.tricks[round.tricks.length - 1];
+    if (currentTrick?.cards?.length === 3) {
+        lastCompletedTrick = currentTrick;
+    } else if (round.tricks.length >= 2) {
+        // The previous trick is the last completed one
+        lastCompletedTrick = round.tricks[round.tricks.length - 2];
+    }
+
+    if (!lastCompletedTrick || !lastCompletedTrick.cards || lastCompletedTrick.cards.length !== 3) {
+        lastTrickEl.classList.remove('visible');
+        return;
+    }
+
+    lastTrickEl.classList.add('visible');
+
+    lastCompletedTrick.cards.forEach(cardPlay => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'trick-card-wrapper';
+
+        const label = document.createElement('span');
+        label.className = 'trick-card-player';
+        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
+            label.classList.add('trick-card-winner');
+        }
+        const playerName = getPlayerName(cardPlay.player_id);
+        // Shorten player name for compact display
+        label.textContent = playerName.split(' ')[0].substring(0, 3);
+
+        const img = document.createElement('img');
+        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.alt = cardPlay.card.id;
+        img.className = 'card';
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(img);
+        cardsContainer.appendChild(wrapper);
     });
 }
 
