@@ -515,6 +515,54 @@ class TestAuction(unittest.TestCase):
         self.assertEqual(contract.bid_value, 3)
         self.assertTrue(contract.is_in_hand)
 
+    def test_in_hand_winner_must_select_contract_before_playing(self):
+        """
+        Test that in_hand winner must select contract level before playing starts.
+
+        P1 bids 2, P2 bids 3, P3 bids in_hand
+        After auction: P3 is declarer, no trick started, must choose level 2-5
+        After announce_contract: trick starts, playing begins
+        """
+        from models import RoundPhase
+        auction = self.game.current_round.auction
+        round = self.game.current_round
+
+        # P1 bids 2
+        self.engine.place_bid(1, 'game', 2)
+
+        # P2 bids 3
+        self.engine.place_bid(2, 'game', 3)
+
+        # P3 bids in_hand
+        self.engine.place_bid(3, 'in_hand', 0)
+
+        # Auction complete - P3 wins
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        self.assertEqual(round.declarer_id, 3)
+
+        # Phase is PLAYING but no trick started yet (no contract announced)
+        self.assertEqual(round.phase, RoundPhase.PLAYING)
+        self.assertIsNone(round.contract)
+        self.assertIsNone(round.current_trick)
+
+        # Game state should include legal_contract_levels
+        state = self.engine.get_game_state()
+        self.assertIn('legal_contract_levels', state)
+        self.assertEqual(state['legal_contract_levels'], [2, 3, 4, 5])
+
+        # P3 announces contract with level 3
+        self.engine.announce_contract(3, 'suit', 'spades', level=3)
+
+        # Now contract is set and trick has started
+        self.assertIsNotNone(round.contract)
+        self.assertEqual(round.contract.bid_value, 3)
+        self.assertTrue(round.contract.is_in_hand)
+        self.assertIsNotNone(round.current_trick)
+
+        # Game state should no longer include legal_contract_levels
+        state = self.engine.get_game_state()
+        self.assertNotIn('legal_contract_levels', state)
+
     def test_in_hand_single_winner_contract_options(self):
         """Test that a single in_hand winner (no other in_hand bidders) gets options 2-5."""
         auction = self.game.current_round.auction

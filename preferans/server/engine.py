@@ -463,8 +463,9 @@ class GameEngine:
 
         if is_in_hand:
             # Skip exchange phase for in_hand games
+            # Don't start trick yet - wait for announce_contract to be called
+            # so the player can choose their contract level (2-5 for undeclared in_hand)
             round.phase = RoundPhase.PLAYING
-            round.start_new_trick(lead_player_id=winner.id)
         else:
             round.phase = RoundPhase.EXCHANGING
 
