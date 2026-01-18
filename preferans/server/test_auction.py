@@ -503,7 +503,7 @@ class TestAuction(unittest.TestCase):
 
         # P3 contract options: 2-5 (NOT limited by previous bids of 2 and 3)
         legal_levels = self.engine.get_legal_contract_levels(3)
-        self.assertEqual(legal_levels, [2, 3, 4, 5])
+        self.assertEqual(legal_levels, [2, 3, 4, 5, 6, 7])
 
         # P3 can choose any level from 2-5, even level 2 or 3 which were already bid
         # Let's test choosing level 3
@@ -548,7 +548,7 @@ class TestAuction(unittest.TestCase):
         # Game state should include legal_contract_levels
         state = self.engine.get_game_state()
         self.assertIn('legal_contract_levels', state)
-        self.assertEqual(state['legal_contract_levels'], [2, 3, 4, 5])
+        self.assertEqual(state['legal_contract_levels'], [2, 3, 4, 5, 6, 7])
 
         # P3 announces contract with level 3
         self.engine.announce_contract(3, 'suit', 'spades', level=3)
@@ -583,7 +583,7 @@ class TestAuction(unittest.TestCase):
 
         # P3 should have options 2-5
         legal_levels = self.engine.get_legal_contract_levels(3)
-        self.assertEqual(legal_levels, [2, 3, 4, 5])
+        self.assertEqual(legal_levels, [2, 3, 4, 5, 6, 7])
 
     def test_in_hand_declared_value_contract_options(self):
         """Test that an in_hand winner with declared value only has that one option."""
@@ -613,12 +613,12 @@ class TestAuction(unittest.TestCase):
         self.assertEqual(winner_bid.player_id, 2)
         self.assertEqual(winner_bid.value, 4)
 
-        # P2 should only have option 4 (the declared value)
+        # P2 can choose declared level (4) or higher (5, betl, sans)
         legal_levels = self.engine.get_legal_contract_levels(2)
-        self.assertEqual(legal_levels, [4])
+        self.assertEqual(legal_levels, [4, 5, 6, 7])
 
     def test_regular_game_winner_contract_options(self):
-        """Test that a regular game winner only has the winning bid level as option."""
+        """Test that a regular game winner can choose winning level or higher."""
         auction = self.game.current_round.auction
 
         # P1 bids 2
@@ -642,9 +642,9 @@ class TestAuction(unittest.TestCase):
         self.assertEqual(winner_bid.player_id, 1)
         self.assertEqual(winner_bid.value, 3)
 
-        # P1 should only have option 3 (the winning game bid)
+        # P1 can choose winning level (3) or higher (4, 5, betl, sans)
         legal_levels = self.engine.get_legal_contract_levels(1)
-        self.assertEqual(legal_levels, [3])
+        self.assertEqual(legal_levels, [3, 4, 5, 6, 7])
 
 
 if __name__ == '__main__':
