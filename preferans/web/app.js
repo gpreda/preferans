@@ -290,6 +290,12 @@ async function playCard(cardId) {
     const currentPlayerId = gameState.current_player_id;
     if (!currentPlayerId) return;
 
+    // Don't play if contract hasn't been announced yet
+    if (gameState.legal_contract_levels && gameState.legal_contract_levels.length > 0) {
+        showMessage(t('mustAnnounceContractFirst'), 'error');
+        return;
+    }
+
     try {
         const response = await fetch('/api/game/play', {
             method: 'POST',

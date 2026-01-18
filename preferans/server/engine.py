@@ -617,6 +617,8 @@ class GameEngine:
 
         if not trick:
             print(f"[play_card] ERROR: No active trick!")
+            if not round.contract:
+                raise GameError("Must announce contract before playing")
             raise GameError("No active trick")
 
         # Validate it's this player's turn
