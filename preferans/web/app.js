@@ -1300,15 +1300,24 @@ function showActionPanelForPhase(phase) {
 
         case 'exchanging':
             const declarer = gameState.players?.find(p => p.id === declarerId);
-            if (declarer && declarer.hand.length === 10) {
-                // Already discarded, show contract controls
+            const discarded = round?.discarded || [];
+            const talonCount = round?.talon_count || 0;
+
+            if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
+                // Exchange complete (picked up talon and discarded 2), show contract controls
                 elements.contractControls.classList.remove('hidden');
                 populateContractOptions();
-            } else {
-                // Show exchange controls
+            } else if (declarer && declarer.hand.length === 12) {
+                // Talon picked up, need to discard 2 cards
                 elements.exchangeControls.classList.remove('hidden');
-                const pickupBtn = document.getElementById('pickup-talon-btn');
-                pickupBtn.classList.toggle('hidden', declarer && declarer.hand.length === 12);
+                document.getElementById('pickup-talon-btn').classList.add('hidden');
+                document.getElementById('discard-btn').classList.remove('hidden');
+                updateDiscardButton();
+            } else if (talonCount > 0) {
+                // Talon not picked up yet, show pickup button
+                elements.exchangeControls.classList.remove('hidden');
+                document.getElementById('pickup-talon-btn').classList.remove('hidden');
+                document.getElementById('discard-btn').classList.add('hidden');
             }
             break;
 
