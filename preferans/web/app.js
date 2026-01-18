@@ -1,10 +1,10 @@
 // Preferans Game Client
 
 let gameState = null;
-let selectedCards = [];
+let selectedCards = [];  // Cards selected for discard
 
 // Debug logging utility
-const DEBUG = false;
+const DEBUG = true;
 function debug(category, message, data = null) {
     if (!DEBUG) return;
     const timestamp = new Date().toISOString().substr(11, 12);
@@ -200,6 +200,8 @@ async function checkServer() {
 
 async function startNewGame() {
     debug('GAME', 'startNewGame: initiating new game');
+    // Clear state
+    selectedCards = [];
     try {
         showMessage(t('startingNewGame'));
         const response = await fetch('/api/game/new', {
@@ -318,6 +320,8 @@ function getBidDescription(bidType, value) {
 
 async function pickUpTalon() {
     debug('EXCHANGE', 'pickUpTalon: attempting to pick up talon');
+    // Clear any previous discard selection
+    selectedCards = [];
 
     if (!gameState) {
         debugError('EXCHANGE', 'pickUpTalon: no game state');
@@ -374,6 +378,17 @@ async function pickUpTalon() {
     }
 }
 
+// Update the discard button state
+function updateDiscardButton() {
+    const discardBtn = document.getElementById('discard-btn');
+    if (discardBtn) {
+        discardBtn.disabled = selectedCards.length !== 2;
+        discardBtn.textContent = selectedCards.length === 2
+            ? t('confirmDiscard')
+            : t('selectTwoCards', 2 - selectedCards.length);
+    }
+}
+
 async function discardSelected() {
     debug('EXCHANGE', 'discardSelected: attempting to discard', { selectedCards });
 
@@ -420,10 +435,6 @@ async function discardSelected() {
                 return;
             }
             gameState = data.state;
-            const declarer = gameState.players?.find(p => p.id === declarerId);
-            debug('EXCHANGE', 'discardSelected: success', {
-                declarerHandSize: declarer?.hand?.length
-            });
             selectedCards = [];
             renderGame();
             showMessage(t('cardsDiscarded'), 'success');
@@ -810,11 +821,6 @@ function toggleCardSelection(cardId) {
     updateDiscardButton();
 }
 
-function updateDiscardButton() {
-    const discardBtn = document.getElementById('discard-btn');
-    discardBtn.disabled = selectedCards.length !== 2;
-}
-
 function populateContractOptions() {
     const levelSelect = document.getElementById('contract-level');
     levelSelect.innerHTML = '';
@@ -865,6 +871,7 @@ function getPlayerName(playerId) {
 // === Rendering Functions ===
 
 function renderGame() {
+    console.log('=== RENDER GAME ===', gameState?.current_round?.phase);
     debug('RENDER', 'renderGame: starting render');
 
     if (!gameState) {
@@ -874,6 +881,7 @@ function renderGame() {
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
+    console.log('=== PHASE:', phase, '===');
     const auctionPhase = gameState.auction_phase;
 
     debug('RENDER', 'renderGame: phase info', {
@@ -974,7 +982,6 @@ function renderPlayers() {
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
-        playerEl.querySelector('.score-value').textContent = player.score;
         playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
 
         // Role
@@ -1015,6 +1022,9 @@ function renderPlayerCards(player, playerEl) {
     const legalCards = gameState.legal_cards || [];
     const legalCardIds = legalCards.map(c => c.id);
 
+    // Discard mode: declarer has 12 cards and needs to discard 2
+    const isDiscardMode = isExchanging && player.id === declarerId && player.hand.length === 12;
+
     player.hand.forEach(card => {
         const img = document.createElement('img');
         img.src = `/api/cards/${card.id}/image`;
@@ -1023,12 +1033,13 @@ function renderPlayerCards(player, playerEl) {
         img.title = formatCardName(card.id);
         img.dataset.cardId = card.id;
 
-        // Handle card selection for discarding
-        if (isExchanging && player.id === declarerId && player.hand.length === 12) {
-            img.classList.add('selectable');
-            if (selectedCards.includes(card.id)) {
-                img.classList.add('selected');
+        // Handle card selection for discard mode
+        if (isDiscardMode) {
+            const isSelected = selectedCards.includes(card.id);
+            if (isSelected) {
+                img.classList.add('selected-for-discard');
             }
+            img.classList.add('selectable');
             img.addEventListener('click', () => toggleCardSelection(card.id));
         }
 
@@ -1065,19 +1076,37 @@ function renderTalon() {
     const round = gameState.current_round;
     if (!round) return;
 
+    const talonCards = round.talon || [];
     const talonCount = round.talon_count || 0;
 
-    // Show card backs for talon
-    for (let i = 0; i < talonCount; i++) {
-        const img = document.createElement('img');
-        img.src = '/api/styles/classic/back';
-        img.alt = t('talonCard');
-        img.className = 'card';
-        talonContainer.appendChild(img);
-    }
+    elements.talon.classList.remove('exchange-mode');
+    elements.talon.querySelector('.talon-label').textContent = 'Talon';
 
-    // Hide talon section if no cards
-    elements.talon.style.display = talonCount > 0 ? 'flex' : 'none';
+    if (talonCards.length > 0) {
+        // Show actual talon cards face-up (during exchange before pickup)
+        talonCards.forEach(card => {
+            const img = document.createElement('img');
+            img.src = `/api/cards/${card.id}/image`;
+            img.alt = card.id;
+            img.className = 'card';
+            img.title = formatCardName(card.id);
+            talonContainer.appendChild(img);
+        });
+        elements.talon.style.display = 'flex';
+    } else if (talonCount > 0) {
+        // Show card backs when talon exists but is hidden (during auction)
+        for (let i = 0; i < talonCount; i++) {
+            const img = document.createElement('img');
+            img.src = '/api/styles/classic/back';
+            img.alt = t('talonCard');
+            img.className = 'card';
+            talonContainer.appendChild(img);
+        }
+        elements.talon.style.display = 'flex';
+    } else {
+        // Hide talon section if no cards
+        elements.talon.style.display = 'none';
+    }
 }
 
 function renderCurrentTrick() {
@@ -1294,15 +1323,24 @@ function showActionPanelForPhase(phase) {
 
         case 'exchanging':
             const declarer = gameState.players?.find(p => p.id === declarerId);
-            if (declarer && declarer.hand.length === 10) {
-                // Already discarded, show contract controls
+            const talonCards = round?.talon || [];
+            const discarded = round?.discarded || [];
+
+            if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
+                // Exchange complete, show contract controls
                 elements.contractControls.classList.remove('hidden');
                 populateContractOptions();
-            } else {
-                // Show exchange controls
+            } else if (declarer && declarer.hand.length === 12) {
+                // Talon picked up, need to discard 2 cards
                 elements.exchangeControls.classList.remove('hidden');
-                const pickupBtn = document.getElementById('pickup-talon-btn');
-                pickupBtn.classList.toggle('hidden', declarer && declarer.hand.length === 12);
+                document.getElementById('pickup-talon-btn').classList.add('hidden');
+                document.getElementById('discard-btn').classList.remove('hidden');
+                updateDiscardButton();
+            } else if (talonCards.length > 0) {
+                // Talon visible, need to pick up
+                elements.exchangeControls.classList.remove('hidden');
+                document.getElementById('pickup-talon-btn').classList.remove('hidden');
+                document.getElementById('discard-btn').classList.add('hidden');
             }
             break;
 

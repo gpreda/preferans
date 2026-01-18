@@ -314,23 +314,17 @@ class GameEngine:
                 return
 
             # If betl is bid, give other in_hand players a chance to respond with sans
-            # BUT only if the betl bidder was already an in_hand player (upgrading from undeclared)
-            # If they're a new entry to the auction, their betl beats any undeclared in_hand immediately
+            # Any undeclared in_hand player should get a chance to respond
             if last_bid.is_betl():
-                betl_bidder_was_in_hand = any(
-                    b.player_id == last_bid.player_id and b.is_in_hand() and b != last_bid
-                    for b in auction.bids
-                )
-                if betl_bidder_was_in_hand:
-                    undeclared_in_hand = [pid for pid in auction.in_hand_players
-                                          if pid != last_bid.player_id
-                                          and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
-                                                    for b in auction.bids)]
-                    if undeclared_in_hand:
-                        # Reset players_bid_this_phase so undeclared can respond
-                        auction.players_bid_this_phase = [last_bid.player_id]
-                        self._set_next_bidder_for_in_hand_deciding(auction)
-                        return
+                undeclared_in_hand = [pid for pid in auction.in_hand_players
+                                      if pid != last_bid.player_id
+                                      and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
+                                                for b in auction.bids)]
+                if undeclared_in_hand:
+                    # Reset players_bid_this_phase so undeclared can respond
+                    auction.players_bid_this_phase = [last_bid.player_id]
+                    self._set_next_bidder_for_in_hand_deciding(auction)
+                    return
 
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
@@ -486,14 +480,21 @@ class GameEngine:
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can pick up talon")
 
+        if len(round.talon) == 0:
+            raise InvalidMoveError("Talon already picked up")
+
         player = self._get_player(player_id)
 
         # Add talon cards to player's hand
-        for card in round.talon:
+        talon_cards = list(round.talon)  # Copy before clearing
+        for card in talon_cards:
             player.add_card(card)
 
+        # Clear talon after pickup
+        round.talon = []
+
         player.sort_hand()
-        return round.talon
+        return talon_cards
 
     def discard_cards(self, player_id: int, card_ids: list[str]) -> list[Card]:
         """Declarer discards two cards after picking up talon."""
@@ -551,9 +552,15 @@ class GameEngine:
         ))
         print(f"[announce_contract] is_in_hand={is_in_hand}")
 
-        # For regular games, must be in exchanging phase and have discarded
+        # For regular games, must be in exchanging phase and have completed exchange
         if not is_in_hand:
             self._validate_phase(RoundPhase.EXCHANGING)
+            # Check that talon was picked up (talon should be empty)
+            if len(round.talon) > 0:
+                raise InvalidMoveError("Must pick up talon before announcing contract")
+            # Check that cards were discarded
+            if len(round.discarded) != 2:
+                raise InvalidMoveError("Must discard 2 cards before announcing contract")
             player = self._get_player(player_id)
             if len(player.hand) != 10:
                 raise InvalidMoveError("Must discard before announcing contract")
@@ -605,8 +612,10 @@ class GameEngine:
         # Move to playing phase
         round.phase = RoundPhase.PLAYING
 
-        # Start first trick - declarer leads
-        round.start_new_trick(lead_player_id=player_id)
+        # Determine who leads the first trick
+        first_lead_id = self._get_first_lead_player_id(player_id, ctype)
+        print(f"[announce_contract] First lead player: P{first_lead_id}")
+        round.start_new_trick(lead_player_id=first_lead_id)
 
     # === Playing Phase ===
 
@@ -624,8 +633,6 @@ class GameEngine:
 
         if not trick:
             print(f"[play_card] ERROR: No active trick!")
-            if not round.contract:
-                raise GameError("Must announce contract before playing")
             raise GameError("No active trick")
 
         # Validate it's this player's turn
@@ -654,7 +661,10 @@ class GameEngine:
         # Check if trick is complete (3 cards played)
         if len(trick.cards) == 3:
             trump = round.contract.trump_suit if round.contract.type == ContractType.SUIT else None
+            print(f"[play_card] Trick complete! Cards: {[(pid, c.id) for pid, c in trick.cards]}")
+            print(f"[play_card] Trump suit: {trump}, Contract type: {round.contract.type}")
             winner_id = trick.determine_winner(trump_suit=trump)
+            print(f"[play_card] Winner: P{winner_id}")
             winner = self._get_player(winner_id)
             winner.tricks_won += 1
 
@@ -843,6 +853,37 @@ class GameEngine:
                 return p
         raise GameError(f"No player at position {position}")
 
+    def _get_first_lead_player_id(self, declarer_id: int, contract_type: ContractType) -> int:
+        """Determine who leads the first trick.
+
+        Rules:
+        - For Sans: always the left player from the declarer (counter-clockwise)
+        - For other contracts: forehand (position 1) plays first
+        - If forehand is the declarer, the next defender in counter-clockwise order plays first
+        """
+        declarer = self._get_player(declarer_id)
+
+        if contract_type == ContractType.SANS:
+            # For Sans, always the left player from declarer (counter-clockwise)
+            next_position = ((declarer.position) % 3) + 1
+            return self._get_player_by_position(next_position).id
+
+        # For other contracts: forehand plays first, unless they are the declarer
+        forehand = self._get_player_by_position(1)
+        if forehand.id != declarer_id:
+            return forehand.id
+
+        # Forehand is the declarer, so next defender in counter-clockwise order plays first
+        # Counter-clockwise from position 1: 1 → 3 → 2
+        for i in range(1, 3):
+            next_position = ((1 + i) % 3) + 1  # 1→3, then 3→2
+            player = self._get_player_by_position(next_position)
+            if player.id != declarer_id:
+                return player.id
+
+        # Shouldn't reach here, but fallback to declarer
+        return declarer_id
+
     def _find_card_in_hand(self, player: Player, card_id: str) -> Optional[Card]:
         """Find a card in player's hand by ID."""
         for card in player.hand:
@@ -1001,20 +1042,17 @@ class GameEngine:
             return [7]
         elif winner_bid.is_in_hand():
             if winner_bid.value > 0:
-                # In_hand with declared value - can play that level or higher
-                levels = list(range(winner_bid.value, 6)) + [6, 7]
-                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> {levels}")
-                return levels
+                # In_hand with declared value
+                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> [{winner_bid.value}]")
+                return [winner_bid.value]
             else:
-                # In_hand without declared value - can choose 2-7
-                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5, 6, 7]")
-                return [2, 3, 4, 5, 6, 7]
+                # In_hand without declared value - can choose 2-5
+                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5]")
+                return [2, 3, 4, 5]
         else:
-            # Regular game bid - can play winning level or higher
-            min_level = winner_bid.value
-            levels = list(range(min_level, 6)) + [6, 7]
-            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> {levels}")
-            return levels
+            # Regular game bid - must use the winning bid level
+            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> [{winner_bid.value}]")
+            return [winner_bid.value]
 
     def get_game_state(self, viewer_id: Optional[int] = None) -> dict:
         """Get the current game state, optionally from a player's perspective."""
