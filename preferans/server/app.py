@@ -327,7 +327,7 @@ def announce_contract():
         trump_suit = current_engine.get_best_trump_suit(player_id)
 
     try:
-        current_engine.announce_contract(player_id, contract_type, trump_suit)
+        current_engine.announce_contract(player_id, contract_type, trump_suit, level=level)
         return jsonify({
             'success': True,
             'state': current_engine.get_game_state()
