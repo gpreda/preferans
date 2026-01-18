@@ -110,7 +110,7 @@ header h1 {
     color: #fff;
 }
 
-.player-tricks {
+.player-score, .player-tricks {
     font-size: 0.75rem;
     color: #aaa;
 }
@@ -340,10 +340,13 @@ header h1 {
 
 .card.playable {
     cursor: grab;
+    border: 3px solid #4ecca3;
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.6);
 }
 
 .card.playable:hover {
     box-shadow: 0 0 15px #4ecca3;
+    border-color: #7fffd4;
 }
 
 .card.playable:active {
@@ -616,42 +619,29 @@ header h1 {
     cursor: pointer;
 }
 
-/* Last Trick - bottom left corner */
-.last-trick {
-    position: absolute;
-    bottom: 1rem;
-    left: 1rem;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 8px;
-    padding: 0.5rem;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    z-index: 5;
+/* Trick completion animation */
+.trick-card-wrapper.animating {
+    position: fixed;
+    z-index: 100;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
 }
 
-.last-trick.visible {
-    display: flex;
+.trick-card-wrapper.animating .trick-card-player {
+    opacity: 0;
+    transition: opacity 0.1s;
 }
 
-.last-trick-label {
-    font-size: 0.7rem;
-    color: #aaa;
-    text-transform: uppercase;
-    margin-bottom: 0.3rem;
+/* Staggered animation delays for each card */
+.trick-card-wrapper.animating:nth-child(1) {
+    transition-delay: 0s;
 }
 
-.last-trick-cards {
-    display: flex;
-    gap: 3px;
+.trick-card-wrapper.animating:nth-child(2) {
+    transition-delay: 0.05s;
 }
 
-.last-trick-cards .card {
-    width: 5vmin;
-    height: 7vmin;
-    border-radius: 0.3vmin;
-}
-
-.last-trick-cards .card.winner {
-    box-shadow: 0 0 6px 2px #4ecca3;
+.trick-card-wrapper.animating:nth-child(3) {
+    transition-delay: 0.1s;
 }
