@@ -25,6 +25,13 @@ const fallbackTranslations = {
         biddingHistory: 'Bidding',
         dropCardHere: 'Drop card here',
         lastTrick: 'Last Trick',
+        mustAnnounceContractFirst: 'You must announce a contract first',
+        // Exchange
+        discardTwoCards: 'Select 2 cards to discard',
+        confirmDiscard: 'Confirm Discard',
+        selectTwoCards: 'Select {0} more card(s)',
+        talonPickedUp: 'Talon cards added to hand',
+        cardsDiscarded: 'Cards discarded',
         // Phases
         'phases.auction': 'Auction',
         'phases.exchanging': 'Exchange',
@@ -58,6 +65,13 @@ const fallbackTranslations = {
         biddingHistory: 'Licitacija',
         dropCardHere: 'Spusti kartu ovde',
         lastTrick: 'Prethodni štih',
+        mustAnnounceContractFirst: 'Morate prvo objaviti ugovor',
+        // Exchange
+        discardTwoCards: 'Izaberi 2 karte za odbacivanje',
+        confirmDiscard: 'Potvrdi odbacivanje',
+        selectTwoCards: 'Izaberi još {0} kart(u/e)',
+        talonPickedUp: 'Talon karte dodate u ruku',
+        cardsDiscarded: 'Karte odbačene',
         // Phases
         'phases.auction': 'Licitacija',
         'phases.exchanging': 'Razmena',
