@@ -1057,25 +1057,30 @@ function renderPlayerCards(player, playerEl) {
         }
 
         // Handle card playing (click or drag)
-        if (isPlaying && isCurrentPlayer && legalCardIds.includes(card.id)) {
-            img.classList.add('playable');
-            img.draggable = true;
-            img.addEventListener('click', () => playCard(card.id));
+        if (isPlaying && isCurrentPlayer) {
+            if (legalCardIds.includes(card.id)) {
+                img.classList.add('playable');
+                img.draggable = true;
+                img.addEventListener('click', () => playCard(card.id));
 
-            // Drag events
-            img.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/plain', card.id);
-                e.dataTransfer.effectAllowed = 'move';
-                img.classList.add('dragging');
-                const playArea = document.getElementById('play-area');
-                if (playArea) playArea.classList.add('drag-over');
-            });
+                // Drag events
+                img.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', card.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    img.classList.add('dragging');
+                    const playArea = document.getElementById('play-area');
+                    if (playArea) playArea.classList.add('drag-over');
+                });
 
-            img.addEventListener('dragend', () => {
-                img.classList.remove('dragging');
-                const playArea = document.getElementById('play-area');
-                if (playArea) playArea.classList.remove('drag-over');
-            });
+                img.addEventListener('dragend', () => {
+                    img.classList.remove('dragging');
+                    const playArea = document.getElementById('play-area');
+                    if (playArea) playArea.classList.remove('drag-over');
+                });
+            } else {
+                // Card is not legal to play - dim it
+                img.classList.add('not-playable');
+            }
         }
 
         cardsContainer.appendChild(img);
