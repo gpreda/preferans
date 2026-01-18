@@ -659,12 +659,12 @@ class GameEngine:
         # Find who has played
         played_ids = [pid for pid, _ in trick.cards]
 
-        # Get lead player position and rotate
+        # Get lead player position and rotate counter-clockwise (same as bidding: 1→3→2)
         lead_player = self._get_player(trick.lead_player_id)
-        next_position = lead_player.position
 
-        for _ in range(3):
-            next_position = (next_position % 3) + 1
+        for i in range(1, 4):
+            # Counter-clockwise order: position 1→3→2→1 (same as bidding)
+            next_position = ((lead_player.position + i) % 3) + 1
             next_player = self._get_player_by_position(next_position)
             if next_player.id not in played_ids:
                 return next_player.id
