@@ -159,6 +159,12 @@ async function placeBid(bidType, value) {
 
         if (data.success) {
             gameState = data.state;
+            console.log('[placeBid] Bid successful. New game state:', gameState);
+            console.log('[placeBid] Phase:', gameState.current_round?.phase);
+            console.log('[placeBid] Auction phase:', gameState.auction_phase);
+            console.log('[placeBid] Declarer:', gameState.current_round?.declarer_id);
+            console.log('[placeBid] Contract:', gameState.current_round?.contract);
+            console.log('[placeBid] legal_contract_levels:', gameState.legal_contract_levels);
             renderGame();
             const playerName = getPlayerName(currentBidderId);
             const bidText = getBidDescription(bidType, value);
@@ -352,6 +358,26 @@ function populateContractOptions() {
     const levelSelect = document.getElementById('contract-level');
     levelSelect.innerHTML = '';
 
+    // Use legal_contract_levels from game state if available (set by backend)
+    const legalLevels = gameState.legal_contract_levels;
+
+    console.log('[populateContractOptions] legal_contract_levels:', legalLevels);
+
+    if (legalLevels && legalLevels.length > 0) {
+        // Use the levels provided by the backend
+        legalLevels.forEach(level => {
+            if (level === 6) {
+                addOption(levelSelect, '6', `6 (${t('betl')})`);
+            } else if (level === 7) {
+                addOption(levelSelect, '7', `7 (${t('sans')})`);
+            } else {
+                addOption(levelSelect, level.toString(), level.toString());
+            }
+        });
+        return;
+    }
+
+    // Fallback: calculate from auction (for regular games during exchanging phase)
     const auction = gameState.current_round?.auction;
 
     // Determine minimum level from winning bid
@@ -366,6 +392,8 @@ function populateContractOptions() {
         const bidValue = auction.highest_game_bid.effective_value || auction.highest_game_bid.value || 2;
         minLevel = Math.max(2, Math.min(bidValue, 7));
     }
+
+    console.log('[populateContractOptions] fallback minLevel:', minLevel);
 
     // Add level options starting from minimum (2-7)
     for (let level = minLevel; level <= 5; level++) {
@@ -696,6 +724,12 @@ function showActionPanelForPhase(phase) {
     const round = gameState.current_round;
     const declarerId = round?.declarer_id;
 
+    // Debug logging for in_hand contract selection
+    console.log('[showActionPanelForPhase] phase:', phase);
+    console.log('[showActionPanelForPhase] declarerId:', declarerId);
+    console.log('[showActionPanelForPhase] contract:', round?.contract);
+    console.log('[showActionPanelForPhase] legal_contract_levels:', gameState.legal_contract_levels);
+
     switch (phase) {
         case 'auction':
             elements.biddingControls.classList.remove('hidden');
@@ -717,7 +751,14 @@ function showActionPanelForPhase(phase) {
             break;
 
         case 'playing':
-            elements.playControls.classList.remove('hidden');
+            // Check if contract needs to be selected first (in_hand games)
+            if (gameState.legal_contract_levels && gameState.legal_contract_levels.length > 0 && !round?.contract) {
+                console.log('[showActionPanelForPhase] In_hand game: showing contract controls for level selection');
+                elements.contractControls.classList.remove('hidden');
+                populateContractOptions();
+            } else {
+                elements.playControls.classList.remove('hidden');
+            }
             break;
 
         case 'scoring':
