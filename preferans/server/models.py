@@ -132,25 +132,34 @@ class Card:
 
     def beats(self, other: "Card", trump_suit: Optional[Suit] = None, led_suit: Optional[Suit] = None) -> bool:
         """Check if this card beats another card."""
+        print(f"[beats] {self.id} vs {other.id}, trump={trump_suit}, led={led_suit}")
+
         # Trump beats non-trump
         if trump_suit:
             if self.suit == trump_suit and other.suit != trump_suit:
+                print(f"[beats] {self.id} is trump, {other.id} is not -> True")
                 return True
             if self.suit != trump_suit and other.suit == trump_suit:
+                print(f"[beats] {self.id} is not trump, {other.id} is trump -> False")
                 return False
 
         # Same suit: higher rank wins
         if self.suit == other.suit:
-            return self.rank_value > other.rank_value
+            result = self.rank_value > other.rank_value
+            print(f"[beats] Same suit, rank {self.rank_value} vs {other.rank_value} -> {result}")
+            return result
 
         # Different suits (no trump involved): led suit wins
         if led_suit:
             if self.suit == led_suit and other.suit != led_suit:
+                print(f"[beats] {self.id} is led suit, {other.id} is not -> True")
                 return True
             if self.suit != led_suit and other.suit == led_suit:
+                print(f"[beats] {self.id} is not led suit, {other.id} is -> False")
                 return False
 
         # Different suits, neither is led: first card wins (shouldn't happen in valid play)
+        print(f"[beats] Different suits, neither trump nor led -> False")
         return False
 
     def to_dict(self) -> dict:
@@ -572,6 +581,14 @@ class Game:
 
     def to_dict(self, viewer_id: Optional[int] = None) -> dict:
         """Convert to dict, optionally hiding other players' hands."""
+        # Determine whether to show talon:
+        # - Show talon (hide_talon=False) during exchanging phase before pickup
+        # - Hide talon during auction and after pickup
+        hide_talon = True
+        if self.current_round:
+            if self.current_round.phase == RoundPhase.EXCHANGING and len(self.current_round.talon) > 0:
+                hide_talon = False
+
         return {
             "id": self.id,
             "players": [
@@ -580,7 +597,7 @@ class Game:
             ],
             "bulls": self.bulls,
             "dealer_index": self.dealer_index,
-            "current_round": self.current_round.to_dict() if self.current_round else None,
+            "current_round": self.current_round.to_dict(hide_talon=hide_talon) if self.current_round else None,
             "round_number": self.round_number,
             "status": self.status.value,
         }
