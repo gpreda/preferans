@@ -992,17 +992,20 @@ class GameEngine:
             return [7]
         elif winner_bid.is_in_hand():
             if winner_bid.value > 0:
-                # In_hand with declared value
-                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> [{winner_bid.value}]")
-                return [winner_bid.value]
+                # In_hand with declared value - can play that level or higher
+                levels = list(range(winner_bid.value, 6)) + [6, 7]
+                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> {levels}")
+                return levels
             else:
-                # In_hand without declared value - can choose 2-5
-                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5]")
-                return [2, 3, 4, 5]
+                # In_hand without declared value - can choose 2-7
+                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5, 6, 7]")
+                return [2, 3, 4, 5, 6, 7]
         else:
-            # Regular game bid - must use the winning bid level
-            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> [{winner_bid.value}]")
-            return [winner_bid.value]
+            # Regular game bid - can play winning level or higher
+            min_level = winner_bid.value
+            levels = list(range(min_level, 6)) + [6, 7]
+            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> {levels}")
+            return levels
 
     def get_game_state(self, viewer_id: Optional[int] = None) -> dict:
         """Get the current game state, optionally from a player's perspective."""
