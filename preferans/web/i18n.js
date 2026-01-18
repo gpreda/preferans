@@ -24,6 +24,7 @@ const fallbackTranslations = {
         bidding: 'Bidding',
         biddingHistory: 'Bidding',
         dropCardHere: 'Drop card here',
+        lastTrick: 'Last Trick',
         // Phases
         'phases.auction': 'Auction',
         'phases.exchanging': 'Exchange',
@@ -56,6 +57,7 @@ const fallbackTranslations = {
         bidding: 'Licitacija',
         biddingHistory: 'Licitacija',
         dropCardHere: 'Spusti kartu ovde',
+        lastTrick: 'Prethodni štih',
         // Phases
         'phases.auction': 'Licitacija',
         'phases.exchanging': 'Razmena',

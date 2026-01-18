@@ -615,3 +615,56 @@ header h1 {
     border-radius: 4px;
     cursor: pointer;
 }
+
+/* Last Trick - bottom left corner */
+.last-trick {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    padding: 0.5rem;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    z-index: 5;
+}
+
+.last-trick.visible {
+    display: flex;
+}
+
+.last-trick-label {
+    font-size: 0.7rem;
+    color: #aaa;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+}
+
+.last-trick-cards {
+    display: flex;
+    gap: 4px;
+}
+
+.last-trick-cards .card {
+    width: 5vmin;
+    height: 7vmin;
+    border-radius: 0.3vmin;
+}
+
+.last-trick-cards .trick-card-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.last-trick-cards .trick-card-player {
+    font-size: 0.6rem;
+    color: #888;
+    margin-bottom: 0.1rem;
+}
+
+.last-trick-cards .trick-card-winner {
+    color: #4ecca3;
+    font-weight: bold;
+}
