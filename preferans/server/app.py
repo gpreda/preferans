@@ -314,7 +314,15 @@ def announce_contract():
     if level is None or level < 2 or level > 7:
         return jsonify({'error': 'Invalid contract level (must be 2-7)'}), 400
 
-    # Map level to contract type
+    # Map level to contract type and trump suit
+    # In Preferans: 2=Spades, 3=Diamonds, 4=Clubs, 5=Hearts, 6=Betl, 7=Sans
+    LEVEL_TO_TRUMP = {
+        2: 'spades',
+        3: 'diamonds',
+        4: 'clubs',
+        5: 'hearts',
+    }
+
     if level == 6:
         contract_type = 'betl'
         trump_suit = None
@@ -322,9 +330,9 @@ def announce_contract():
         contract_type = 'sans'
         trump_suit = None
     else:
-        # Levels 2-5 are suit contracts (trump determined by most common suit in hand)
+        # Levels 2-5 are suit contracts with fixed trump based on level
         contract_type = 'suit'
-        trump_suit = current_engine.get_best_trump_suit(player_id)
+        trump_suit = LEVEL_TO_TRUMP[level]
 
     try:
         current_engine.announce_contract(player_id, contract_type, trump_suit, level=level)
