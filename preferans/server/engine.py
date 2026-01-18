@@ -307,16 +307,23 @@ class GameEngine:
                 return
 
             # If betl is bid, give other in_hand players a chance to respond with sans
+            # BUT only if the betl bidder was already an in_hand player (upgrading from undeclared)
+            # If they're a new entry to the auction, their betl beats any undeclared in_hand immediately
             if last_bid.is_betl():
-                undeclared_in_hand = [pid for pid in auction.in_hand_players
-                                      if pid != last_bid.player_id
-                                      and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
-                                                for b in auction.bids)]
-                if undeclared_in_hand:
-                    # Reset players_bid_this_phase so undeclared can respond
-                    auction.players_bid_this_phase = [last_bid.player_id]
-                    self._set_next_bidder_for_in_hand_deciding(auction)
-                    return
+                betl_bidder_was_in_hand = any(
+                    b.player_id == last_bid.player_id and b.is_in_hand() and b != last_bid
+                    for b in auction.bids
+                )
+                if betl_bidder_was_in_hand:
+                    undeclared_in_hand = [pid for pid in auction.in_hand_players
+                                          if pid != last_bid.player_id
+                                          and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
+                                                    for b in auction.bids)]
+                    if undeclared_in_hand:
+                        # Reset players_bid_this_phase so undeclared can respond
+                        auction.players_bid_this_phase = [last_bid.player_id]
+                        self._set_next_bidder_for_in_hand_deciding(auction)
+                        return
 
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
