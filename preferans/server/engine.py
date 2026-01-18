@@ -645,7 +645,10 @@ class GameEngine:
         # Check if trick is complete (3 cards played)
         if len(trick.cards) == 3:
             trump = round.contract.trump_suit if round.contract.type == ContractType.SUIT else None
+            print(f"[play_card] Trick complete! Cards: {[(pid, c.id) for pid, c in trick.cards]}")
+            print(f"[play_card] Trump suit: {trump}, Contract type: {round.contract.type}")
             winner_id = trick.determine_winner(trump_suit=trump)
+            print(f"[play_card] Winner: P{winner_id}")
             winner = self._get_player(winner_id)
             winner.tricks_won += 1
 
