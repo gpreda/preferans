@@ -363,12 +363,17 @@ function populateContractOptions() {
     levelSelect.innerHTML = '';
 
     const auction = gameState.current_round?.auction;
-    const winnerBid = auction?.highest_game_bid || auction?.highest_in_hand_bid;
 
     // Determine minimum level from winning bid
+    // If in_hand won, contract always starts from 2
+    // If regular game bid won, contract starts from that bid's value
     let minLevel = 2;
-    if (winnerBid) {
-        const bidValue = winnerBid.effective_value || winnerBid.value || 2;
+    if (auction?.highest_in_hand_bid) {
+        // In-hand bid won - contract can be any level from 2
+        minLevel = 2;
+    } else if (auction?.highest_game_bid) {
+        // Regular game bid won - contract starts from bid value
+        const bidValue = auction.highest_game_bid.effective_value || auction.highest_game_bid.value || 2;
         minLevel = Math.max(2, Math.min(bidValue, 7));
     }
 
