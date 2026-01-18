@@ -69,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('discard-btn').addEventListener('click', discardSelected);
 
     // Contract controls
-    document.getElementById('contract-level').addEventListener('change', updateTrumpSuitVisibility);
     document.getElementById('announce-btn').addEventListener('click', announceContract);
 
     // Next round button
@@ -246,19 +245,9 @@ async function announceContract() {
     if (!declarerId) return;
 
     const levelSelect = document.getElementById('contract-level');
-    const suitSelect = document.getElementById('trump-suit');
-    const selectedLevel = levelSelect.value;
+    const selectedLevel = parseInt(levelSelect.value, 10);
 
-    // Determine contract type and trump suit based on level
-    let contractType, trumpSuit = null;
-    if (selectedLevel === '6') {
-        contractType = 'betl';
-    } else if (selectedLevel === '7') {
-        contractType = 'sans';
-    } else if (['2', '3', '4', '5'].includes(selectedLevel)) {
-        contractType = 'suit';
-        trumpSuit = suitSelect.value;
-    } else {
+    if (selectedLevel < 2 || selectedLevel > 7) {
         showMessage('Invalid contract selection', 'error');
         return;
     }
@@ -269,8 +258,7 @@ async function announceContract() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 player_id: declarerId,
-                type: contractType,
-                trump_suit: trumpSuit
+                level: selectedLevel
             })
         });
         const data = await response.json();
@@ -278,7 +266,9 @@ async function announceContract() {
         if (data.success) {
             gameState = data.state;
             renderGame();
-            const contractName = trumpSuit ? t('suits.' + trumpSuit) : t(contractType);
+            const contractName = selectedLevel === 6 ? t('betl') :
+                                 selectedLevel === 7 ? t('sans') :
+                                 t('game') + ' ' + selectedLevel;
             showMessage(t('contractAnnounced', contractName), 'success');
         } else {
             showMessage(data.error, 'error');
@@ -377,7 +367,7 @@ function populateContractOptions() {
         minLevel = Math.max(2, Math.min(bidValue, 7));
     }
 
-    // Add level options starting from minimum
+    // Add level options starting from minimum (2-7)
     for (let level = minLevel; level <= 5; level++) {
         addOption(levelSelect, level.toString(), level.toString());
     }
@@ -391,19 +381,6 @@ function populateContractOptions() {
     if (minLevel <= 7) {
         addOption(levelSelect, '7', `7 (${t('sans')})`);
     }
-
-    // Update trump suit visibility based on initial selection
-    updateTrumpSuitVisibility();
-}
-
-function updateTrumpSuitVisibility() {
-    const levelSelect = document.getElementById('contract-level');
-    const suitSelect = document.getElementById('trump-suit');
-    const selectedLevel = levelSelect.value;
-
-    // Show trump suit selector only for levels 2-5
-    const needsSuit = ['2', '3', '4', '5'].includes(selectedLevel);
-    suitSelect.classList.toggle('hidden', !needsSuit);
 }
 
 function addOption(select, value, label) {
