@@ -527,16 +527,22 @@ class GameEngine:
             trump_suit: Required for suit contracts
             level: The contract level (2-7). Required for in_hand games without declared value.
         """
+        print(f"[announce_contract] player_id={player_id}, contract_type={contract_type}, trump_suit={trump_suit}, level={level}")
+
         round = self.game.current_round
 
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can announce contract")
 
         winner_bid = round.auction.get_winner_bid()
+        print(f"[announce_contract] winner_bid={winner_bid}, is_in_hand={winner_bid.is_in_hand() if winner_bid else None}")
+        print(f"[announce_contract] in_hand_players={round.auction.in_hand_players}")
+
         is_in_hand = winner_bid and (winner_bid.is_in_hand() or (
             (winner_bid.is_betl() or winner_bid.is_sans()) and
             winner_bid.player_id in round.auction.in_hand_players
         ))
+        print(f"[announce_contract] is_in_hand={is_in_hand}")
 
         # For regular games, must be in exchanging phase and have discarded
         if not is_in_hand:
@@ -564,6 +570,7 @@ class GameEngine:
 
         # Determine and validate bid value
         legal_levels = self.get_legal_contract_levels(player_id)
+        print(f"[announce_contract] legal_levels={legal_levels}")
 
         if level is not None:
             # Validate provided level
@@ -577,6 +584,8 @@ class GameEngine:
             # Multiple legal levels but none specified
             raise InvalidMoveError(f"Must specify level. Legal levels: {legal_levels}")
 
+        print(f"[announce_contract] bid_value={bid_value}")
+
         # Create contract
         round.contract = Contract(
             type=ctype,
@@ -584,6 +593,7 @@ class GameEngine:
             bid_value=bid_value,
             is_in_hand=is_in_hand
         )
+        print(f"[announce_contract] Created contract: type={ctype}, trump={trump}, bid_value={bid_value}, is_in_hand={is_in_hand}")
 
         # Move to playing phase
         round.phase = RoundPhase.PLAYING
@@ -949,11 +959,15 @@ class GameEngine:
         """
         round = self.game.current_round
         if round.declarer_id != player_id:
+            print(f"[get_legal_contract_levels] player_id={player_id} is not declarer (declarer_id={round.declarer_id})")
             return []
 
         winner_bid = round.auction.get_winner_bid()
         if not winner_bid:
+            print(f"[get_legal_contract_levels] No winner_bid found")
             return []
+
+        print(f"[get_legal_contract_levels] winner_bid: player_id={winner_bid.player_id}, bid_type={winner_bid.bid_type}, value={winner_bid.value}")
 
         # Check if this is an in_hand game
         is_in_hand = winner_bid.is_in_hand() or (
@@ -962,18 +976,23 @@ class GameEngine:
         )
 
         if winner_bid.is_betl():
+            print(f"[get_legal_contract_levels] Betl bid -> [6]")
             return [6]
         elif winner_bid.is_sans():
+            print(f"[get_legal_contract_levels] Sans bid -> [7]")
             return [7]
         elif winner_bid.is_in_hand():
             if winner_bid.value > 0:
                 # In_hand with declared value
+                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> [{winner_bid.value}]")
                 return [winner_bid.value]
             else:
                 # In_hand without declared value - can choose 2-5
+                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5]")
                 return [2, 3, 4, 5]
         else:
             # Regular game bid - must use the winning bid level
+            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> [{winner_bid.value}]")
             return [winner_bid.value]
 
     def get_game_state(self, viewer_id: Optional[int] = None) -> dict:
