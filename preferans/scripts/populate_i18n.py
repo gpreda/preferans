@@ -48,6 +48,9 @@ TRANSLATIONS = {
         # Bidding
         'bidding': 'Bidding',
         'pass': 'Pass',
+        'game': 'Game',
+        'inHand': 'In Hand',
+        'hold': 'Hold',
 
         # Exchange
         'pickUpTalon': 'Pick Up Talon',
@@ -162,6 +165,9 @@ TRANSLATIONS = {
         # Bidding
         'bidding': 'Licitacija',
         'pass': 'Dalje',
+        'game': 'Igra',
+        'inHand': 'Iz ruke',
+        'hold': 'Držim',
 
         # Exchange
         'pickUpTalon': 'Uzmi talon',
