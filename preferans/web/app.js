@@ -1,7 +1,71 @@
 // Preferans Game Client
+console.log('=== APP.JS LOADED ===', new Date().toISOString());
 
 let gameState = null;
 let selectedCards = [];
+
+// Debug logging utility
+const DEBUG = true;
+function debug(category, message, data = null) {
+    if (!DEBUG) return;
+    const timestamp = new Date().toISOString().substr(11, 12);
+    const prefix = `[${timestamp}] [${category}]`;
+    if (data !== null) {
+        console.log(prefix, message, data);
+    } else {
+        console.log(prefix, message);
+    }
+}
+
+function debugError(category, message, error = null) {
+    const timestamp = new Date().toISOString().substr(11, 12);
+    const prefix = `[${timestamp}] [${category}] ERROR:`;
+    if (error) {
+        console.error(prefix, message, error);
+    } else {
+        console.error(prefix, message);
+    }
+}
+
+function debugWarn(category, message, data = null) {
+    const timestamp = new Date().toISOString().substr(11, 12);
+    const prefix = `[${timestamp}] [${category}] WARN:`;
+    if (data !== null) {
+        console.warn(prefix, message, data);
+    } else {
+        console.warn(prefix, message);
+    }
+}
+
+// Validate game state integrity
+function validateGameState(context = 'unknown') {
+    if (!gameState) {
+        debugWarn('STATE', `validateGameState(${context}): gameState is null`);
+        return false;
+    }
+
+    if (!gameState.players || !Array.isArray(gameState.players)) {
+        debugError('STATE', `validateGameState(${context}): players missing or invalid`, gameState);
+        return false;
+    }
+
+    if (gameState.players.length !== 3) {
+        debugError('STATE', `validateGameState(${context}): expected 3 players, got ${gameState.players.length}`);
+        return false;
+    }
+
+    if (!gameState.current_round) {
+        debugWarn('STATE', `validateGameState(${context}): no current_round`);
+        // This might be OK at game start
+    }
+
+    debug('STATE', `validateGameState(${context}): OK`, {
+        phase: gameState.current_round?.phase,
+        players: gameState.players.map(p => ({ id: p.id, hand: p.hand?.length }))
+    });
+
+    return true;
+}
 
 // DOM Elements
 const elements = {
@@ -27,6 +91,8 @@ const elements = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    debug('INIT', 'DOMContentLoaded - initializing app');
+
     // Initialize DOM references
     elements.newGameBtn = document.getElementById('new-game-btn');
     elements.phaseIndicator = document.getElementById('phase-indicator');
@@ -47,6 +113,17 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.contractControls = document.getElementById('contract-controls');
     elements.playControls = document.getElementById('play-controls');
     elements.scoringControls = document.getElementById('scoring-controls');
+
+    // Verify all required DOM elements exist
+    const missingElements = Object.entries(elements)
+        .filter(([key, el]) => !el)
+        .map(([key]) => key);
+
+    if (missingElements.length > 0) {
+        debugError('INIT', 'Missing DOM elements:', missingElements);
+    } else {
+        debug('INIT', 'All DOM elements found');
+    }
 
     // Event listeners
     elements.newGameBtn.addEventListener('click', startNewGame);
@@ -105,16 +182,25 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function checkServer() {
+    debug('API', 'checkServer: checking server health');
     try {
         const response = await fetch('/api/health');
+        if (!response.ok) {
+            debugError('API', `checkServer: HTTP error ${response.status}`);
+            showMessage(t('serverConnectionFailed'), 'error');
+            return;
+        }
         const data = await response.json();
+        debug('API', 'checkServer: server healthy', data);
         showMessage(t('serverStatus', data.status), 'success');
     } catch (error) {
+        debugError('API', 'checkServer: failed', error);
         showMessage(t('serverConnectionFailed'), 'error');
     }
 }
 
 async function startNewGame() {
+    debug('GAME', 'startNewGame: initiating new game');
     try {
         showMessage(t('startingNewGame'));
         const response = await fetch('/api/game/new', {
@@ -124,26 +210,59 @@ async function startNewGame() {
                 players: [t('player1'), t('player2'), t('player3')]
             })
         });
+
+        if (!response.ok) {
+            debugError('API', `startNewGame: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'startNewGame: response received', { success: data.success, hasState: !!data.state });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('GAME', 'startNewGame: success but no state returned');
+                showMessage('Server returned invalid state', 'error');
+                return;
+            }
             gameState = data.state;
             selectedCards = [];
+            validateGameState('startNewGame');
+            debug('GAME', 'startNewGame: game started successfully', {
+                phase: gameState.current_round?.phase,
+                playerCount: gameState.players?.length
+            });
             renderGame();
             showMessage(t('gameStarted'), 'success');
         } else {
+            debugError('GAME', 'startNewGame: failed', data.error);
             showMessage(data.error || 'Unknown error', 'error');
         }
     } catch (error) {
+        debugError('API', 'startNewGame: exception', error);
         showMessage(t('failedToStartGame', error.message), 'error');
     }
 }
 
 async function placeBid(bidType, value) {
-    if (!gameState) return;
+    debug('BID', `placeBid: type=${bidType}, value=${value}`);
+
+    if (!gameState) {
+        debugError('BID', 'placeBid: no game state');
+        return;
+    }
 
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
-    if (!currentBidderId) return;
+    if (!currentBidderId) {
+        debugError('BID', 'placeBid: no current bidder', {
+            hasRound: !!gameState.current_round,
+            hasAuction: !!gameState.current_round?.auction
+        });
+        return;
+    }
+
+    debug('BID', `placeBid: bidder=${currentBidderId}`);
 
     try {
         const response = await fetch('/api/game/bid', {
@@ -155,24 +274,36 @@ async function placeBid(bidType, value) {
                 value: value
             })
         });
+
+        if (!response.ok) {
+            debugError('API', `placeBid: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'placeBid: response', { success: data.success });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('BID', 'placeBid: success but no state');
+                return;
+            }
             gameState = data.state;
-            console.log('[placeBid] Bid successful. New game state:', gameState);
-            console.log('[placeBid] Phase:', gameState.current_round?.phase);
-            console.log('[placeBid] Auction phase:', gameState.auction_phase);
-            console.log('[placeBid] Declarer:', gameState.current_round?.declarer_id);
-            console.log('[placeBid] Contract:', gameState.current_round?.contract);
-            console.log('[placeBid] legal_contract_levels:', gameState.legal_contract_levels);
+            debug('BID', 'placeBid: auction phase after bid', {
+                phase: gameState.current_round?.auction?.phase,
+                nextBidder: gameState.current_round?.auction?.current_bidder_id
+            });
             renderGame();
             const playerName = getPlayerName(currentBidderId);
             const bidText = getBidDescription(bidType, value);
             showMessage(`${playerName} ${bidText}`, 'success');
         } else {
+            debugError('BID', 'placeBid: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'placeBid: exception', error);
         showMessage(t('failedToPlaceBid', error.message), 'error');
     }
 }
@@ -187,10 +318,22 @@ function getBidDescription(bidType, value) {
 }
 
 async function pickUpTalon() {
-    if (!gameState) return;
+    debug('EXCHANGE', 'pickUpTalon: attempting to pick up talon');
+
+    if (!gameState) {
+        debugError('EXCHANGE', 'pickUpTalon: no game state');
+        return;
+    }
 
     const declarerId = gameState.current_round?.declarer_id;
-    if (!declarerId) return;
+    if (!declarerId) {
+        debugError('EXCHANGE', 'pickUpTalon: no declarer', {
+            hasRound: !!gameState.current_round
+        });
+        return;
+    }
+
+    debug('EXCHANGE', `pickUpTalon: declarer=${declarerId}`);
 
     try {
         const response = await fetch('/api/game/talon', {
@@ -198,27 +341,60 @@ async function pickUpTalon() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ player_id: declarerId })
         });
+
+        if (!response.ok) {
+            debugError('API', `pickUpTalon: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'pickUpTalon: response', { success: data.success });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('EXCHANGE', 'pickUpTalon: success but no state');
+                return;
+            }
             gameState = data.state;
+            const declarer = gameState.players?.find(p => p.id === declarerId);
+            debug('EXCHANGE', 'pickUpTalon: success', {
+                declarerHandSize: declarer?.hand?.length
+            });
             renderGame();
             showMessage(t('talonPickedUp'), 'success');
             // Hide pickup button, show discard section
             document.getElementById('pickup-talon-btn').classList.add('hidden');
         } else {
+            debugError('EXCHANGE', 'pickUpTalon: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'pickUpTalon: exception', error);
         showMessage(t('failedToPickUpTalon', error.message), 'error');
     }
 }
 
 async function discardSelected() {
-    if (!gameState || selectedCards.length !== 2) return;
+    debug('EXCHANGE', 'discardSelected: attempting to discard', { selectedCards });
+
+    if (!gameState) {
+        debugError('EXCHANGE', 'discardSelected: no game state');
+        return;
+    }
+
+    if (selectedCards.length !== 2) {
+        debugWarn('EXCHANGE', `discardSelected: need 2 cards, have ${selectedCards.length}`);
+        return;
+    }
 
     const declarerId = gameState.current_round?.declarer_id;
-    if (!declarerId) return;
+    if (!declarerId) {
+        debugError('EXCHANGE', 'discardSelected: no declarer');
+        return;
+    }
+
+    debug('EXCHANGE', `discardSelected: declarer=${declarerId}, cards=${selectedCards.join(',')}`);
 
     try {
         const response = await fetch('/api/game/discard', {
@@ -229,31 +405,64 @@ async function discardSelected() {
                 card_ids: selectedCards
             })
         });
+
+        if (!response.ok) {
+            debugError('API', `discardSelected: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'discardSelected: response', { success: data.success });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('EXCHANGE', 'discardSelected: success but no state');
+                return;
+            }
             gameState = data.state;
+            const declarer = gameState.players?.find(p => p.id === declarerId);
+            debug('EXCHANGE', 'discardSelected: success', {
+                declarerHandSize: declarer?.hand?.length
+            });
             selectedCards = [];
             renderGame();
             showMessage(t('cardsDiscarded'), 'success');
         } else {
+            debugError('EXCHANGE', 'discardSelected: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'discardSelected: exception', error);
         showMessage(t('failedToDiscard', error.message), 'error');
     }
 }
 
 async function announceContract() {
-    if (!gameState) return;
+    debug('CONTRACT', 'announceContract: starting');
+
+    if (!gameState) {
+        debugError('CONTRACT', 'announceContract: no game state');
+        return;
+    }
 
     const declarerId = gameState.current_round?.declarer_id;
-    if (!declarerId) return;
+    if (!declarerId) {
+        debugError('CONTRACT', 'announceContract: no declarer');
+        return;
+    }
 
     const levelSelect = document.getElementById('contract-level');
-    const selectedLevel = parseInt(levelSelect.value, 10);
+    if (!levelSelect) {
+        debugError('CONTRACT', 'announceContract: contract-level select not found');
+        return;
+    }
 
-    if (selectedLevel < 2 || selectedLevel > 7) {
+    const selectedLevel = parseInt(levelSelect.value, 10);
+    debug('CONTRACT', `announceContract: level=${selectedLevel}, declarer=${declarerId}`);
+
+    if (isNaN(selectedLevel) || selectedLevel < 2 || selectedLevel > 7) {
+        debugError('CONTRACT', `announceContract: invalid level ${levelSelect.value}`);
         showMessage('Invalid contract selection', 'error');
         return;
     }
@@ -267,34 +476,74 @@ async function announceContract() {
                 level: selectedLevel
             })
         });
+
+        if (!response.ok) {
+            debugError('API', `announceContract: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'announceContract: response', { success: data.success });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('CONTRACT', 'announceContract: success but no state');
+                return;
+            }
             gameState = data.state;
+            debug('CONTRACT', 'announceContract: success', {
+                phase: gameState.current_round?.phase,
+                contract: gameState.current_round?.contract
+            });
             renderGame();
             const contractName = selectedLevel === 6 ? t('betl') :
                                  selectedLevel === 7 ? t('sans') :
                                  t('game') + ' ' + selectedLevel;
             showMessage(t('contractAnnounced', contractName), 'success');
         } else {
+            debugError('CONTRACT', 'announceContract: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'announceContract: exception', error);
         showMessage(t('failedToAnnounceContract', error.message), 'error');
     }
 }
 
 async function playCard(cardId) {
-    if (!gameState) return;
+    console.log('=== PLAY CARD CALLED ===', cardId);
+    debug('PLAY', `playCard: cardId=${cardId}`);
 
-    const currentPlayerId = gameState.current_player_id;
-    if (!currentPlayerId) return;
-
-    // Don't play if contract hasn't been announced yet
-    if (gameState.legal_contract_levels && gameState.legal_contract_levels.length > 0) {
-        showMessage(t('mustAnnounceContractFirst'), 'error');
+    if (!cardId) {
+        debugError('PLAY', 'playCard: no cardId provided');
         return;
     }
+
+    if (!gameState) {
+        debugError('PLAY', 'playCard: no game state');
+        return;
+    }
+
+    const currentPlayerId = gameState.current_player_id;
+    if (!currentPlayerId) {
+        debugError('PLAY', 'playCard: no current player', {
+            phase: gameState.current_round?.phase
+        });
+        return;
+    }
+
+    // Validate card is in legal cards
+    const legalCards = gameState.legal_cards || [];
+    const isLegal = legalCards.some(c => c.id === cardId);
+    if (!isLegal) {
+        debugWarn('PLAY', `playCard: card ${cardId} not in legal cards`, legalCards.map(c => c.id));
+    }
+
+    debug('PLAY', `playCard: player=${currentPlayerId}, card=${cardId}`, {
+        trickNumber: gameState.current_round?.tricks?.length,
+        cardsInTrick: gameState.current_round?.tricks?.slice(-1)[0]?.cards?.length || 0
+    });
 
     try {
         const response = await fetch('/api/game/play', {
@@ -305,41 +554,271 @@ async function playCard(cardId) {
                 card_id: cardId
             })
         });
+
+        if (!response.ok) {
+            debugError('API', `playCard: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        console.log('=== PLAY CARD RESPONSE ===', data);
+        console.log('=== TRICK COMPLETE? ===', data.result?.trick_complete);
+        debug('API', 'playCard: response', {
+            success: data.success,
+            trickComplete: data.result?.trick_complete,
+            roundComplete: data.result?.round_complete
+        });
 
         if (data.success) {
-            gameState = data.state;
-            renderGame();
+            if (!data.state) {
+                debugError('PLAY', 'playCard: success but no state');
+                return;
+            }
+
+            if (!data.result) {
+                debugError('PLAY', 'playCard: success but no result');
+                gameState = data.state;
+                renderGame();
+                return;
+            }
 
             if (data.result.trick_complete) {
-                const winnerName = getPlayerName(data.result.trick_winner_id);
+                debug('PLAY', 'playCard: trick complete, starting animation');
+
+                // Trick is complete - show animation before updating state
+                const winnerId = data.result.trick_winner_id;
+                if (!winnerId) {
+                    debugError('PLAY', 'playCard: trick complete but no winner_id');
+                    gameState = data.state;
+                    renderGame();
+                    return;
+                }
+
+                const winnerName = getPlayerName(winnerId);
+                debug('PLAY', `playCard: trick won by player ${winnerId} (${winnerName})`);
+
+                // Add the just-played card to the display
+                const playedCard = data.result.card;
+                if (!playedCard) {
+                    debugError('PLAY', 'playCard: no card in result');
+                    gameState = data.state;
+                    renderGame();
+                    return;
+                }
+
+                addCardToTrickDisplay(currentPlayerId, playedCard);
+                console.log('[PLAY] Added 3rd card to display, checking trick container...');
+
+                const checkContainer = elements.currentTrick?.querySelector('.trick-cards');
+                console.log('[PLAY] Trick container children:', checkContainer?.children?.length);
+
                 showMessage(t('trickWonBy', winnerName), 'success');
-            }
-            if (data.result.round_complete) {
-                showMessage(t('roundComplete'), 'success');
+
+                // Wait 0.5 seconds to show complete trick
+                debug('PLAY', 'playCard: waiting 0.5s to show trick');
+                console.log('[PLAY] Waiting 0.5 seconds to show complete trick...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log('[PLAY] Done waiting, starting animation...');
+
+                // Animate cards to winner's box
+                debug('PLAY', 'playCard: starting animation to winner');
+                await animateTrickToWinner(winnerId);
+                debug('PLAY', 'playCard: animation complete');
+
+                // Now update state and render
+                gameState = data.state;
+                debug('PLAY', 'playCard: updated state after trick', {
+                    trickNumber: gameState.current_round?.tricks?.length,
+                    phase: gameState.current_round?.phase
+                });
+                renderGame();
+
+                if (data.result.round_complete) {
+                    debug('PLAY', 'playCard: round complete');
+                    showMessage(t('roundComplete'), 'success');
+                }
+            } else {
+                // Normal card play - just update and render
+                gameState = data.state;
+                debug('PLAY', 'playCard: card played', {
+                    cardsInTrick: gameState.current_round?.tricks?.slice(-1)[0]?.cards?.length,
+                    nextPlayer: gameState.current_player_id
+                });
+                renderGame();
             }
         } else {
+            debugError('PLAY', 'playCard: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'playCard: exception', error);
         showMessage(t('failedToPlayCard', error.message), 'error');
     }
 }
 
+function addCardToTrickDisplay(playerId, card) {
+    debug('RENDER', `addCardToTrickDisplay: player=${playerId}, card=${card?.id}`);
+
+    if (!elements.currentTrick) {
+        debugError('RENDER', 'addCardToTrickDisplay: currentTrick element not found');
+        return;
+    }
+
+    const trickContainer = elements.currentTrick.querySelector('.trick-cards');
+    if (!trickContainer) {
+        debugError('RENDER', 'addCardToTrickDisplay: trick-cards container not found');
+        return;
+    }
+
+    if (!card || !card.id) {
+        debugError('RENDER', 'addCardToTrickDisplay: invalid card', card);
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'trick-card-wrapper';
+
+    const label = document.createElement('span');
+    label.className = 'trick-card-player';
+    label.textContent = getPlayerName(playerId);
+
+    const img = document.createElement('img');
+    img.src = `/api/cards/${card.id}/image`;
+    img.alt = card.id;
+    img.className = 'card';
+    img.onerror = () => debugError('RENDER', `addCardToTrickDisplay: failed to load image for ${card.id}`);
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(img);
+    trickContainer.appendChild(wrapper);
+
+    debug('RENDER', `addCardToTrickDisplay: added card, total cards in trick: ${trickContainer.children.length}`);
+}
+
+async function animateTrickToWinner(winnerId) {
+    debug('ANIM', `animateTrickToWinner: winner=${winnerId}`);
+    console.log('[ANIM] Starting animation to winner', winnerId);
+
+    if (!elements.currentTrick) {
+        debugError('ANIM', 'animateTrickToWinner: currentTrick element not found');
+        console.error('[ANIM] currentTrick element is null!');
+        return;
+    }
+
+    const trickContainer = elements.currentTrick.querySelector('.trick-cards');
+    if (!trickContainer) {
+        debugError('ANIM', 'animateTrickToWinner: trick-cards container not found');
+        console.error('[ANIM] trick-cards container not found!');
+        return;
+    }
+
+    console.log('[ANIM] trickContainer innerHTML:', trickContainer.innerHTML);
+
+    const cardWrappers = trickContainer.querySelectorAll('.trick-card-wrapper');
+    debug('ANIM', `animateTrickToWinner: found ${cardWrappers.length} cards to animate`);
+    console.log('[ANIM] Found card wrappers:', cardWrappers.length);
+
+    if (cardWrappers.length === 0) {
+        debugWarn('ANIM', 'animateTrickToWinner: no cards to animate');
+        console.warn('[ANIM] No cards found to animate!');
+        return;
+    }
+
+    // Find winner's player box (specifically the tricks display)
+    const winnerEl = document.getElementById(`player${winnerId}`);
+    if (!winnerEl) {
+        debugError('ANIM', `animateTrickToWinner: winner element player${winnerId} not found`);
+        return;
+    }
+
+    const targetEl = winnerEl.querySelector('.player-info');
+    if (!targetEl) {
+        debugError('ANIM', 'animateTrickToWinner: player-info element not found');
+        return;
+    }
+
+    const targetRect = targetEl.getBoundingClientRect();
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+
+    debug('ANIM', `animateTrickToWinner: target position (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`);
+
+    // Animate each card
+    console.log('[ANIM] Starting to animate each card...');
+    cardWrappers.forEach((wrapper, index) => {
+        const rect = wrapper.getBoundingClientRect();
+        const startX = rect.left;
+        const startY = rect.top;
+
+        console.log(`[ANIM] Card ${index}: rect=`, rect, `startX=${startX}, startY=${startY}`);
+        debug('ANIM', `animateTrickToWinner: card ${index} from (${startX.toFixed(0)}, ${startY.toFixed(0)})`);
+
+        // Set fixed position at current location
+        wrapper.style.position = 'fixed';
+        wrapper.style.left = `${startX}px`;
+        wrapper.style.top = `${startY}px`;
+        wrapper.style.width = `${rect.width}px`;
+        wrapper.style.zIndex = '1000';
+        wrapper.classList.add('animating');
+
+        console.log(`[ANIM] Card ${index}: set fixed position, adding animation class`);
+
+        // Force reflow
+        wrapper.offsetHeight;
+
+        // Calculate translation to target
+        const deltaX = targetX - (startX + rect.width / 2);
+        const deltaY = targetY - (startY + rect.height / 2);
+
+        console.log(`[ANIM] Card ${index}: deltaX=${deltaX.toFixed(0)}, deltaY=${deltaY.toFixed(0)}`);
+
+        // Start animation
+        wrapper.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.3)`;
+        wrapper.style.opacity = '0';
+    });
+    console.log('[ANIM] All cards animation started');
+
+    // Wait for animation to complete (500ms + stagger delays + buffer)
+    debug('ANIM', 'animateTrickToWinner: waiting 650ms for animation');
+    await new Promise(resolve => setTimeout(resolve, 650));
+    debug('ANIM', 'animateTrickToWinner: animation complete');
+}
+
 async function nextRound() {
+    debug('GAME', 'nextRound: starting next round');
+
     try {
         const response = await fetch('/api/game/next-round', { method: 'POST' });
+
+        if (!response.ok) {
+            debugError('API', `nextRound: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
         const data = await response.json();
+        debug('API', 'nextRound: response', { success: data.success });
 
         if (data.success) {
+            if (!data.state) {
+                debugError('GAME', 'nextRound: success but no state');
+                return;
+            }
             gameState = data.state;
             selectedCards = [];
+            debug('GAME', 'nextRound: new round started', {
+                phase: gameState.current_round?.phase,
+                roundNumber: gameState.round_number
+            });
             renderGame();
             showMessage(t('newRoundStarted'), 'success');
         } else {
+            debugError('GAME', 'nextRound: failed', data.error);
             showMessage(data.error, 'error');
         }
     } catch (error) {
+        debugError('API', 'nextRound: exception', error);
         showMessage(t('failedToStartNextRound', error.message), 'error');
     }
 }
@@ -364,26 +843,6 @@ function populateContractOptions() {
     const levelSelect = document.getElementById('contract-level');
     levelSelect.innerHTML = '';
 
-    // Use legal_contract_levels from game state if available (set by backend)
-    const legalLevels = gameState.legal_contract_levels;
-
-    console.log('[populateContractOptions] legal_contract_levels:', legalLevels);
-
-    if (legalLevels && legalLevels.length > 0) {
-        // Use the levels provided by the backend
-        legalLevels.forEach(level => {
-            if (level === 6) {
-                addOption(levelSelect, '6', `6 (${t('betl')})`);
-            } else if (level === 7) {
-                addOption(levelSelect, '7', `7 (${t('sans')})`);
-            } else {
-                addOption(levelSelect, level.toString(), level.toString());
-            }
-        });
-        return;
-    }
-
-    // Fallback: calculate from auction (for regular games during exchanging phase)
     const auction = gameState.current_round?.auction;
 
     // Determine minimum level from winning bid
@@ -398,8 +857,6 @@ function populateContractOptions() {
         const bidValue = auction.highest_game_bid.effective_value || auction.highest_game_bid.value || 2;
         minLevel = Math.max(2, Math.min(bidValue, 7));
     }
-
-    console.log('[populateContractOptions] fallback minLevel:', minLevel);
 
     // Add level options starting from minimum (2-7)
     for (let level = minLevel; level <= 5; level++) {
@@ -432,11 +889,23 @@ function getPlayerName(playerId) {
 // === Rendering Functions ===
 
 function renderGame() {
-    if (!gameState) return;
+    debug('RENDER', 'renderGame: starting render');
+
+    if (!gameState) {
+        debugWarn('RENDER', 'renderGame: no game state, skipping render');
+        return;
+    }
 
     const round = gameState.current_round;
     const phase = round?.phase || 'waiting';
     const auctionPhase = gameState.auction_phase;
+
+    debug('RENDER', 'renderGame: phase info', {
+        phase,
+        auctionPhase,
+        currentPlayerId: gameState.current_player_id,
+        currentBidderId: round?.auction?.current_bidder_id
+    });
 
     // Update phase indicator
     let phaseText = t('phases.' + phase);
@@ -450,17 +919,44 @@ function renderGame() {
         };
         phaseText = t(auctionPhaseKeys[auctionPhase] || 'phases.auction');
     }
-    elements.phaseIndicator.textContent = phaseText;
+
+    if (!elements.phaseIndicator) {
+        debugError('RENDER', 'renderGame: phaseIndicator element not found');
+    } else {
+        elements.phaseIndicator.textContent = phaseText;
+    }
 
     // Render players
-    renderPlayers();
+    try {
+        renderPlayers();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderPlayers failed', e);
+    }
 
     // Render center area
-    renderTalon();
-    renderCurrentTrick();
-    renderLastTrick();
-    renderContractInfo();
-    renderBiddingHistory();
+    try {
+        renderTalon();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderTalon failed', e);
+    }
+
+    try {
+        renderCurrentTrick();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderCurrentTrick failed', e);
+    }
+
+    try {
+        renderContractInfo();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderContractInfo failed', e);
+    }
+
+    try {
+        renderBiddingHistory();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderBiddingHistory failed', e);
+    }
 
     // Show/hide drop hint based on phase
     const playArea = document.getElementById('play-area');
@@ -475,6 +971,8 @@ function renderGame() {
     // Show appropriate action panel
     hideAllActionPanels();
     showActionPanelForPhase(phase);
+
+    debug('RENDER', 'renderGame: complete');
 }
 
 function getTranslatedPlayerName(player) {
@@ -500,6 +998,7 @@ function renderPlayers() {
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
+        playerEl.querySelector('.score-value').textContent = player.score;
         playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
 
         // Role
@@ -637,13 +1136,20 @@ function renderCurrentTrick() {
 
 function renderLastTrick() {
     const lastTrickEl = document.getElementById('last-trick');
+    if (!lastTrickEl) return;
+
     const cardsContainer = lastTrickEl.querySelector('.last-trick-cards');
     cardsContainer.innerHTML = '';
 
     const round = gameState.current_round;
+
+    // Hide last trick when round ends (scoring phase)
+    if (round?.phase === 'scoring') {
+        lastTrickEl.classList.remove('visible');
+        return;
+    }
+
     if (!round || !round.tricks || round.tricks.length < 2) {
-        // No completed trick yet (need at least 2 tricks - one complete, one in progress)
-        // Or if only 1 trick and it's complete, show it
         if (round?.tricks?.length === 1 && round.tricks[0].cards?.length === 3) {
             // First trick is complete, show it
         } else {
@@ -652,28 +1158,15 @@ function renderLastTrick() {
         }
     }
 
-    // Find the last completed trick (one with 3 cards that's not the current trick)
+    // Find the last completed trick
     let lastCompletedTrick = null;
-    for (let i = round.tricks.length - 1; i >= 0; i--) {
-        const trick = round.tricks[i];
-        if (trick.cards && trick.cards.length === 3) {
-            // This is a completed trick
-            // If it's the last trick and there are more tricks, or if there's only one trick
-            if (i < round.tricks.length - 1 || round.tricks.length === 1 ||
-                (i === round.tricks.length - 1 && trick.cards.length === 3)) {
-                lastCompletedTrick = trick;
-                break;
-            }
-        }
-    }
-
-    // If the current trick has 3 cards, it's actually the last completed trick
     const currentTrick = round.tricks[round.tricks.length - 1];
     if (currentTrick?.cards?.length === 3) {
         lastCompletedTrick = currentTrick;
     } else if (round.tricks.length >= 2) {
-        // The previous trick is the last completed one
         lastCompletedTrick = round.tricks[round.tricks.length - 2];
+    } else if (round.tricks.length === 1 && round.tricks[0].cards?.length === 3) {
+        lastCompletedTrick = round.tricks[0];
     }
 
     if (!lastCompletedTrick || !lastCompletedTrick.cards || lastCompletedTrick.cards.length !== 3) {
@@ -684,43 +1177,51 @@ function renderLastTrick() {
     lastTrickEl.classList.add('visible');
 
     lastCompletedTrick.cards.forEach(cardPlay => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'trick-card-wrapper';
+
+        const label = document.createElement('span');
+        label.className = 'trick-card-player';
+        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
+            label.classList.add('trick-card-winner');
+        }
+        const playerName = getPlayerName(cardPlay.player_id);
+        label.textContent = playerName.split(' ')[0].substring(0, 3);
+
         const img = document.createElement('img');
         img.src = `/api/cards/${cardPlay.card.id}/image`;
         img.alt = cardPlay.card.id;
         img.className = 'card';
-        // Highlight winning card
-        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
-            img.classList.add('winner');
-        }
-        cardsContainer.appendChild(img);
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(img);
+        cardsContainer.appendChild(wrapper);
     });
 }
 
 function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
-    console.log('[renderContractInfo] contract:', contract);
-
     if (contract) {
-        const contractName = t(contract.type);
         let text = t('contract') + ': ';
 
-        // Show level for suit contracts (2-5)
-        if (contract.type === 'suit' && contract.bid_value >= 2 && contract.bid_value <= 5) {
-            text += `${t('game')} ${contract.bid_value}`;
+        // Show contract name with level for suit contracts
+        if (contract.type === 'suit') {
+            text += t('game') + ' ' + contract.bid_value;
             if (contract.trump_suit) {
                 text += ` (${t('suits.' + contract.trump_suit)})`;
             }
+        } else if (contract.type === 'betl') {
+            text += t('betl');
+        } else if (contract.type === 'sans') {
+            text += t('sans');
         } else {
-            text += contractName;
-            if (contract.trump_suit) {
-                text += ` (${t('suits.' + contract.trump_suit)})`;
-            }
+            text += t(contract.type);
         }
 
-        // Show if in_hand
+        // Add in_hand indicator
         if (contract.is_in_hand) {
-            text += ` [${t('inHand')}]`;
+            text += ' [' + t('inHand') + ']';
         }
 
         text += ' - ' + t('needTricks', contract.tricks_required);
@@ -809,12 +1310,6 @@ function showActionPanelForPhase(phase) {
     const round = gameState.current_round;
     const declarerId = round?.declarer_id;
 
-    // Debug logging for in_hand contract selection
-    console.log('[showActionPanelForPhase] phase:', phase);
-    console.log('[showActionPanelForPhase] declarerId:', declarerId);
-    console.log('[showActionPanelForPhase] contract:', round?.contract);
-    console.log('[showActionPanelForPhase] legal_contract_levels:', gameState.legal_contract_levels);
-
     switch (phase) {
         case 'auction':
             elements.biddingControls.classList.remove('hidden');
@@ -836,14 +1331,7 @@ function showActionPanelForPhase(phase) {
             break;
 
         case 'playing':
-            // Check if contract needs to be selected first (in_hand games)
-            if (gameState.legal_contract_levels && gameState.legal_contract_levels.length > 0 && !round?.contract) {
-                console.log('[showActionPanelForPhase] In_hand game: showing contract controls for level selection');
-                elements.contractControls.classList.remove('hidden');
-                populateContractOptions();
-            } else {
-                elements.playControls.classList.remove('hidden');
-            }
+            elements.playControls.classList.remove('hidden');
             break;
 
         case 'scoring':
