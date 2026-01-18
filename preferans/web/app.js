@@ -678,26 +678,15 @@ function renderLastTrick() {
     lastTrickEl.classList.add('visible');
 
     lastCompletedTrick.cards.forEach(cardPlay => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'trick-card-wrapper';
-
-        const label = document.createElement('span');
-        label.className = 'trick-card-player';
-        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
-            label.classList.add('trick-card-winner');
-        }
-        const playerName = getPlayerName(cardPlay.player_id);
-        // Shorten player name for compact display
-        label.textContent = playerName.split(' ')[0].substring(0, 3);
-
         const img = document.createElement('img');
         img.src = `/api/cards/${cardPlay.card.id}/image`;
         img.alt = cardPlay.card.id;
         img.className = 'card';
-
-        wrapper.appendChild(label);
-        wrapper.appendChild(img);
-        cardsContainer.appendChild(wrapper);
+        // Highlight winning card
+        if (cardPlay.player_id === lastCompletedTrick.winner_id) {
+            img.classList.add('winner');
+        }
+        cardsContainer.appendChild(img);
     });
 }
 

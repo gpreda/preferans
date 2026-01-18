@@ -643,7 +643,7 @@ header h1 {
 
 .last-trick-cards {
     display: flex;
-    gap: 4px;
+    gap: 3px;
 }
 
 .last-trick-cards .card {
@@ -652,19 +652,6 @@ header h1 {
     border-radius: 0.3vmin;
 }
 
-.last-trick-cards .trick-card-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.last-trick-cards .trick-card-player {
-    font-size: 0.6rem;
-    color: #888;
-    margin-bottom: 0.1rem;
-}
-
-.last-trick-cards .trick-card-winner {
-    color: #4ecca3;
-    font-weight: bold;
+.last-trick-cards .card.winner {
+    box-shadow: 0 0 6px 2px #4ecca3;
 }
