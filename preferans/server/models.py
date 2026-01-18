@@ -132,25 +132,34 @@ class Card:
 
     def beats(self, other: "Card", trump_suit: Optional[Suit] = None, led_suit: Optional[Suit] = None) -> bool:
         """Check if this card beats another card."""
+        print(f"[beats] {self.id} vs {other.id}, trump={trump_suit}, led={led_suit}")
+
         # Trump beats non-trump
         if trump_suit:
             if self.suit == trump_suit and other.suit != trump_suit:
+                print(f"[beats] {self.id} is trump, {other.id} is not -> True")
                 return True
             if self.suit != trump_suit and other.suit == trump_suit:
+                print(f"[beats] {self.id} is not trump, {other.id} is trump -> False")
                 return False
 
         # Same suit: higher rank wins
         if self.suit == other.suit:
-            return self.rank_value > other.rank_value
+            result = self.rank_value > other.rank_value
+            print(f"[beats] Same suit, rank {self.rank_value} vs {other.rank_value} -> {result}")
+            return result
 
         # Different suits (no trump involved): led suit wins
         if led_suit:
             if self.suit == led_suit and other.suit != led_suit:
+                print(f"[beats] {self.id} is led suit, {other.id} is not -> True")
                 return True
             if self.suit != led_suit and other.suit == led_suit:
+                print(f"[beats] {self.id} is not led suit, {other.id} is -> False")
                 return False
 
         # Different suits, neither is led: first card wins (shouldn't happen in valid play)
+        print(f"[beats] Different suits, neither trump nor led -> False")
         return False
 
     def to_dict(self) -> dict:
