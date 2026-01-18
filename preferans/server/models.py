@@ -581,6 +581,14 @@ class Game:
 
     def to_dict(self, viewer_id: Optional[int] = None) -> dict:
         """Convert to dict, optionally hiding other players' hands."""
+        # Determine whether to show talon:
+        # - Show talon (hide_talon=False) during exchanging phase before pickup
+        # - Hide talon during auction and after pickup
+        hide_talon = True
+        if self.current_round:
+            if self.current_round.phase == RoundPhase.EXCHANGING and len(self.current_round.talon) > 0:
+                hide_talon = False
+
         return {
             "id": self.id,
             "players": [
@@ -589,7 +597,7 @@ class Game:
             ],
             "bulls": self.bulls,
             "dealer_index": self.dealer_index,
-            "current_round": self.current_round.to_dict() if self.current_round else None,
+            "current_round": self.current_round.to_dict(hide_talon=hide_talon) if self.current_round else None,
             "round_number": self.round_number,
             "status": self.status.value,
         }
