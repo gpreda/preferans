@@ -22,13 +22,13 @@
     --card-height: calc(var(--card-width) * 1.4);
     --card-radius: calc(var(--card-width) * 0.06);
 
-    /* Talon card size (smaller than regular cards) */
-    --talon-card-width: calc(var(--card-width) * 0.6);
-    --talon-card-height: calc(var(--talon-card-width) * 1.4);
+    /* Talon card size (same as hand cards) */
+    --talon-card-width: var(--card-width);
+    --talon-card-height: var(--card-height);
 
-    /* Card overlap ratios */
-    --horizontal-visible: 0.25;  /* Show 1/4 of card width */
-    --vertical-visible: 0.2;     /* Show 1/5 of card height */
+    /* Card overlap ratios (increased spacing by 10%) */
+    --horizontal-visible: 0.275;  /* Show ~27.5% of card width */
+    --vertical-visible: 0.22;     /* Show ~22% of card height */
 
     /* Spacing */
     --spacing-xs: calc(var(--base) * 1);
