@@ -252,6 +252,13 @@ class GameEngine:
                     auction.in_hand_players.append(last_bid.player_id)
                 if last_bid.is_betl() or last_bid.is_sans():
                     auction.highest_in_hand_bid = last_bid
+
+                # Players who already bid game are eliminated (can't switch to in_hand)
+                for bid in auction.bids[:-1]:
+                    if bid.is_game() and bid.player_id not in auction.in_hand_players:
+                        if bid.player_id not in auction.passed_players:
+                            auction.passed_players.append(bid.player_id)
+
                 # Check if other players still haven't bid (can also go in_hand)
                 players_without_bids = [p for p in self.game.players
                                        if not any(b.player_id == p.id for b in auction.bids)
@@ -298,6 +305,18 @@ class GameEngine:
             if last_bid.is_sans():
                 auction.phase = AuctionPhase.COMPLETE
                 return
+
+            # If betl is bid, give other in_hand players a chance to respond with sans
+            if last_bid.is_betl():
+                undeclared_in_hand = [pid for pid in auction.in_hand_players
+                                      if pid != last_bid.player_id
+                                      and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
+                                                for b in auction.bids)]
+                if undeclared_in_hand:
+                    # Reset players_bid_this_phase so undeclared can respond
+                    auction.players_bid_this_phase = [last_bid.player_id]
+                    self._set_next_bidder_for_in_hand_deciding(auction)
+                    return
 
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
@@ -753,6 +772,19 @@ class GameEngine:
         if not player:
             raise GameError(f"Player {player_id} not found")
         return player
+
+    def get_best_trump_suit(self, player_id: int) -> str:
+        """Determine the best trump suit based on the player's hand (most common suit)."""
+        player = self._get_player(player_id)
+        suit_counts = {}
+        for card in player.hand:
+            suit_name = SUIT_NAMES[card.suit]
+            suit_counts[suit_name] = suit_counts.get(suit_name, 0) + 1
+
+        # Return the suit with most cards, defaulting to spades if tied or empty
+        if not suit_counts:
+            return 'spades'
+        return max(suit_counts, key=suit_counts.get)
 
     def _get_player_by_position(self, position: int) -> Player:
         """Get a player by position (1-3)."""
