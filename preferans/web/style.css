@@ -340,10 +340,13 @@ header h1 {
 
 .card.playable {
     cursor: grab;
+    border: 3px solid #4ecca3;
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.6);
 }
 
 .card.playable:hover {
     box-shadow: 0 0 15px #4ecca3;
+    border-color: #7fffd4;
 }
 
 .card.playable:active {
