@@ -605,15 +605,23 @@ class GameEngine:
 
     def play_card(self, player_id: int, card_id: str) -> dict:
         """Play a card to the current trick."""
+        print(f"[play_card] player_id={player_id}, card_id={card_id}")
+        print(f"[play_card] phase={self.game.current_round.phase if self.game.current_round else None}")
+        print(f"[play_card] contract={self.game.current_round.contract if self.game.current_round else None}")
+        print(f"[play_card] current_trick={self.game.current_round.current_trick if self.game.current_round else None}")
+        print(f"[play_card] num_tricks={len(self.game.current_round.tricks) if self.game.current_round else 0}")
+
         self._validate_phase(RoundPhase.PLAYING)
         round = self.game.current_round
         trick = round.current_trick
 
         if not trick:
+            print(f"[play_card] ERROR: No active trick!")
             raise GameError("No active trick")
 
         # Validate it's this player's turn
         expected_player_id = self._get_next_player_in_trick(trick)
+        print(f"[play_card] expected_player_id={expected_player_id}")
         if player_id != expected_player_id:
             raise InvalidMoveError(f"Not player {player_id}'s turn")
 
@@ -622,6 +630,7 @@ class GameEngine:
         # Find card in hand
         card = self._find_card_in_hand(player, card_id)
         if not card:
+            print(f"[play_card] ERROR: Card {card_id} not in hand. Player hand: {[c.id for c in player.hand]}")
             raise InvalidMoveError(f"Card {card_id} not in hand")
 
         # Validate card is legal to play
