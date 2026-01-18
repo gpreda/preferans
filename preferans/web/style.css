@@ -355,6 +355,17 @@ header h1 {
     transform: scale(1.1);
 }
 
+.card.not-playable {
+    opacity: 0.4;
+    filter: grayscale(50%);
+    cursor: not-allowed;
+}
+
+.card.not-playable:hover {
+    transform: none;
+    box-shadow: 0 0.3vmin 0.5vmin rgba(0, 0, 0, 0.3);
+}
+
 .talon .card {
     width: 10vmin;
     height: 14vmin;
