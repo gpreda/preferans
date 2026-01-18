@@ -615,10 +615,10 @@ async function playCard(cardId) {
 
                 showMessage(t('trickWonBy', winnerName), 'success');
 
-                // Wait 2 seconds to show complete trick
-                debug('PLAY', 'playCard: waiting 2s to show trick');
-                console.log('[PLAY] Waiting 2 seconds to show complete trick...');
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Wait 0.5 seconds to show complete trick
+                debug('PLAY', 'playCard: waiting 0.5s to show trick');
+                console.log('[PLAY] Waiting 0.5 seconds to show complete trick...');
+                await new Promise(resolve => setTimeout(resolve, 500));
                 console.log('[PLAY] Done waiting, starting animation...');
 
                 // Animate cards to winner's box
@@ -779,9 +779,9 @@ async function animateTrickToWinner(winnerId) {
     });
     console.log('[ANIM] All cards animation started');
 
-    // Wait for animation to complete (1000ms + stagger delays + buffer)
-    debug('ANIM', 'animateTrickToWinner: waiting 1200ms for animation');
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    // Wait for animation to complete (500ms + stagger delays + buffer)
+    debug('ANIM', 'animateTrickToWinner: waiting 650ms for animation');
+    await new Promise(resolve => setTimeout(resolve, 650));
     debug('ANIM', 'animateTrickToWinner: animation complete');
 }
 
