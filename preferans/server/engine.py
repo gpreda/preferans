@@ -605,8 +605,10 @@ class GameEngine:
         # Move to playing phase
         round.phase = RoundPhase.PLAYING
 
-        # Start first trick - declarer leads
-        round.start_new_trick(lead_player_id=player_id)
+        # Determine who leads the first trick
+        first_lead_id = self._get_first_lead_player_id(player_id, ctype)
+        print(f"[announce_contract] First lead player: P{first_lead_id}")
+        round.start_new_trick(lead_player_id=first_lead_id)
 
     # === Playing Phase ===
 
@@ -843,6 +845,37 @@ class GameEngine:
             if p.position == position:
                 return p
         raise GameError(f"No player at position {position}")
+
+    def _get_first_lead_player_id(self, declarer_id: int, contract_type: ContractType) -> int:
+        """Determine who leads the first trick.
+
+        Rules:
+        - For Sans: always the left player from the declarer (counter-clockwise)
+        - For other contracts: forehand (position 1) plays first
+        - If forehand is the declarer, the next defender in counter-clockwise order plays first
+        """
+        declarer = self._get_player(declarer_id)
+
+        if contract_type == ContractType.SANS:
+            # For Sans, always the left player from declarer (counter-clockwise)
+            next_position = ((declarer.position) % 3) + 1
+            return self._get_player_by_position(next_position).id
+
+        # For other contracts: forehand plays first, unless they are the declarer
+        forehand = self._get_player_by_position(1)
+        if forehand.id != declarer_id:
+            return forehand.id
+
+        # Forehand is the declarer, so next defender in counter-clockwise order plays first
+        # Counter-clockwise from position 1: 1 → 3 → 2
+        for i in range(1, 3):
+            next_position = ((1 + i) % 3) + 1  # 1→3, then 3→2
+            player = self._get_player_by_position(next_position)
+            if player.id != declarer_id:
+                return player.id
+
+        # Shouldn't reach here, but fallback to declarer
+        return declarer_id
 
     def _find_card_in_hand(self, player: Player, card_id: str) -> Optional[Card]:
         """Find a card in player's hand by ID."""
