@@ -314,23 +314,17 @@ class GameEngine:
                 return
 
             # If betl is bid, give other in_hand players a chance to respond with sans
-            # BUT only if the betl bidder was already an in_hand player (upgrading from undeclared)
-            # If they're a new entry to the auction, their betl beats any undeclared in_hand immediately
+            # Any undeclared in_hand player should get a chance to respond
             if last_bid.is_betl():
-                betl_bidder_was_in_hand = any(
-                    b.player_id == last_bid.player_id and b.is_in_hand() and b != last_bid
-                    for b in auction.bids
-                )
-                if betl_bidder_was_in_hand:
-                    undeclared_in_hand = [pid for pid in auction.in_hand_players
-                                          if pid != last_bid.player_id
-                                          and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
-                                                    for b in auction.bids)]
-                    if undeclared_in_hand:
-                        # Reset players_bid_this_phase so undeclared can respond
-                        auction.players_bid_this_phase = [last_bid.player_id]
-                        self._set_next_bidder_for_in_hand_deciding(auction)
-                        return
+                undeclared_in_hand = [pid for pid in auction.in_hand_players
+                                      if pid != last_bid.player_id
+                                      and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
+                                                for b in auction.bids)]
+                if undeclared_in_hand:
+                    # Reset players_bid_this_phase so undeclared can respond
+                    auction.players_bid_this_phase = [last_bid.player_id]
+                    self._set_next_bidder_for_in_hand_deciding(auction)
+                    return
 
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
@@ -486,14 +480,21 @@ class GameEngine:
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can pick up talon")
 
+        if len(round.talon) == 0:
+            raise InvalidMoveError("Talon already picked up")
+
         player = self._get_player(player_id)
 
         # Add talon cards to player's hand
-        for card in round.talon:
+        talon_cards = list(round.talon)  # Copy before clearing
+        for card in talon_cards:
             player.add_card(card)
 
+        # Clear talon after pickup
+        round.talon = []
+
         player.sort_hand()
-        return round.talon
+        return talon_cards
 
     def discard_cards(self, player_id: int, card_ids: list[str]) -> list[Card]:
         """Declarer discards two cards after picking up talon."""
@@ -551,9 +552,15 @@ class GameEngine:
         ))
         print(f"[announce_contract] is_in_hand={is_in_hand}")
 
-        # For regular games, must be in exchanging phase and have discarded
+        # For regular games, must be in exchanging phase and have completed exchange
         if not is_in_hand:
             self._validate_phase(RoundPhase.EXCHANGING)
+            # Check that talon was picked up (talon should be empty)
+            if len(round.talon) > 0:
+                raise InvalidMoveError("Must pick up talon before announcing contract")
+            # Check that cards were discarded
+            if len(round.discarded) != 2:
+                raise InvalidMoveError("Must discard 2 cards before announcing contract")
             player = self._get_player(player_id)
             if len(player.hand) != 10:
                 raise InvalidMoveError("Must discard before announcing contract")
