@@ -1138,11 +1138,27 @@ function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
     if (contract) {
-        const contractName = t(contract.type);
-        let text = t('contract') + ': ' + contractName;
-        if (contract.trump_suit) {
-            text += ` (${t('suits.' + contract.trump_suit)})`;
+        let text = t('contract') + ': ';
+
+        // Show contract name with level for suit contracts
+        if (contract.type === 'suit') {
+            text += t('game') + ' ' + contract.bid_value;
+            if (contract.trump_suit) {
+                text += ` (${t('suits.' + contract.trump_suit)})`;
+            }
+        } else if (contract.type === 'betl') {
+            text += t('betl');
+        } else if (contract.type === 'sans') {
+            text += t('sans');
+        } else {
+            text += t(contract.type);
         }
+
+        // Add in_hand indicator
+        if (contract.is_in_hand) {
+            text += ' [' + t('inHand') + ']';
+        }
+
         text += ' - ' + t('needTricks', contract.tricks_required);
         elements.contractInfo.textContent = text;
         elements.contractInfo.style.display = 'block';
