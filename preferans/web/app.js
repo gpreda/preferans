@@ -627,12 +627,30 @@ function renderCurrentTrick() {
 function renderContractInfo() {
     const contract = gameState.current_round?.contract;
 
+    console.log('[renderContractInfo] contract:', contract);
+
     if (contract) {
         const contractName = t(contract.type);
-        let text = t('contract') + ': ' + contractName;
-        if (contract.trump_suit) {
-            text += ` (${t('suits.' + contract.trump_suit)})`;
+        let text = t('contract') + ': ';
+
+        // Show level for suit contracts (2-5)
+        if (contract.type === 'suit' && contract.bid_value >= 2 && contract.bid_value <= 5) {
+            text += `${t('game')} ${contract.bid_value}`;
+            if (contract.trump_suit) {
+                text += ` (${t('suits.' + contract.trump_suit)})`;
+            }
+        } else {
+            text += contractName;
+            if (contract.trump_suit) {
+                text += ` (${t('suits.' + contract.trump_suit)})`;
+            }
         }
+
+        // Show if in_hand
+        if (contract.is_in_hand) {
+            text += ` [${t('inHand')}]`;
+        }
+
         text += ' - ' + t('needTricks', contract.tricks_required);
         elements.contractInfo.textContent = text;
         elements.contractInfo.style.display = 'block';
