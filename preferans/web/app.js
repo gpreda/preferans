@@ -604,12 +604,18 @@ async function playCard(cardId) {
                 }
 
                 addCardToTrickDisplay(currentPlayerId, playedCard);
+                console.log('[PLAY] Added 3rd card to display, checking trick container...');
+
+                const checkContainer = elements.currentTrick?.querySelector('.trick-cards');
+                console.log('[PLAY] Trick container children:', checkContainer?.children?.length);
 
                 showMessage(t('trickWonBy', winnerName), 'success');
 
                 // Wait 2 seconds to show complete trick
                 debug('PLAY', 'playCard: waiting 2s to show trick');
+                console.log('[PLAY] Waiting 2 seconds to show complete trick...');
                 await new Promise(resolve => setTimeout(resolve, 2000));
+                console.log('[PLAY] Done waiting, starting animation...');
 
                 // Animate cards to winner's box
                 debug('PLAY', 'playCard: starting animation to winner');
@@ -688,23 +694,30 @@ function addCardToTrickDisplay(playerId, card) {
 
 async function animateTrickToWinner(winnerId) {
     debug('ANIM', `animateTrickToWinner: winner=${winnerId}`);
+    console.log('[ANIM] Starting animation to winner', winnerId);
 
     if (!elements.currentTrick) {
         debugError('ANIM', 'animateTrickToWinner: currentTrick element not found');
+        console.error('[ANIM] currentTrick element is null!');
         return;
     }
 
     const trickContainer = elements.currentTrick.querySelector('.trick-cards');
     if (!trickContainer) {
         debugError('ANIM', 'animateTrickToWinner: trick-cards container not found');
+        console.error('[ANIM] trick-cards container not found!');
         return;
     }
 
+    console.log('[ANIM] trickContainer innerHTML:', trickContainer.innerHTML);
+
     const cardWrappers = trickContainer.querySelectorAll('.trick-card-wrapper');
     debug('ANIM', `animateTrickToWinner: found ${cardWrappers.length} cards to animate`);
+    console.log('[ANIM] Found card wrappers:', cardWrappers.length);
 
     if (cardWrappers.length === 0) {
         debugWarn('ANIM', 'animateTrickToWinner: no cards to animate');
+        console.warn('[ANIM] No cards found to animate!');
         return;
     }
 
@@ -728,18 +741,24 @@ async function animateTrickToWinner(winnerId) {
     debug('ANIM', `animateTrickToWinner: target position (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`);
 
     // Animate each card
+    console.log('[ANIM] Starting to animate each card...');
     cardWrappers.forEach((wrapper, index) => {
         const rect = wrapper.getBoundingClientRect();
         const startX = rect.left;
         const startY = rect.top;
 
+        console.log(`[ANIM] Card ${index}: rect=`, rect, `startX=${startX}, startY=${startY}`);
         debug('ANIM', `animateTrickToWinner: card ${index} from (${startX.toFixed(0)}, ${startY.toFixed(0)})`);
 
         // Set fixed position at current location
+        wrapper.style.position = 'fixed';
         wrapper.style.left = `${startX}px`;
         wrapper.style.top = `${startY}px`;
         wrapper.style.width = `${rect.width}px`;
+        wrapper.style.zIndex = '1000';
         wrapper.classList.add('animating');
+
+        console.log(`[ANIM] Card ${index}: set fixed position, adding animation class`);
 
         // Force reflow
         wrapper.offsetHeight;
@@ -748,10 +767,13 @@ async function animateTrickToWinner(winnerId) {
         const deltaX = targetX - (startX + rect.width / 2);
         const deltaY = targetY - (startY + rect.height / 2);
 
+        console.log(`[ANIM] Card ${index}: deltaX=${deltaX.toFixed(0)}, deltaY=${deltaY.toFixed(0)}`);
+
         // Start animation
         wrapper.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.3)`;
         wrapper.style.opacity = '0';
     });
+    console.log('[ANIM] All cards animation started');
 
     // Wait for animation to complete (1000ms + stagger delays + buffer)
     debug('ANIM', 'animateTrickToWinner: waiting 1200ms for animation');
