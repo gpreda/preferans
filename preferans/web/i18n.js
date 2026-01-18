@@ -25,6 +25,7 @@ const fallbackTranslations = {
         biddingHistory: 'Bidding',
         dropCardHere: 'Drop card here',
         lastTrick: 'Last Trick',
+        mustAnnounceContractFirst: 'You must announce a contract first',
         // Phases
         'phases.auction': 'Auction',
         'phases.exchanging': 'Exchange',
@@ -58,6 +59,7 @@ const fallbackTranslations = {
         biddingHistory: 'Licitacija',
         dropCardHere: 'Spusti kartu ovde',
         lastTrick: 'Prethodni štih',
+        mustAnnounceContractFirst: 'Morate prvo objaviti ugovor',
         // Phases
         'phases.auction': 'Licitacija',
         'phases.exchanging': 'Razmena',
