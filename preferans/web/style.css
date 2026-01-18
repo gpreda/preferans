@@ -110,7 +110,7 @@ header h1 {
     color: #fff;
 }
 
-.player-tricks {
+.player-score, .player-tricks {
     font-size: 0.75rem;
     color: #aaa;
 }
@@ -614,6 +614,33 @@ header h1 {
     border: 1px solid #4ecca3;
     border-radius: 4px;
     cursor: pointer;
+}
+
+/* Trick completion animation */
+.trick-card-wrapper.animating {
+    position: fixed;
+    z-index: 100;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.trick-card-wrapper.animating .trick-card-player {
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+/* Staggered animation delays for each card */
+.trick-card-wrapper.animating:nth-child(1) {
+    transition-delay: 0s;
+}
+
+.trick-card-wrapper.animating:nth-child(2) {
+    transition-delay: 0.05s;
+}
+
+.trick-card-wrapper.animating:nth-child(3) {
+    transition-delay: 0.1s;
 }
 
 /* Last Trick - bottom left corner */
