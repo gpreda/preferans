@@ -296,15 +296,34 @@ async function playCard(cardId) {
         const data = await response.json();
 
         if (data.success) {
-            gameState = data.state;
-            renderGame();
-
             if (data.result.trick_complete) {
-                const winnerName = getPlayerName(data.result.trick_winner_id);
+                // Trick is complete - show animation before updating state
+                const winnerId = data.result.trick_winner_id;
+                const winnerName = getPlayerName(winnerId);
+
+                // Add the just-played card to the display
+                const playedCard = data.result.card;
+                addCardToTrickDisplay(currentPlayerId, playedCard);
+
                 showMessage(t('trickWonBy', winnerName), 'success');
-            }
-            if (data.result.round_complete) {
-                showMessage(t('roundComplete'), 'success');
+
+                // Wait 1 second to show complete trick
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Animate cards to winner's box
+                await animateTrickToWinner(winnerId);
+
+                // Now update state and render
+                gameState = data.state;
+                renderGame();
+
+                if (data.result.round_complete) {
+                    showMessage(t('roundComplete'), 'success');
+                }
+            } else {
+                // Normal card play - just update and render
+                gameState = data.state;
+                renderGame();
             }
         } else {
             showMessage(data.error, 'error');
@@ -312,6 +331,71 @@ async function playCard(cardId) {
     } catch (error) {
         showMessage(t('failedToPlayCard', error.message), 'error');
     }
+}
+
+function addCardToTrickDisplay(playerId, card) {
+    const trickContainer = elements.currentTrick.querySelector('.trick-cards');
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'trick-card-wrapper';
+
+    const label = document.createElement('span');
+    label.className = 'trick-card-player';
+    label.textContent = getPlayerName(playerId);
+
+    const img = document.createElement('img');
+    img.src = `/api/cards/${card.id}/image`;
+    img.alt = card.id;
+    img.className = 'card';
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(img);
+    trickContainer.appendChild(wrapper);
+}
+
+async function animateTrickToWinner(winnerId) {
+    const trickContainer = elements.currentTrick.querySelector('.trick-cards');
+    const cardWrappers = trickContainer.querySelectorAll('.trick-card-wrapper');
+
+    if (cardWrappers.length === 0) return;
+
+    // Find winner's player box (specifically the tricks display)
+    const winnerEl = document.getElementById(`player${winnerId}`);
+    if (!winnerEl) return;
+
+    const targetEl = winnerEl.querySelector('.player-info');
+    if (!targetEl) return;
+
+    const targetRect = targetEl.getBoundingClientRect();
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+
+    // Animate each card
+    cardWrappers.forEach((wrapper) => {
+        const rect = wrapper.getBoundingClientRect();
+        const startX = rect.left;
+        const startY = rect.top;
+
+        // Set fixed position at current location
+        wrapper.style.left = `${startX}px`;
+        wrapper.style.top = `${startY}px`;
+        wrapper.style.width = `${rect.width}px`;
+        wrapper.classList.add('animating');
+
+        // Force reflow
+        wrapper.offsetHeight;
+
+        // Calculate translation to target
+        const deltaX = targetX - (startX + rect.width / 2);
+        const deltaY = targetY - (startY + rect.height / 2);
+
+        // Start animation
+        wrapper.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.3)`;
+        wrapper.style.opacity = '0';
+    });
+
+    // Wait for animation to complete (500ms + stagger delays + buffer)
+    await new Promise(resolve => setTimeout(resolve, 700));
 }
 
 async function nextRound() {
