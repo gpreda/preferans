@@ -17,41 +17,57 @@
     /* Base unit - 1% of container width */
     --base: calc(var(--container-width) / 100);
 
-    /* Card dimensions - relative to base (cards are ~18% of container width) */
-    --card-width: calc(var(--base) * 18);
-    --card-height: calc(var(--card-width) * 1.4);
-    --card-radius: calc(var(--card-width) * 0.06);
+    /* ========================================
+       LEVEL 2: Frame sizing
+       ======================================== */
+    --frame-border: 1px solid rgba(255, 255, 255, 0.3);
+    --frame-gap: 2px;
+    --frame-padding: 4px;
 
-    /* Talon card size (same as hand cards) */
-    --talon-card-width: var(--card-width);
-    --talon-card-height: var(--card-height);
+    /* Vertical frame heights (% of container) */
+    --buttons-height: 6%;
+    --game-status-height: 4%;
+    --bids-height: 12%;
+    --status-height: 4%;
+    /* Players & talon gets the rest: 100% - 6% - 4% - 12% - 4% - gaps = ~74% */
 
-    /* Card overlap ratios (increased spacing by 10%) */
-    --horizontal-visible: 0.275;  /* Show ~27.5% of card width */
-    --vertical-visible: 0.22;     /* Show ~22% of card height */
+    /* ========================================
+       LEVEL 3: Players & Talon layout
+       ======================================== */
+    /* Top row (left/talon/right) vs bottom row ratio */
+    --top-row-percent: 0.70;
+    --bottom-row-percent: 0.30;
 
-    /* Spacing */
-    --spacing-xs: calc(var(--base) * 1);
-    --spacing-sm: calc(var(--base) * 2);
-    --spacing-md: calc(var(--base) * 3);
-    --spacing-lg: calc(var(--base) * 4);
+    /* Horizontal split in top row */
+    --side-player-percent: 0.25;  /* Each side player */
+    --talon-percent: 0.50;        /* Center talon area */
 
-    /* Font sizes */
-    --font-xs: calc(var(--base) * 2.5);
-    --font-sm: calc(var(--base) * 3);
-    --font-md: calc(var(--base) * 3.5);
-    --font-lg: calc(var(--base) * 4);
-    --font-xl: calc(var(--base) * 5);
+    /* ========================================
+       LEVEL 4: Card overlap ratios
+       ======================================== */
+    --horizontal-visible: 0.30;  /* Show ~30% of card width in horizontal hands */
+    --vertical-visible: 0.24;    /* Show ~24% of card height in vertical hands */
+    --card-aspect: 1.4;          /* Card height = width * 1.4 */
 
-    /* Player area widths - sized to fit: left cards + center + right cards */
-    --side-player-width: calc(var(--card-width) * 1.1);
-    --bottom-player-height: calc(var(--card-height) * 1.3);
+    /* ========================================
+       LEVEL 5: Spacing and fonts
+       ======================================== */
+    --spacing-xs: calc(var(--base) * 0.5);
+    --spacing-sm: calc(var(--base) * 1);
+    --spacing-md: calc(var(--base) * 2);
 
-    /* Colors */
+    --font-xs: calc(var(--base) * 2);
+    --font-sm: calc(var(--base) * 2.5);
+    --font-md: calc(var(--base) * 3);
+    --font-lg: calc(var(--base) * 3.5);
+
+    /* ========================================
+       LEVEL 6: Colors
+       ======================================== */
     --bg-dark: #1a1a2e;
     --bg-panel: #16213e;
     --bg-table: #0f3d3e;
-    --bg-play-area: linear-gradient(145deg, #4a5568, #2d3748);
+    --bg-frame: rgba(0, 0, 0, 0.2);
     --color-primary: #e94560;
     --color-secondary: #4ecca3;
     --color-gold: #ffd700;
@@ -75,33 +91,44 @@ body {
     display: none !important;
 }
 
-/* Main container - phone aspect ratio (9:16), centered */
+/* ========================================
+   FRAME BASE STYLES
+   ======================================== */
+.frame {
+    border: var(--frame-border);
+    background: var(--bg-frame);
+    overflow: hidden;
+}
+
+/* ========================================
+   MAIN CONTAINER
+   ======================================== */
 .game-container {
     display: flex;
     flex-direction: column;
     width: var(--container-width);
     height: var(--container-height);
-    padding: var(--spacing-sm);
-    overflow: hidden;
+    gap: var(--frame-gap);
+    padding: var(--frame-gap);
+    background: var(--bg-dark);
 }
 
-/* Header */
-header {
+/* ========================================
+   FRAME 1: GAME BUTTONS
+   ======================================== */
+.frame-buttons {
+    height: var(--buttons-height);
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
+    justify-content: space-between;
+    padding: 0 var(--spacing-sm);
     background: var(--bg-panel);
-    border-radius: var(--spacing-sm);
-    margin-bottom: var(--spacing-sm);
     flex-shrink: 0;
 }
 
-header h1 {
+.frame-buttons h1 {
     font-size: var(--font-lg);
     color: var(--color-primary);
-    margin-right: auto;
 }
 
 #new-game-btn {
@@ -112,11 +139,33 @@ header h1 {
     border: none;
     border-radius: var(--spacing-xs);
     cursor: pointer;
-    transition: background 0.2s;
 }
 
 #new-game-btn:hover {
     background: #ff6b6b;
+}
+
+.lang-selector {
+    padding: var(--spacing-xs);
+    font-size: var(--font-xs);
+    background: #2d4059;
+    color: white;
+    border: 1px solid var(--color-secondary);
+    border-radius: var(--spacing-xs);
+}
+
+/* ========================================
+   FRAME 2: OVERALL GAME STATUS
+   ======================================== */
+.frame-game-status {
+    height: var(--game-status-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: 0 var(--spacing-sm);
+    background: var(--bg-panel);
+    flex-shrink: 0;
 }
 
 #phase-indicator {
@@ -134,42 +183,91 @@ header h1 {
     color: var(--color-text-muted);
 }
 
-/* Game Table */
-.table {
+/* ========================================
+   FRAME 3: PLAYERS & TALON (main game area)
+   ======================================== */
+.frame-players-talon {
     flex: 1;
-    display: grid;
-    grid-template-columns: var(--side-player-width) 1fr var(--side-player-width);
-    grid-template-rows: 1fr var(--bottom-player-height);
-    gap: var(--spacing-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--frame-gap);
     background: var(--bg-table);
-    border-radius: var(--spacing-md);
-    padding: var(--spacing-sm);
-    position: relative;
-    min-height: 0; /* Allow flex shrinking */
-    overflow: hidden;
+    min-height: 0;
 }
 
-/* Player areas */
-.player {
+/* Top row: Left Player | Talon | Right Player */
+.frame-top-row {
+    flex: var(--top-row-percent);
+    display: flex;
+    gap: var(--frame-gap);
+    min-height: 0;
+}
+
+/* Side player frames */
+.frame-player-left,
+.frame-player-right {
+    flex: var(--side-player-percent);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: var(--frame-padding);
+}
+
+/* Talon frame (center) */
+.frame-talon {
+    flex: var(--talon-percent);
+    display: flex;
+    flex-direction: column;
+    gap: var(--frame-gap);
+    min-width: 0;
+}
+
+.frame-talon-cards {
+    flex: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
+.frame-last-trick {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Bottom row: Bottom Player */
+.frame-bottom-row {
+    flex: var(--bottom-row-percent);
+    display: flex;
+    padding: var(--frame-padding);
+    min-height: 0;
+}
+
+/* ========================================
+   PLAYER COMPONENTS
+   ======================================== */
+.player {
+    display: flex;
+    width: 100%;
+    height: 100%;
     min-width: 0;
     min-height: 0;
-    overflow: hidden;
 }
 
 .player-info {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--spacing-xs);
-    margin-bottom: var(--spacing-xs);
+    justify-content: center;
+    gap: 2px;
     padding: var(--spacing-xs);
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.4);
     border-radius: var(--spacing-xs);
-    min-width: calc(var(--card-width) * 1.1);
     flex-shrink: 0;
+    position: relative;
 }
 
 .player-name {
@@ -201,10 +299,10 @@ header h1 {
 .player.dealer .player-info::after {
     content: "D";
     position: absolute;
-    top: calc(var(--spacing-xs) * -1);
-    right: calc(var(--spacing-xs) * -1);
-    width: calc(var(--font-sm) * 1.4);
-    height: calc(var(--font-sm) * 1.4);
+    top: -4px;
+    right: -4px;
+    width: calc(var(--font-sm) * 1.2);
+    height: calc(var(--font-sm) * 1.2);
     background: var(--color-primary);
     color: white;
     border-radius: 50%;
@@ -215,209 +313,127 @@ header h1 {
     justify-content: center;
 }
 
-.player-info {
-    position: relative;
-}
-
 .player-cards {
     display: flex;
+    flex: 1;
     min-width: 0;
     min-height: 0;
 }
 
-/* Player 1: Left side, vertical cards */
-.player-left {
-    grid-column: 1;
-    grid-row: 1 / 3;
-    justify-content: center;
-}
-
-.player-left .player-cards {
-    flex-direction: column;
-    overflow: visible;
-}
-
-.player-left .card {
-    /* Show 1/5 of card height */
-    margin-top: calc(var(--card-height) * (var(--vertical-visible) - 1));
-}
-
-.player-left .card:first-child {
-    margin-top: 0;
-}
-
-/* Player 2: Right side, vertical cards */
+/* ========================================
+   LEFT & RIGHT PLAYERS (vertical cards)
+   ======================================== */
+.player-left,
 .player-right {
-    grid-column: 3;
-    grid-row: 1 / 3;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
 }
 
+.player-left .player-info,
+.player-right .player-info {
+    width: 100%;
+    margin-bottom: var(--spacing-xs);
+}
+
+.player-left .player-cards,
 .player-right .player-cards {
     flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     overflow: visible;
 }
 
-.player-right .card {
-    /* Show 1/5 of card height */
-    margin-top: calc(var(--card-height) * (var(--vertical-visible) - 1));
-}
-
-.player-right .card:first-child {
-    margin-top: 0;
-}
-
-/* Player 3: Bottom, horizontal cards */
+/* ========================================
+   BOTTOM PLAYER (horizontal cards)
+   ======================================== */
 .player-bottom {
-    grid-column: 2;
-    grid-row: 2;
-    flex-direction: column;
-    justify-content: flex-end;
+    flex-direction: row;
+    align-items: center;
+}
+
+.player-bottom .player-info {
+    height: 100%;
+    margin-right: var(--spacing-sm);
+    min-width: calc(var(--base) * 15);
 }
 
 .player-bottom .player-cards {
     flex-direction: row;
+    align-items: center;
     justify-content: center;
     overflow: visible;
 }
 
+/* ========================================
+   CARD SIZING - Calculated to fit containers
+   ======================================== */
+
+/*
+ * Card size calculation for SIDE players (vertical):
+ * - Available height = frame height - player info - padding
+ * - 10 cards stacked with 24% visible overlap
+ * - Total height = 1 card + 9 * (0.24 * card_height) = card_height * (1 + 9*0.24) = card_height * 3.16
+ * - card_height = card_width * 1.4
+ * - So: available_height = card_width * 1.4 * 3.16 = card_width * 4.424
+ * - card_width = available_height / 4.424
+ *
+ * For dynamic sizing, we use percentage-based approach within each container
+ */
+
+/* Calculate available space for side player cards */
+.frame-player-left,
+.frame-player-right {
+    /* Card width based on frame width (cards are centered) */
+    --side-card-width: calc((100% - 2 * var(--frame-padding)) * 0.9);
+}
+
+/* Calculate available space for bottom player cards */
+.frame-bottom-row {
+    /* Card height based on frame height */
+    --bottom-card-height: calc(100% - 2 * var(--frame-padding));
+}
+
+/* Card base styles */
+.card {
+    border-radius: calc(var(--base) * 0.8);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    flex-shrink: 0;
+    /* Default size - will be overridden per container */
+    width: calc(var(--base) * 10);
+    height: calc(var(--base) * 14);
+}
+
+/* Side player cards (vertical stacking) */
+.player-left .card,
+.player-right .card {
+    /* Width constrained by side column width */
+    width: calc(var(--container-width) * 0.18);
+    height: calc(var(--container-width) * 0.18 * var(--card-aspect));
+    /* Negative margin for overlap */
+    margin-top: calc(var(--container-width) * 0.18 * var(--card-aspect) * (var(--vertical-visible) - 1));
+}
+
+.player-left .card:first-child,
+.player-right .card:first-child {
+    margin-top: 0;
+}
+
+/* Bottom player cards (horizontal stacking) */
 .player-bottom .card {
-    /* Show 1/4 of card width */
-    margin-left: calc(var(--card-width) * (var(--horizontal-visible) - 1));
+    /* Height constrained by bottom row height, calculate width from aspect */
+    height: calc(var(--container-height) * 0.15);
+    width: calc(var(--container-height) * 0.15 / var(--card-aspect));
+    /* Negative margin for overlap */
+    margin-left: calc(var(--container-height) * 0.15 / var(--card-aspect) * (var(--horizontal-visible) - 1));
 }
 
 .player-bottom .card:first-child {
     margin-left: 0;
 }
 
-/* Center area */
-.center-area {
-    grid-column: 2;
-    grid-row: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-    min-height: 0;
-}
-
-/* Play Area - grayish table surface */
-.play-area {
-    background: var(--bg-play-area);
-    border-radius: var(--spacing-md);
-    padding: var(--spacing-sm);
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-xs);
-    box-shadow:
-        inset 0 2px 4px rgba(0, 0, 0, 0.3),
-        0 4px 8px rgba(0, 0, 0, 0.4);
-    border: 2px solid #1a202c;
-    position: relative;
-}
-
-.play-area.drag-over {
-    border-color: var(--color-secondary);
-    box-shadow:
-        inset 0 2px 4px rgba(0, 0, 0, 0.3),
-        0 0 20px rgba(78, 204, 163, 0.5);
-}
-
-/* Talon */
-.talon {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.talon-label {
-    font-size: var(--font-xs);
-    color: #a0aec0;
-    margin-bottom: var(--spacing-xs);
-    text-transform: uppercase;
-}
-
-.talon-cards {
-    display: flex;
-    gap: var(--spacing-sm);
-}
-
-/* Current Trick */
-.current-trick {
-    min-height: var(--card-height);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-}
-
-.trick-cards {
-    display: flex;
-    gap: var(--spacing-sm);
-    justify-content: center;
-}
-
-.drop-hint {
-    display: none;
-    font-size: var(--font-xs);
-    color: #718096;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-}
-
-.play-area.show-drop-hint .drop-hint {
-    display: block;
-}
-
-.play-area.drag-over .drop-hint {
-    color: var(--color-secondary);
-    font-weight: bold;
-}
-
-.trick-card-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.trick-card-player {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
-    margin-bottom: var(--spacing-xs);
-}
-
-/* Contract Info */
-.contract-info {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: var(--spacing-xs);
-    font-size: var(--font-xs);
-    color: var(--color-gold);
-    text-align: center;
-}
-
-/* Card styling */
-.card {
-    width: var(--card-width);
-    height: var(--card-height);
-    border-radius: var(--card-radius);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s, box-shadow 0.2s;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
+/* Card interactions */
 .card:hover {
     transform: scale(1.05);
     z-index: 10;
@@ -462,24 +478,210 @@ header h1 {
     transform: scale(1.1);
 }
 
-.talon .card {
-    width: var(--talon-card-width);
-    height: var(--talon-card-height);
+/* ========================================
+   TALON & CURRENT TRICK
+   ======================================== */
+.talon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
-/* Action Panel */
-.action-panel {
-    margin-top: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--bg-panel);
-    border-radius: var(--spacing-sm);
+.talon-label {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    margin-bottom: var(--spacing-xs);
+    text-transform: uppercase;
+}
+
+.talon-cards {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
     gap: var(--spacing-sm);
-    min-height: calc(var(--font-md) * 3);
+}
+
+.talon .card {
+    width: calc(var(--base) * 10);
+    height: calc(var(--base) * 14);
+}
+
+.current-trick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-height: calc(var(--base) * 16);
+}
+
+.trick-cards {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: center;
+}
+
+.trick-cards .card {
+    width: calc(var(--base) * 10);
+    height: calc(var(--base) * 14);
+}
+
+.drop-hint {
+    display: none;
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: absolute;
+    pointer-events: none;
+}
+
+.trick-card-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.trick-card-player {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    margin-bottom: var(--spacing-xs);
+}
+
+/* ========================================
+   LAST TRICK
+   ======================================== */
+.last-trick {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--spacing-xs);
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: var(--spacing-xs);
+}
+
+.last-trick.visible {
+    display: flex;
+}
+
+.last-trick-label {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    margin-bottom: var(--spacing-xs);
+    text-transform: uppercase;
+}
+
+.last-trick-cards {
+    display: flex;
+    gap: 2px;
+}
+
+.last-trick-cards .card {
+    width: calc(var(--base) * 6);
+    height: calc(var(--base) * 8.4);
+    border-radius: calc(var(--base) * 0.4);
+}
+
+.last-trick-cards .trick-card-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.last-trick-cards .trick-card-player {
+    font-size: calc(var(--font-xs) * 0.8);
+    margin-bottom: 1px;
+}
+
+.last-trick-cards .trick-card-winner {
+    color: var(--color-secondary);
+    font-weight: bold;
+}
+
+/* ========================================
+   FRAME 4: BIDS & ACTION PANEL
+   ======================================== */
+.frame-bids {
+    height: var(--bids-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-panel);
     flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.bidding-history {
+    display: none;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--spacing-xs);
+    padding: var(--spacing-xs);
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+.bidding-history-title {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: var(--spacing-xs);
+}
+
+.bidding-history-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    justify-content: center;
+}
+
+.bid-line {
+    font-size: var(--font-xs);
+    padding: 2px var(--spacing-xs);
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.bid-player {
+    color: var(--color-text-muted);
+}
+
+.bid-value {
+    color: #fff;
+    font-weight: bold;
+}
+
+.bid-line.bid-pass .bid-value {
+    color: var(--color-primary);
+}
+
+.bid-line.bid-in-hand .bid-value {
+    color: #9b59b6;
+}
+
+.bid-line.bid-special .bid-value {
+    color: #f39c12;
+}
+
+.contract-info {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--spacing-xs);
+    font-size: var(--font-xs);
+    color: var(--color-gold);
+    text-align: center;
+}
+
+.contract-info:empty {
+    display: none;
+}
+
+.action-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
 }
 
 .action-label {
@@ -643,17 +845,23 @@ header h1 {
     background: #ff6b6b;
 }
 
-/* Message Area */
+/* ========================================
+   FRAME 5: STATUS / MESSAGE AREA
+   ======================================== */
+.frame-status {
+    height: var(--status-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-panel);
+    flex-shrink: 0;
+}
+
 .message-area {
-    margin-top: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: var(--spacing-xs);
     font-size: var(--font-xs);
     color: var(--color-text-muted);
     text-align: center;
-    min-height: calc(var(--font-sm) * 2);
-    flex-shrink: 0;
+    padding: 0 var(--spacing-sm);
 }
 
 .message-area.error {
@@ -664,73 +872,9 @@ header h1 {
     color: var(--color-secondary);
 }
 
-/* Bidding History */
-.bidding-history {
-    display: none;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: var(--spacing-sm);
-    padding: var(--spacing-xs);
-    min-width: calc(var(--card-width) * 1.5);
-    max-width: calc(var(--card-width) * 2);
-    max-height: calc(var(--card-height) * 1.2);
-}
-
-.bidding-history-title {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    margin-bottom: var(--spacing-xs);
-    padding-bottom: var(--spacing-xs);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    text-align: center;
-}
-
-.bidding-history-list {
-    overflow-y: auto;
-    max-height: calc(var(--card-height) * 0.9);
-}
-
-.bid-line {
-    font-size: var(--font-xs);
-    padding: var(--spacing-xs);
-    margin: 1px 0;
-    border-radius: 3px;
-}
-
-.bid-player {
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
-
-.bid-value {
-    color: #fff;
-    font-weight: bold;
-}
-
-.bid-line.bid-pass .bid-value {
-    color: var(--color-primary);
-}
-
-.bid-line.bid-in-hand .bid-value {
-    color: #9b59b6;
-}
-
-.bid-line.bid-special .bid-value {
-    color: #f39c12;
-}
-
-/* Language selector */
-.lang-selector {
-    padding: var(--spacing-xs);
-    font-size: var(--font-xs);
-    background: #2d4059;
-    color: white;
-    border: 1px solid var(--color-secondary);
-    border-radius: var(--spacing-xs);
-    cursor: pointer;
-}
-
-/* Trick completion animation */
+/* ========================================
+   ANIMATIONS
+   ======================================== */
 .trick-card-wrapper.animating {
     position: fixed;
     z-index: 100;
@@ -744,7 +888,6 @@ header h1 {
     transition: opacity 0.1s;
 }
 
-/* Staggered animation delays for each card */
 .trick-card-wrapper.animating:nth-child(1) {
     transition-delay: 0s;
 }
@@ -757,55 +900,19 @@ header h1 {
     transition-delay: 0.1s;
 }
 
-/* Last Trick - bottom left of play area */
-.last-trick {
-    position: absolute;
-    bottom: var(--spacing-xs);
-    left: var(--spacing-xs);
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: var(--spacing-xs);
-    padding: var(--spacing-xs);
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    z-index: 5;
+/* ========================================
+   DRAG & DROP
+   ======================================== */
+#play-area.drag-over {
+    border-color: var(--color-secondary);
+    box-shadow: inset 0 0 20px rgba(78, 204, 163, 0.3);
 }
 
-.last-trick.visible {
-    display: flex;
-}
-
-.last-trick-label {
-    font-size: var(--font-xs);
-    color: #888;
-    text-transform: uppercase;
-    margin-bottom: var(--spacing-xs);
-}
-
-.last-trick-cards {
-    display: flex;
-    gap: 2px;
-}
-
-.last-trick-cards .card {
-    width: calc(var(--card-width) * 0.4);
-    height: calc(var(--card-height) * 0.4);
-    border-radius: calc(var(--card-radius) * 0.4);
-}
-
-.last-trick-cards .trick-card-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.last-trick-cards .trick-card-player {
-    font-size: var(--font-xs);
-    color: #888;
-    margin-bottom: 1px;
-}
-
-.last-trick-cards .trick-card-winner {
+#play-area.drag-over .drop-hint {
+    display: block;
     color: var(--color-secondary);
-    font-weight: bold;
+}
+
+#play-area.show-drop-hint .drop-hint {
+    display: block;
 }
