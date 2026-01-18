@@ -1,4 +1,5 @@
 // Preferans Game Client
+console.log('=== APP.JS LOADED ===', new Date().toISOString());
 
 let gameState = null;
 let selectedCards = [];
@@ -511,6 +512,7 @@ async function announceContract() {
 }
 
 async function playCard(cardId) {
+    console.log('=== PLAY CARD CALLED ===', cardId);
     debug('PLAY', `playCard: cardId=${cardId}`);
 
     if (!cardId) {
@@ -560,6 +562,8 @@ async function playCard(cardId) {
         }
 
         const data = await response.json();
+        console.log('=== PLAY CARD RESPONSE ===', data);
+        console.log('=== TRICK COMPLETE? ===', data.result?.trick_complete);
         debug('API', 'playCard: response', {
             success: data.success,
             trickComplete: data.result?.trick_complete,
