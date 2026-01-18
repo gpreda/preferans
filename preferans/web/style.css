@@ -17,8 +17,8 @@
     /* Base unit - 1% of container width */
     --base: calc(var(--container-width) / 100);
 
-    /* Card dimensions - relative to base (cards are ~24% of container width) */
-    --card-width: calc(var(--base) * 24);
+    /* Card dimensions - relative to base (cards are ~18% of container width) */
+    --card-width: calc(var(--base) * 18);
     --card-height: calc(var(--card-width) * 1.4);
     --card-radius: calc(var(--card-width) * 0.06);
 
