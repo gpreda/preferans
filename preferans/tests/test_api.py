@@ -67,11 +67,10 @@ def complete_exchange_phase(client, state, declarer_id):
     assert response.status_code == 200
     game_state = response.get_json()['state']
 
-    # Announce contract (spades as trump)
+    # Announce contract (level 2, trump auto-selected from hand)
     response = client.post('/api/game/contract', json={
         'player_id': declarer_id,
-        'type': 'suit',
-        'trump_suit': 'spades'
+        'level': 2
     })
     assert response.status_code == 200
     return response.get_json()['state']
@@ -474,11 +473,10 @@ class TestExchangeFlow:
             'card_ids': card_ids
         })
 
-        # Announce contract
+        # Announce contract (level 2, trump auto-selected)
         response = client.post('/api/game/contract', json={
             'player_id': declarer_id,
-            'type': 'suit',
-            'trump_suit': 'spades'
+            'level': 2
         })
         assert response.status_code == 200
         data = response.get_json()
@@ -486,7 +484,8 @@ class TestExchangeFlow:
         assert data['success'] is True
         assert data['state']['current_round']['phase'] == 'playing'
         assert data['state']['current_round']['contract']['type'] == 'suit'
-        assert data['state']['current_round']['contract']['trump_suit'] == 'spades'
+        # Trump suit is auto-selected based on most common suit in hand
+        assert data['state']['current_round']['contract']['trump_suit'] is not None
 
 
 class TestPlayingFlow:
