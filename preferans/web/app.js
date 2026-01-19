@@ -1371,32 +1371,17 @@ function renderScoreboard() {
         const tabPlayerId = parseInt(tab.dataset.player);
         const player = players.find(p => p.id === tabPlayerId);
         if (player) {
-            // Use first 3 chars of name
-            tab.textContent = player.name.substring(0, 3);
+            tab.textContent = player.name;
         }
     });
 
     if (!viewingPlayer) {
         // No game state yet, show placeholders
-        document.getElementById('scoreboard-left-title').textContent = 'Left';
-        document.getElementById('scoreboard-middle-title').textContent = 'Score';
-        document.getElementById('scoreboard-right-title').textContent = 'Right';
         document.getElementById('scoreboard-left-value').textContent = '0';
         document.getElementById('scoreboard-middle-value').textContent = '0';
         document.getElementById('scoreboard-right-value').textContent = '0';
         return;
     }
-
-    const { left, right } = getPlayerLeftRight(selectedScoreboardPlayer);
-    const leftPlayer = players.find(p => p.id === left);
-    const rightPlayer = players.find(p => p.id === right);
-
-    // Update column titles with player names
-    document.getElementById('scoreboard-left-title').textContent =
-        leftPlayer ? leftPlayer.name.substring(0, 6) : 'Left';
-    document.getElementById('scoreboard-middle-title').textContent = 'Score';
-    document.getElementById('scoreboard-right-title').textContent =
-        rightPlayer ? rightPlayer.name.substring(0, 6) : 'Right';
 
     // Update values (placeholder - using score for now)
     document.getElementById('scoreboard-left-value').textContent =
