@@ -1391,7 +1391,7 @@ function showActionPanelForPhase(phase) {
 function translateBidLabel(bid) {
     // Translate bid labels from server to current language
     if (bid.bid_type === 'pass') return t('pass');
-    if (bid.bid_type === 'game') return t('game') + ' ' + bid.value;
+    if (bid.bid_type === 'game') return String(bid.value);
     if (bid.bid_type === 'in_hand') return bid.value > 0 ? t('inHand') + ' ' + bid.value : t('inHand');
     if (bid.bid_type === 'betl') return t('betl');
     if (bid.bid_type === 'sans') return t('sans');
