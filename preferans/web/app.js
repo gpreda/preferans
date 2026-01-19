@@ -940,8 +940,8 @@ function handleExchangeDragStart(e) {
     const cardId = e.target.dataset.cardId;
     const source = e.target.dataset.source;
     debug('EXCHANGE', `handleExchangeDragStart: cardId=${cardId}, source=${source}`);
-    e.dataTransfer.setData('text/plain', cardId);
-    e.dataTransfer.setData('application/x-source', source);
+    // Encode both cardId and source in the data (custom MIME types don't work reliably)
+    e.dataTransfer.setData('text/plain', JSON.stringify({ cardId, source }));
     e.dataTransfer.effectAllowed = 'move';
     e.target.classList.add('dragging');
 }
@@ -965,11 +965,15 @@ function handleHandDragLeave(e) {
 function handleHandDrop(e) {
     e.preventDefault();
     e.currentTarget.classList.remove('drop-target');
-    const cardId = e.dataTransfer.getData('text/plain');
-    const source = e.dataTransfer.getData('application/x-source');
-    debug('EXCHANGE', `handleHandDrop: cardId=${cardId}, source=${source}`);
-    if (source === 'talon') {
-        moveCardToHand(cardId);
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const { cardId, source } = data;
+        debug('EXCHANGE', `handleHandDrop: cardId=${cardId}, source=${source}`);
+        if (source === 'talon') {
+            moveCardToHand(cardId);
+        }
+    } catch (err) {
+        console.error('handleHandDrop parse error:', err);
     }
 }
 
@@ -988,11 +992,15 @@ function handleTalonDragLeave(e) {
 function handleTalonDrop(e) {
     e.preventDefault();
     e.currentTarget.classList.remove('drop-target');
-    const cardId = e.dataTransfer.getData('text/plain');
-    const source = e.dataTransfer.getData('application/x-source');
-    debug('EXCHANGE', `handleTalonDrop: cardId=${cardId}, source=${source}`);
-    if (source === 'hand') {
-        moveCardToTalon(cardId);
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const { cardId, source } = data;
+        debug('EXCHANGE', `handleTalonDrop: cardId=${cardId}, source=${source}`);
+        if (source === 'hand') {
+            moveCardToTalon(cardId);
+        }
+    } catch (err) {
+        console.error('handleTalonDrop parse error:', err);
     }
 }
 
