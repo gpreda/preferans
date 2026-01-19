@@ -205,6 +205,20 @@ function renderInitialState() {
             cardsContainer.appendChild(img);
         }
     }
+
+    // Show two face-down talon cards
+    const talonContainer = elements.talon?.querySelector('.talon-cards');
+    if (talonContainer) {
+        talonContainer.innerHTML = '';
+        for (let i = 0; i < 2; i++) {
+            const img = document.createElement('img');
+            img.src = cardBackUrl;
+            img.alt = 'Talon';
+            img.className = 'card';
+            talonContainer.appendChild(img);
+        }
+        elements.talon.style.display = 'flex';
+    }
 }
 
 async function checkServer() {
