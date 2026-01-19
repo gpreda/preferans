@@ -231,6 +231,13 @@ body {
     gap: var(--spacing-sm);
 }
 
+.frame-bidding {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .frame-last-trick {
     flex: 1;
     display: flex;
@@ -693,13 +700,21 @@ body {
 /* Bidding Controls */
 .bidding-controls {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    width: 100%;
+    padding: 0 var(--spacing-sm);
+}
+
+.bid-buttons {
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-xs);
+    width: 100%;
 }
 
 .bid-btn {
-    padding: var(--spacing-xs) var(--spacing-sm);
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-sm);
     background: #2d4059;
     color: white;
@@ -707,6 +722,7 @@ body {
     border-radius: var(--spacing-xs);
     cursor: pointer;
     transition: background 0.2s;
+    text-align: center;
 }
 
 .bid-btn:hover:not(:disabled) {
@@ -717,40 +733,6 @@ body {
 .bid-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-.bid-btn.pass-btn {
-    background: var(--color-primary);
-}
-
-.bid-btn.pass-btn:hover {
-    background: #ff6b6b;
-    color: white;
-}
-
-.bid-btn.in-hand-btn {
-    background: #9b59b6;
-}
-
-.bid-btn.in-hand-btn:hover:not(:disabled) {
-    background: #a569bd;
-    color: white;
-}
-
-.bid-btn.special-btn {
-    background: #f39c12;
-    color: var(--bg-dark);
-}
-
-.bid-btn.special-btn:hover:not(:disabled) {
-    background: #f1c40f;
-}
-
-.bid-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs);
-    justify-content: center;
 }
 
 /* Exchange Controls */

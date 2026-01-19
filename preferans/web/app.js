@@ -1416,19 +1416,6 @@ function updateBiddingButtons() {
         btn.textContent = translateBidLabel(bid);
         btn.dataset.bidType = bid.bid_type;
         btn.dataset.value = bid.value;
-
-        // Style pass button differently
-        if (bid.bid_type === 'pass') {
-            btn.classList.add('pass-btn');
-        }
-        // Style special bids
-        if (bid.bid_type === 'in_hand') {
-            btn.classList.add('in-hand-btn');
-        }
-        if (bid.bid_type === 'betl' || bid.bid_type === 'sans') {
-            btn.classList.add('special-btn');
-        }
-
         btn.addEventListener('click', () => placeBid(bid.bid_type, bid.value));
         container.appendChild(btn);
     });
