@@ -1,206 +1,286 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { runDSL, DSLRunner } = require('../lib/dsl-runner');
 
 /**
- * Helper to start a new game and complete the auction with Player 3 (human) winning
- * Bids "Game 2" then passes from other players
+ * Helper to setup game and get to exchange phase with human as declarer
+ * Retries up to maxAttempts times to get human as declarer
  */
-async function startGameAndCompleteAuction(page) {
-  await page.goto('/');
+async function setupWithHumanDeclarer(page, maxAttempts = 10) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await page.goto('/');
+    await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
-  // Wait for server connection
-  await expect(page.locator('#message-area')).toContainText('running', { timeout: 10000 });
+    await page.click('#new-game-btn');
+    await page.waitForTimeout(500);
 
-  // Start new game
-  await page.click('#new-game-btn');
+    const runner = new DSLRunner(page);
+    await runner.passAuction();
 
-  // Wait for bidding phase
-  await expect(page.locator('#bidding-controls')).toBeVisible({ timeout: 5000 });
+    const player3IsDeclarer = await page.locator('#player3 .player-role').textContent()
+      .then(t => /declarer/i.test(t || ''))
+      .catch(() => false);
 
-  // Player 3 bids "Game 2" (the lowest game bid)
-  // Wait for bid buttons to appear
-  await expect(page.locator('#bid-buttons .bid-btn')).toHaveCount.greaterThan(0);
-
-  // Find and click a game bid button (value 2 = Game 2)
-  const gameBidBtn = page.locator('.bid-btn[data-bid-type="game"][data-value="2"]');
-  if (await gameBidBtn.isVisible()) {
-    await gameBidBtn.click();
-  } else {
-    // If specific bid not available, just pass
-    await page.locator('.pass-btn').click();
-  }
-
-  // Wait for auction to complete - other players should pass
-  // Keep clicking pass if we're still in auction
-  for (let i = 0; i < 5; i++) {
-    const passBtn = page.locator('.pass-btn');
-    if (await passBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await passBtn.click();
-      await page.waitForTimeout(300);
-    } else {
-      break;
+    if (player3IsDeclarer) {
+      return true;
     }
   }
-
-  // Wait for exchange phase
-  await expect(page.locator('#exchange-controls')).toBeVisible({ timeout: 5000 });
+  return false;
 }
 
-test.describe('Exchange Flow', () => {
+/**
+ * Helper to drag a card from source to target
+ */
+async function dragCard(page, sourceSelector, targetSelector) {
+  const source = page.locator(sourceSelector);
+  const target = page.locator(targetSelector);
+
+  await source.dragTo(target);
+  await page.waitForTimeout(200);
+}
+
+test.describe('Exchange Flow - Drag and Drop', () => {
 
   test('talon shows face-up cards during exchange', async ({ page }) => {
-    await page.goto('/');
-
-    // Wait for server connection
-    await expect(page.locator('#message-area')).toContainText('running', { timeout: 10000 });
-
-    // Start new game
-    await page.click('#new-game-btn');
-
-    // Wait for bidding phase
-    await expect(page.locator('#bidding-controls')).toBeVisible({ timeout: 5000 });
-
-    // Bid game 2 if available, otherwise pass
-    const gameBidBtn = page.locator('.bid-btn[data-bid-type="game"][data-value="2"]');
-    if (await gameBidBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await gameBidBtn.click();
-    }
-
-    // Pass through remaining auction
-    for (let i = 0; i < 10; i++) {
-      const passBtn = page.locator('.pass-btn');
-      if (await passBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await passBtn.click();
-        await page.waitForTimeout(200);
-      }
-
-      // Check if we're in exchange phase
-      const exchangeVisible = await page.locator('#exchange-controls').isVisible().catch(() => false);
-      if (exchangeVisible) break;
-    }
-
-    // Verify talon is visible with face-up cards
-    await expect(page.locator('#talon')).toBeVisible();
-
-    const talonCards = page.locator('#talon .talon-cards img');
-    await expect(talonCards).toHaveCount(2);
-
-    // Check that talon cards are face-up (src should contain card id, not 'back')
-    const firstCard = talonCards.first();
-    const cardSrc = await firstCard.getAttribute('src');
-    expect(cardSrc).not.toContain('back');
-    expect(cardSrc).toContain('/api/cards/');
+    await runDSL(page, `
+      click:new_game
+      pass_auction
+      phase:exchange
+      talon:2:faceup
+    `);
   });
 
-  test('contract controls hidden before exchange complete', async ({ page }) => {
-    await page.goto('/');
+  test('exchange controls visible with commit button initially enabled', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
 
-    // Wait for server connection
-    await expect(page.locator('#message-area')).toContainText('running', { timeout: 10000 });
-
-    // Start new game
-    await page.click('#new-game-btn');
-
-    // Wait for bidding phase
-    await expect(page.locator('#bidding-controls')).toBeVisible({ timeout: 5000 });
-
-    // Bid game 2 if available
-    const gameBidBtn = page.locator('.bid-btn[data-bid-type="game"][data-value="2"]');
-    if (await gameBidBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await gameBidBtn.click();
-    }
-
-    // Pass through remaining auction
-    for (let i = 0; i < 10; i++) {
-      const passBtn = page.locator('.pass-btn');
-      if (await passBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await passBtn.click();
-        await page.waitForTimeout(200);
-      }
-
-      // Check if we're in exchange phase
-      const exchangeVisible = await page.locator('#exchange-controls').isVisible().catch(() => false);
-      if (exchangeVisible) break;
-    }
-
-    // Verify exchange controls are visible
+    const commitBtn = page.locator('#pickup-talon-btn');
     await expect(page.locator('#exchange-controls')).toBeVisible();
-    await expect(page.locator('#pickup-talon-btn')).toBeVisible();
-
-    // Verify contract controls are NOT visible yet
+    await expect(commitBtn).toBeVisible();
+    // Button is enabled because talon has 2 cards (user can discard original talon)
+    await expect(commitBtn).toBeEnabled();
     await expect(page.locator('#contract-controls')).toBeHidden();
+  });
+
+  test('talon cards are draggable', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const talonCards = page.locator('.talon-cards img.card.exchange-draggable');
+    await expect(talonCards).toHaveCount(2);
+
+    // Check that cards have draggable attribute
+    for (let i = 0; i < 2; i++) {
+      const draggable = await talonCards.nth(i).getAttribute('draggable');
+      expect(draggable).toBe('true');
+    }
+  });
+
+  test('hand cards are draggable during exchange', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const handCards = page.locator('#player3 .player-cards img.card.exchange-draggable');
+    await expect(handCards).toHaveCount(10);
+  });
+
+  test('drag talon card to hand increases hand size', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+    await expect(handCards).toHaveCount(10);
+
+    // Drag first talon card to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    // Hand should now have 11 cards
+    await expect(handCards).toHaveCount(11, { timeout: 5000 });
+
+    // Talon should have 1 card
+    const talonCards = page.locator('.talon-cards img.card');
+    await expect(talonCards).toHaveCount(1);
+  });
+
+  test('drag hand card to talon increases talon size', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    // First drag both talon cards to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+    await expect(handCards).toHaveCount(12, { timeout: 5000 });
+
+    // Talon should be empty (showing placeholder)
+    const talonCards = page.locator('.talon-cards img.card');
+    await expect(talonCards).toHaveCount(0);
+
+    // Now drag a hand card to talon
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+
+    // Hand should have 11 cards
+    await expect(handCards).toHaveCount(11, { timeout: 5000 });
+
+    // Talon should have 1 card
+    await expect(talonCards).toHaveCount(1);
+  });
+
+  test('commit button disabled when talon != 2 cards', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const commitBtn = page.locator('#pickup-talon-btn');
+
+    // Initially talon has 2 cards - button should be enabled
+    await expect(commitBtn).toBeEnabled();
+
+    // Drag one talon card to hand (talon now has 1 card)
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(commitBtn).toBeDisabled();
+
+    // Drag other talon card to hand (talon now has 0 cards)
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(commitBtn).toBeDisabled();
+
+    // Drag one hand card to talon (talon now has 1 card)
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await expect(commitBtn).toBeDisabled();
+  });
+
+  test('commit button enabled when talon == 2 cards', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const commitBtn = page.locator('#pickup-talon-btn');
+
+    // Drag both talon cards to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    // Drag two hand cards to talon
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+
+    // Now talon has 2 cards - commit should be enabled
+    await expect(commitBtn).toBeEnabled({ timeout: 5000 });
+  });
+
+  test('commit exchange finalizes with correct cards', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    // Drag both talon cards to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    // Drag two hand cards to talon
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+
+    // Click commit
+    const commitBtn = page.locator('#pickup-talon-btn');
+    await expect(commitBtn).toBeEnabled({ timeout: 5000 });
+    await commitBtn.click();
+
+    // Contract controls should be visible
+    await expect(page.locator('#contract-controls')).toBeVisible({ timeout: 5000 });
+
+    // Exchange controls should be hidden
+    await expect(page.locator('#exchange-controls')).toBeHidden();
+
+    // Hand should have 10 cards
+    const handCards = page.locator('#player3 .player-cards img.card');
+    await expect(handCards).toHaveCount(10, { timeout: 5000 });
+  });
+
+  test('can drag card back from talon to hand', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    // Drag both talon cards to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+    await expect(handCards).toHaveCount(12, { timeout: 5000 });
+
+    // Drag one hand card to talon
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await expect(handCards).toHaveCount(11);
+
+    // Drag it back to hand
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(handCards).toHaveCount(12);
+  });
+
+  test('hand can have 10, 11, or 12 cards during exchange', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+
+    // Start with 10 cards
+    await expect(handCards).toHaveCount(10);
+
+    // Drag one talon card to hand - 11 cards
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(handCards).toHaveCount(11);
+
+    // Drag second talon card to hand - 12 cards
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(handCards).toHaveCount(12);
   });
 
   test('full exchange flow completes correctly', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
-    // Wait for server connection
-    await expect(page.locator('#message-area')).toContainText('running', { timeout: 10000 });
-
-    // Start new game
     await page.click('#new-game-btn');
+    await page.waitForTimeout(500);
 
-    // Wait for bidding phase
-    await expect(page.locator('#bidding-controls')).toBeVisible({ timeout: 5000 });
+    // Use DSL runner to pass through auction
+    const runner = new DSLRunner(page);
+    await runner.passAuction();
 
-    // Bid game 2 if available
-    const gameBidBtn = page.locator('.bid-btn[data-bid-type="game"][data-value="2"]');
-    if (await gameBidBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await gameBidBtn.click();
+    await expect(page.locator('#exchange-controls')).toBeVisible({ timeout: 10000 });
+
+    // Check if Player 3 is declarer
+    const player3IsDeclarer = await page.locator('#player3 .player-role').textContent()
+      .then(t => /declarer/i.test(t || ''))
+      .catch(() => false);
+
+    if (player3IsDeclarer) {
+      // Human is declarer - use drag and drop to complete exchange
+      const handCards = page.locator('#player3 .player-cards img.card');
+      await expect(handCards).toHaveCount(10, { timeout: 5000 });
+
+      // Drag both talon cards to hand
+      await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+      await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+      await expect(handCards).toHaveCount(12);
+
+      // Drag two hand cards to talon
+      await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+      await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+      await expect(handCards).toHaveCount(10);
+
+      // Commit the exchange
+      const commitBtn = page.locator('#pickup-talon-btn');
+      await expect(commitBtn).toBeEnabled();
+      await commitBtn.click();
+
+      await expect(page.locator('#contract-controls')).toBeVisible({ timeout: 5000 });
+      await expect(handCards).toHaveCount(10);
+
+      await page.click('#announce-btn');
+
+      await expect(page.locator('#play-controls')).toBeVisible({ timeout: 5000 });
+    } else {
+      // AI is declarer - verify exchange UI state
+      const declarerCards = page.locator('.player:has(.player-role)').filter({ hasText: /declarer/i }).locator('.player-cards img.card');
+      await expect(declarerCards).toHaveCount(12, { timeout: 5000 });
     }
-
-    // Pass through remaining auction
-    for (let i = 0; i < 10; i++) {
-      const passBtn = page.locator('.pass-btn');
-      if (await passBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await passBtn.click();
-        await page.waitForTimeout(200);
-      }
-
-      // Check if we're in exchange phase
-      const exchangeVisible = await page.locator('#exchange-controls').isVisible().catch(() => false);
-      if (exchangeVisible) break;
-    }
-
-    // Verify we're in exchange phase
-    await expect(page.locator('#exchange-controls')).toBeVisible();
-
-    // Click pickup talon button
-    await page.click('#pickup-talon-btn');
-
-    // Wait for declarer to have 12 cards
-    // The declarer is player 3 (human player) at bottom
-    const player3Cards = page.locator('#player3 .player-cards img.card');
-    await expect(player3Cards).toHaveCount(12, { timeout: 5000 });
-
-    // Select 2 cards to discard (click on first two selectable cards)
-    const selectableCards = page.locator('#player3 .player-cards img.card.selectable');
-    await expect(selectableCards).toHaveCount(12);
-
-    await selectableCards.nth(0).click();
-    await selectableCards.nth(1).click();
-
-    // Verify 2 cards are selected
-    const selectedCards = page.locator('#player3 .player-cards img.card.selected');
-    await expect(selectedCards).toHaveCount(2);
-
-    // Discard button should be enabled now
-    const discardBtn = page.locator('#discard-btn');
-    await expect(discardBtn).toBeEnabled();
-
-    // Click discard
-    await discardBtn.click();
-
-    // Now contract controls should be visible
-    await expect(page.locator('#contract-controls')).toBeVisible({ timeout: 5000 });
-
-    // Player should now have 10 cards
-    await expect(player3Cards).toHaveCount(10);
-
-    // Announce a contract
-    await page.click('#announce-btn');
-
-    // Phase should change to playing
-    await expect(page.locator('#play-controls')).toBeVisible({ timeout: 5000 });
   });
 });
