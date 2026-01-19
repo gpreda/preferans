@@ -1332,7 +1332,7 @@ function renderBiddingHistory() {
         return;
     }
 
-    historyContainer.style.display = 'block';
+    historyContainer.style.display = 'flex';
     historyList.innerHTML = '';
 
     // Render each bid on a separate line
