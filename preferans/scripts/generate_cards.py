@@ -54,7 +54,7 @@ def generate_compact_card_svg(rank: str, suit: str) -> str:
 
     # Font sizes optimized for 20x22 visible area
     # Rank should be close to 20px wide (1/4 of card width)
-    rank_size = 18 if rank != '10' else 14  # Smaller for "10" as it's 2 chars
+    rank_size = 18
     suit_size = 11
 
     # Positions for top-left corner (must fit within 20x22)
@@ -98,7 +98,7 @@ def generate_large_card_svg(rank: str, suit: str) -> str:
 
     # Large font sizes - twice the compact size
     # Rank and suit are the same size
-    label_size = 36 if rank != '10' else 28  # Smaller for "10" as it's 2 chars
+    label_size = 36
 
     # Positions for top-left corner
     rank_x = 1
@@ -139,7 +139,7 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     color = suit_info['color']
 
     # Rank size (reduced by 25% again)
-    rank_size = 20 if rank != '10' else 15
+    rank_size = 20
 
     # Suit size for corner symbols (reduced by 25% again)
     suit_size = 29
