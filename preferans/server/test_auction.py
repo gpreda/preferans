@@ -286,7 +286,7 @@ class TestAuction(unittest.TestCase):
     def test_example7_in_hand_then_betl(self):
         """
         Example 7 (labeled 6/): In_hand then betl beats it
-        P1: pass, P2: in_hand, P3: betl
+        P1: pass, P2: in_hand, P3: betl, P2: pass (gives up in_hand competition)
         Winner: P3, betl
         """
         auction = self.game.current_round.auction
@@ -308,7 +308,15 @@ class TestAuction(unittest.TestCase):
         # P3 bids betl
         self.engine.place_bid(3, 'betl', 6)
 
-        # Auction complete (betl beats any undeclared in_hand which max is 5)
+        # P2 gets a chance to respond with sans (or pass)
+        self.assertEqual(auction.phase, AuctionPhase.IN_HAND_DECIDING)
+        labels = self.get_legal_bid_labels(2)
+        self.assertEqual(labels, ['Pass', 'Sans'])
+
+        # P2 passes (gives up the in_hand competition)
+        self.engine.place_bid(2, 'pass', 0)
+
+        # Auction complete - P3 wins with betl
         self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
         winner_bid = auction.get_winner_bid()
         self.assertEqual(winner_bid.player_id, 3)
@@ -437,6 +445,206 @@ class TestAuction(unittest.TestCase):
         self.assertNotIn('In Hand', labels)
         self.assertNotIn('Betl', labels)  # Also not available (already bid)
         self.assertNotIn('Sans', labels)
+
+
+    def test_example9_in_hand_contract_levels_not_limited_by_previous_bids(self):
+        """
+        Example 9: In_hand winner can choose contract level 2-5, not limited by previous bids.
+
+        P1 options: pass, 2, in_hand, betl, sans
+        P1 bid: 2
+        P2 options: pass, 3, in_hand, betl, sans
+        P2 bid: 3
+        P3 options: pass, 4, in_hand, betl, sans
+        P3 bid: in_hand
+        P3 wins auction
+        P3 contract options: 2-5 (NOT limited by P1's 2 or P2's 3)
+        P3 chooses 3
+        Winner: P3
+        Auction: 3
+        """
+        auction = self.game.current_round.auction
+
+        # P1 options: pass, 2, in_hand, betl, sans
+        labels = self.get_legal_bid_labels(1)
+        self.assertEqual(labels, ['Pass', '2', 'In Hand', 'Betl', 'Sans'])
+
+        # P1 bids 2
+        self.engine.place_bid(1, 'game', 2)
+        self.assertEqual(auction.phase, AuctionPhase.GAME_BIDDING)
+
+        # P2 options: pass, 3, in_hand, betl, sans (first bid)
+        labels = self.get_legal_bid_labels(2)
+        self.assertIn('Pass', labels)
+        self.assertIn('3', labels)
+        self.assertIn('In Hand', labels)
+        self.assertIn('Betl', labels)
+        self.assertIn('Sans', labels)
+
+        # P2 bids 3
+        self.engine.place_bid(2, 'game', 3)
+
+        # P3 options: pass, 4, in_hand, betl, sans (first bid)
+        labels = self.get_legal_bid_labels(3)
+        self.assertIn('Pass', labels)
+        self.assertIn('4', labels)
+        self.assertIn('In Hand', labels)
+        self.assertIn('Betl', labels)
+        self.assertIn('Sans', labels)
+
+        # P3 bids in_hand
+        self.engine.place_bid(3, 'in_hand', 0)
+
+        # Auction complete - P3 wins
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        winner_bid = auction.get_winner_bid()
+        self.assertEqual(winner_bid.player_id, 3)
+        self.assertTrue(winner_bid.is_in_hand())
+
+        # P3 contract options: 2-5 (NOT limited by previous bids of 2 and 3)
+        legal_levels = self.engine.get_legal_contract_levels(3)
+        self.assertEqual(legal_levels, [2, 3, 4, 5, 6, 7])
+
+        # P3 can choose any level from 2-5, even level 2 or 3 which were already bid
+        # Let's test choosing level 3
+        self.engine.announce_contract(3, 'suit', 'spades', level=3)
+
+        # Verify contract was created with level 3
+        contract = self.game.current_round.contract
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract.bid_value, 3)
+        self.assertTrue(contract.is_in_hand)
+
+    def test_in_hand_winner_must_select_contract_before_playing(self):
+        """
+        Test that in_hand winner must select contract level before playing starts.
+
+        P1 bids 2, P2 bids 3, P3 bids in_hand
+        After auction: P3 is declarer, no trick started, must choose level 2-5
+        After announce_contract: trick starts, playing begins
+        """
+        from models import RoundPhase
+        auction = self.game.current_round.auction
+        round = self.game.current_round
+
+        # P1 bids 2
+        self.engine.place_bid(1, 'game', 2)
+
+        # P2 bids 3
+        self.engine.place_bid(2, 'game', 3)
+
+        # P3 bids in_hand
+        self.engine.place_bid(3, 'in_hand', 0)
+
+        # Auction complete - P3 wins
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        self.assertEqual(round.declarer_id, 3)
+
+        # Phase is PLAYING but no trick started yet (no contract announced)
+        self.assertEqual(round.phase, RoundPhase.PLAYING)
+        self.assertIsNone(round.contract)
+        self.assertIsNone(round.current_trick)
+
+        # Game state should include legal_contract_levels
+        state = self.engine.get_game_state()
+        self.assertIn('legal_contract_levels', state)
+        self.assertEqual(state['legal_contract_levels'], [2, 3, 4, 5, 6, 7])
+
+        # P3 announces contract with level 3
+        self.engine.announce_contract(3, 'suit', 'spades', level=3)
+
+        # Now contract is set and trick has started
+        self.assertIsNotNone(round.contract)
+        self.assertEqual(round.contract.bid_value, 3)
+        self.assertTrue(round.contract.is_in_hand)
+        self.assertIsNotNone(round.current_trick)
+
+        # Game state should no longer include legal_contract_levels
+        state = self.engine.get_game_state()
+        self.assertNotIn('legal_contract_levels', state)
+
+    def test_in_hand_single_winner_contract_options(self):
+        """Test that a single in_hand winner (no other in_hand bidders) gets options 2-5."""
+        auction = self.game.current_round.auction
+
+        # P1 passes
+        self.engine.place_bid(1, 'pass', 0)
+
+        # P2 bids 2
+        self.engine.place_bid(2, 'game', 2)
+
+        # P3 bids in_hand
+        self.engine.place_bid(3, 'in_hand', 0)
+
+        # P3 wins (in_hand beats game)
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        winner_bid = auction.get_winner_bid()
+        self.assertEqual(winner_bid.player_id, 3)
+
+        # P3 should have options 2-5
+        legal_levels = self.engine.get_legal_contract_levels(3)
+        self.assertEqual(legal_levels, [2, 3, 4, 5, 6, 7])
+
+    def test_in_hand_declared_value_contract_options(self):
+        """Test that an in_hand winner with declared value only has that one option."""
+        auction = self.game.current_round.auction
+
+        # P1 bids in_hand
+        self.engine.place_bid(1, 'in_hand', 0)
+
+        # P2 bids in_hand
+        self.engine.place_bid(2, 'in_hand', 0)
+
+        # P3 passes
+        self.engine.place_bid(3, 'pass', 0)
+
+        # IN_HAND_DECLARING phase
+        self.assertEqual(auction.phase, AuctionPhase.IN_HAND_DECLARING)
+
+        # P1 reveals 3
+        self.engine.place_bid(1, 'in_hand', 3)
+
+        # P2 reveals 4 (wins)
+        self.engine.place_bid(2, 'in_hand', 4)
+
+        # Auction complete
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        winner_bid = auction.get_winner_bid()
+        self.assertEqual(winner_bid.player_id, 2)
+        self.assertEqual(winner_bid.value, 4)
+
+        # P2 can choose declared level (4) or higher (5, betl, sans)
+        legal_levels = self.engine.get_legal_contract_levels(2)
+        self.assertEqual(legal_levels, [4, 5, 6, 7])
+
+    def test_regular_game_winner_contract_options(self):
+        """Test that a regular game winner can choose winning level or higher."""
+        auction = self.game.current_round.auction
+
+        # P1 bids 2
+        self.engine.place_bid(1, 'game', 2)
+
+        # P2 passes
+        self.engine.place_bid(2, 'pass', 0)
+
+        # P3 bids 3
+        self.engine.place_bid(3, 'game', 3)
+
+        # P1 holds at 3
+        self.engine.place_bid(1, 'game', 3)
+
+        # P3 passes
+        self.engine.place_bid(3, 'pass', 0)
+
+        # Auction complete - P1 wins with game 3
+        self.assertEqual(auction.phase, AuctionPhase.COMPLETE)
+        winner_bid = auction.get_winner_bid()
+        self.assertEqual(winner_bid.player_id, 1)
+        self.assertEqual(winner_bid.value, 3)
+
+        # P1 can choose winning level (3) or higher (4, 5, betl, sans)
+        legal_levels = self.engine.get_legal_contract_levels(1)
+        self.assertEqual(legal_levels, [3, 4, 5, 6, 7])
 
 
 if __name__ == '__main__':

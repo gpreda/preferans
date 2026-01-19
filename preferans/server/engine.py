@@ -211,8 +211,10 @@ class GameEngine:
             # Mark as in_hand player
             if last_bid.player_id not in auction.in_hand_players:
                 auction.in_hand_players.append(last_bid.player_id)
-            # Set their declared value for betl/sans
+            # Set highest_in_hand_bid for all in_hand variants
             if last_bid.is_betl() or last_bid.is_sans():
+                auction.highest_in_hand_bid = last_bid
+            elif last_bid.is_in_hand() and not auction.highest_in_hand_bid:
                 auction.highest_in_hand_bid = last_bid
             auction.phase = AuctionPhase.IN_HAND_DECIDING
             auction.players_bid_this_phase = [last_bid.player_id]
@@ -250,8 +252,13 @@ class GameEngine:
                 # This was their first bid - it's an in_hand declaration
                 if last_bid.player_id not in auction.in_hand_players:
                     auction.in_hand_players.append(last_bid.player_id)
+                # Set highest_in_hand_bid for all in_hand variants
                 if last_bid.is_betl() or last_bid.is_sans():
                     auction.highest_in_hand_bid = last_bid
+                elif last_bid.is_in_hand():
+                    # For undeclared in_hand, set it as highest if no other in_hand bid
+                    if not auction.highest_in_hand_bid:
+                        auction.highest_in_hand_bid = last_bid
 
                 # Players who already bid game are eliminated (can't switch to in_hand)
                 for bid in auction.bids[:-1]:
@@ -307,23 +314,17 @@ class GameEngine:
                 return
 
             # If betl is bid, give other in_hand players a chance to respond with sans
-            # BUT only if the betl bidder was already an in_hand player (upgrading from undeclared)
-            # If they're a new entry to the auction, their betl beats any undeclared in_hand immediately
+            # Any undeclared in_hand player should get a chance to respond
             if last_bid.is_betl():
-                betl_bidder_was_in_hand = any(
-                    b.player_id == last_bid.player_id and b.is_in_hand() and b != last_bid
-                    for b in auction.bids
-                )
-                if betl_bidder_was_in_hand:
-                    undeclared_in_hand = [pid for pid in auction.in_hand_players
-                                          if pid != last_bid.player_id
-                                          and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
-                                                    for b in auction.bids)]
-                    if undeclared_in_hand:
-                        # Reset players_bid_this_phase so undeclared can respond
-                        auction.players_bid_this_phase = [last_bid.player_id]
-                        self._set_next_bidder_for_in_hand_deciding(auction)
-                        return
+                undeclared_in_hand = [pid for pid in auction.in_hand_players
+                                      if pid != last_bid.player_id
+                                      and not any(b.player_id == pid and (b.is_betl() or b.is_sans())
+                                                for b in auction.bids)]
+                if undeclared_in_hand:
+                    # Reset players_bid_this_phase so undeclared can respond
+                    auction.players_bid_this_phase = [last_bid.player_id]
+                    self._set_next_bidder_for_in_hand_deciding(auction)
+                    return
 
         elif last_bid and last_bid.is_in_hand():
             if last_bid.player_id not in auction.in_hand_players:
@@ -463,8 +464,9 @@ class GameEngine:
 
         if is_in_hand:
             # Skip exchange phase for in_hand games
+            # Don't start trick yet - wait for announce_contract to be called
+            # so the player can choose their contract level (2-5 for undeclared in_hand)
             round.phase = RoundPhase.PLAYING
-            round.start_new_trick(lead_player_id=winner.id)
         else:
             round.phase = RoundPhase.EXCHANGING
 
@@ -478,14 +480,21 @@ class GameEngine:
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can pick up talon")
 
+        if len(round.talon) == 0:
+            raise InvalidMoveError("Talon already picked up")
+
         player = self._get_player(player_id)
 
         # Add talon cards to player's hand
-        for card in round.talon:
+        talon_cards = list(round.talon)  # Copy before clearing
+        for card in talon_cards:
             player.add_card(card)
 
+        # Clear talon after pickup
+        round.talon = []
+
         player.sort_hand()
-        return round.talon
+        return talon_cards
 
     def discard_cards(self, player_id: int, card_ids: list[str]) -> list[Card]:
         """Declarer discards two cards after picking up talon."""
@@ -517,19 +526,41 @@ class GameEngine:
         player.sort_hand()
         return discarded
 
-    def announce_contract(self, player_id: int, contract_type: str, trump_suit: Optional[str] = None):
-        """Declarer announces the contract after discarding (or for in_hand, at any time)."""
+    def announce_contract(self, player_id: int, contract_type: str, trump_suit: Optional[str] = None, level: Optional[int] = None):
+        """Declarer announces the contract after discarding (or for in_hand, at any time).
+
+        Args:
+            player_id: The declarer's ID
+            contract_type: One of "suit", "betl", "sans"
+            trump_suit: Required for suit contracts
+            level: The contract level (2-7). Required for in_hand games without declared value.
+        """
+        print(f"[announce_contract] player_id={player_id}, contract_type={contract_type}, trump_suit={trump_suit}, level={level}")
+
         round = self.game.current_round
 
         if round.declarer_id != player_id:
             raise InvalidMoveError("Only declarer can announce contract")
 
         winner_bid = round.auction.get_winner_bid()
-        is_in_hand = winner_bid and winner_bid.is_in_hand()
+        print(f"[announce_contract] winner_bid={winner_bid}, is_in_hand={winner_bid.is_in_hand() if winner_bid else None}")
+        print(f"[announce_contract] in_hand_players={round.auction.in_hand_players}")
 
-        # For regular games, must be in exchanging phase and have discarded
+        is_in_hand = winner_bid and (winner_bid.is_in_hand() or (
+            (winner_bid.is_betl() or winner_bid.is_sans()) and
+            winner_bid.player_id in round.auction.in_hand_players
+        ))
+        print(f"[announce_contract] is_in_hand={is_in_hand}")
+
+        # For regular games, must be in exchanging phase and have completed exchange
         if not is_in_hand:
             self._validate_phase(RoundPhase.EXCHANGING)
+            # Check that talon was picked up (talon should be empty)
+            if len(round.talon) > 0:
+                raise InvalidMoveError("Must pick up talon before announcing contract")
+            # Check that cards were discarded
+            if len(round.discarded) != 2:
+                raise InvalidMoveError("Must discard 2 cards before announcing contract")
             player = self._get_player(player_id)
             if len(player.hand) != 10:
                 raise InvalidMoveError("Must discard before announcing contract")
@@ -551,16 +582,23 @@ class GameEngine:
         elif trump_suit:
             raise InvalidMoveError(f"{contract_type} contract cannot have trump suit")
 
-        # Get bid value from auction
-        if winner_bid:
-            if winner_bid.is_betl():
-                bid_value = 6
-            elif winner_bid.is_sans():
-                bid_value = 7
-            else:
-                bid_value = winner_bid.value if winner_bid.value > 0 else 2
+        # Determine and validate bid value
+        legal_levels = self.get_legal_contract_levels(player_id)
+        print(f"[announce_contract] legal_levels={legal_levels}")
+
+        if level is not None:
+            # Validate provided level
+            if level not in legal_levels:
+                raise InvalidMoveError(f"Invalid contract level {level}. Legal levels: {legal_levels}")
+            bid_value = level
+        elif len(legal_levels) == 1:
+            # Only one legal level - use it
+            bid_value = legal_levels[0]
         else:
-            bid_value = 2
+            # Multiple legal levels but none specified
+            raise InvalidMoveError(f"Must specify level. Legal levels: {legal_levels}")
+
+        print(f"[announce_contract] bid_value={bid_value}")
 
         # Create contract
         round.contract = Contract(
@@ -569,26 +607,37 @@ class GameEngine:
             bid_value=bid_value,
             is_in_hand=is_in_hand
         )
+        print(f"[announce_contract] Created contract: type={ctype}, trump={trump}, bid_value={bid_value}, is_in_hand={is_in_hand}")
 
         # Move to playing phase
         round.phase = RoundPhase.PLAYING
 
-        # Start first trick - declarer leads
-        round.start_new_trick(lead_player_id=player_id)
+        # Determine who leads the first trick
+        first_lead_id = self._get_first_lead_player_id(player_id, ctype)
+        print(f"[announce_contract] First lead player: P{first_lead_id}")
+        round.start_new_trick(lead_player_id=first_lead_id)
 
     # === Playing Phase ===
 
     def play_card(self, player_id: int, card_id: str) -> dict:
         """Play a card to the current trick."""
+        print(f"[play_card] player_id={player_id}, card_id={card_id}")
+        print(f"[play_card] phase={self.game.current_round.phase if self.game.current_round else None}")
+        print(f"[play_card] contract={self.game.current_round.contract if self.game.current_round else None}")
+        print(f"[play_card] current_trick={self.game.current_round.current_trick if self.game.current_round else None}")
+        print(f"[play_card] num_tricks={len(self.game.current_round.tricks) if self.game.current_round else 0}")
+
         self._validate_phase(RoundPhase.PLAYING)
         round = self.game.current_round
         trick = round.current_trick
 
         if not trick:
+            print(f"[play_card] ERROR: No active trick!")
             raise GameError("No active trick")
 
         # Validate it's this player's turn
         expected_player_id = self._get_next_player_in_trick(trick)
+        print(f"[play_card] expected_player_id={expected_player_id}")
         if player_id != expected_player_id:
             raise InvalidMoveError(f"Not player {player_id}'s turn")
 
@@ -597,6 +646,7 @@ class GameEngine:
         # Find card in hand
         card = self._find_card_in_hand(player, card_id)
         if not card:
+            print(f"[play_card] ERROR: Card {card_id} not in hand. Player hand: {[c.id for c in player.hand]}")
             raise InvalidMoveError(f"Card {card_id} not in hand")
 
         # Validate card is legal to play
@@ -611,7 +661,10 @@ class GameEngine:
         # Check if trick is complete (3 cards played)
         if len(trick.cards) == 3:
             trump = round.contract.trump_suit if round.contract.type == ContractType.SUIT else None
+            print(f"[play_card] Trick complete! Cards: {[(pid, c.id) for pid, c in trick.cards]}")
+            print(f"[play_card] Trump suit: {trump}, Contract type: {round.contract.type}")
             winner_id = trick.determine_winner(trump_suit=trump)
+            print(f"[play_card] Winner: P{winner_id}")
             winner = self._get_player(winner_id)
             winner.tricks_won += 1
 
@@ -800,6 +853,37 @@ class GameEngine:
                 return p
         raise GameError(f"No player at position {position}")
 
+    def _get_first_lead_player_id(self, declarer_id: int, contract_type: ContractType) -> int:
+        """Determine who leads the first trick.
+
+        Rules:
+        - For Sans: always the left player from the declarer (counter-clockwise)
+        - For other contracts: forehand (position 1) plays first
+        - If forehand is the declarer, the next defender in counter-clockwise order plays first
+        """
+        declarer = self._get_player(declarer_id)
+
+        if contract_type == ContractType.SANS:
+            # For Sans, always the left player from declarer (counter-clockwise)
+            next_position = ((declarer.position) % 3) + 1
+            return self._get_player_by_position(next_position).id
+
+        # For other contracts: forehand plays first, unless they are the declarer
+        forehand = self._get_player_by_position(1)
+        if forehand.id != declarer_id:
+            return forehand.id
+
+        # Forehand is the declarer, so next defender in counter-clockwise order plays first
+        # Counter-clockwise from position 1: 1 → 3 → 2
+        for i in range(1, 3):
+            next_position = ((1 + i) % 3) + 1  # 1→3, then 3→2
+            player = self._get_player_by_position(next_position)
+            if player.id != declarer_id:
+                return player.id
+
+        # Shouldn't reach here, but fallback to declarer
+        return declarer_id
+
     def _find_card_in_hand(self, player: Player, card_id: str) -> Optional[Card]:
         """Find a card in player's hand by ID."""
         for card in player.hand:
@@ -923,6 +1007,53 @@ class GameEngine:
         # Can play any card
         return player.hand.copy()
 
+    def get_legal_contract_levels(self, player_id: int) -> list[int]:
+        """Get legal contract levels for the declarer based on the winning bid.
+
+        For in_hand winners (without declared value): 2-5 (not limited by previous bids)
+        For in_hand winners (with declared value): that specific value
+        For regular game winners: the winning bid level
+        For betl winners: 6
+        For sans winners: 7
+        """
+        round = self.game.current_round
+        if round.declarer_id != player_id:
+            print(f"[get_legal_contract_levels] player_id={player_id} is not declarer (declarer_id={round.declarer_id})")
+            return []
+
+        winner_bid = round.auction.get_winner_bid()
+        if not winner_bid:
+            print(f"[get_legal_contract_levels] No winner_bid found")
+            return []
+
+        print(f"[get_legal_contract_levels] winner_bid: player_id={winner_bid.player_id}, bid_type={winner_bid.bid_type}, value={winner_bid.value}")
+
+        # Check if this is an in_hand game
+        is_in_hand = winner_bid.is_in_hand() or (
+            (winner_bid.is_betl() or winner_bid.is_sans()) and
+            winner_bid.player_id in round.auction.in_hand_players
+        )
+
+        if winner_bid.is_betl():
+            print(f"[get_legal_contract_levels] Betl bid -> [6]")
+            return [6]
+        elif winner_bid.is_sans():
+            print(f"[get_legal_contract_levels] Sans bid -> [7]")
+            return [7]
+        elif winner_bid.is_in_hand():
+            if winner_bid.value > 0:
+                # In_hand with declared value
+                print(f"[get_legal_contract_levels] In_hand with value {winner_bid.value} -> [{winner_bid.value}]")
+                return [winner_bid.value]
+            else:
+                # In_hand without declared value - can choose 2-5
+                print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5]")
+                return [2, 3, 4, 5]
+        else:
+            # Regular game bid - must use the winning bid level
+            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> [{winner_bid.value}]")
+            return [winner_bid.value]
+
     def get_game_state(self, viewer_id: Optional[int] = None) -> dict:
         """Get the current game state, optionally from a player's perspective."""
         state = self.game.to_dict(viewer_id=viewer_id)
@@ -946,5 +1077,11 @@ class GameEngine:
                     state["current_player_id"] = current_player_id
                     # Always include legal_cards for current player
                     state["legal_cards"] = [c.to_dict() for c in self.get_legal_cards(current_player_id)]
+
+            # Include legal contract levels when declarer needs to choose
+            if round.declarer_id and not round.contract:
+                legal_levels = self.get_legal_contract_levels(round.declarer_id)
+                if legal_levels:
+                    state["legal_contract_levels"] = legal_levels
 
         return state
