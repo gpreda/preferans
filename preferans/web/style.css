@@ -223,7 +223,7 @@ body {
 }
 
 .frame-talon-cards {
-    flex: 2;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -239,7 +239,7 @@ body {
 }
 
 .frame-last-trick {
-    flex: 1;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
