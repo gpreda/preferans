@@ -639,18 +639,70 @@ body {
     height: 100%;
 }
 
-.scoreboard-title {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    text-align: center;
-    margin-bottom: var(--spacing-xs);
+.scoreboard-tabs {
+    display: flex;
+    gap: 2px;
     flex-shrink: 0;
+    margin-bottom: var(--spacing-xs);
+}
+
+.scoreboard-tab {
+    flex: 1;
+    padding: 2px 4px;
+    font-size: var(--font-xs);
+    background: #2d4059;
+    color: var(--color-text-muted);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.scoreboard-tab:hover {
+    background: #3d5069;
+}
+
+.scoreboard-tab.active {
+    background: var(--color-secondary);
+    color: var(--bg-dark);
+    font-weight: bold;
 }
 
 .scoreboard-content {
     flex: 1;
-    overflow-y: auto;
+    display: flex;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.scoreboard-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    padding: 2px;
+}
+
+.scoreboard-column-title {
+    font-size: calc(var(--font-xs) * 0.8);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.scoreboard-column-value {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-sm);
+    font-weight: bold;
+    color: #fff;
 }
 
 .bidding-history-title {

@@ -3,6 +3,7 @@
 let gameState = null;
 let selectedCards = [];
 let currentStyle = 'centered'; // Default deck style
+let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
 // Debug logging utility
 const DEBUG = false;
@@ -164,6 +165,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Next round button
     document.getElementById('next-round-btn').addEventListener('click', nextRound);
+
+    // Scoreboard tabs
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const playerId = parseInt(e.target.dataset.player);
+            selectScoreboardPlayer(playerId);
+        });
+    });
+    renderScoreboard();
 
     // Play area drop zone
     const playArea = document.getElementById('play-area');
@@ -1022,6 +1032,12 @@ function renderGame() {
         debugError('RENDER', 'renderGame: renderBiddingHistory failed', e);
     }
 
+    try {
+        renderScoreboard();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderScoreboard failed', e);
+    }
+
     // Show/hide drop hint based on phase
     const playArea = document.getElementById('play-area');
     if (playArea) {
@@ -1315,6 +1331,80 @@ function renderContractInfo() {
     } else {
         elements.contractInfo.style.display = 'none';
     }
+}
+
+function selectScoreboardPlayer(playerId) {
+    selectedScoreboardPlayer = playerId;
+
+    // Update tab active state
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        const tabPlayerId = parseInt(tab.dataset.player);
+        if (tabPlayerId === playerId) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    renderScoreboard();
+}
+
+function getPlayerLeftRight(playerId) {
+    // In a 3-player game with counter-clockwise play:
+    // If viewing player 1: left is player 3, right is player 2
+    // If viewing player 2: left is player 1, right is player 3
+    // If viewing player 3: left is player 2, right is player 1
+    const leftMap = { 1: 3, 2: 1, 3: 2 };
+    const rightMap = { 1: 2, 2: 3, 3: 1 };
+    return {
+        left: leftMap[playerId],
+        right: rightMap[playerId]
+    };
+}
+
+function renderScoreboard() {
+    const players = gameState?.players || [];
+    const viewingPlayer = players.find(p => p.id === selectedScoreboardPlayer);
+
+    // Update tab labels with player names
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        const tabPlayerId = parseInt(tab.dataset.player);
+        const player = players.find(p => p.id === tabPlayerId);
+        if (player) {
+            // Use first 3 chars of name
+            tab.textContent = player.name.substring(0, 3);
+        }
+    });
+
+    if (!viewingPlayer) {
+        // No game state yet, show placeholders
+        document.getElementById('scoreboard-left-title').textContent = 'Left';
+        document.getElementById('scoreboard-middle-title').textContent = 'Score';
+        document.getElementById('scoreboard-right-title').textContent = 'Right';
+        document.getElementById('scoreboard-left-value').textContent = '0';
+        document.getElementById('scoreboard-middle-value').textContent = '0';
+        document.getElementById('scoreboard-right-value').textContent = '0';
+        return;
+    }
+
+    const { left, right } = getPlayerLeftRight(selectedScoreboardPlayer);
+    const leftPlayer = players.find(p => p.id === left);
+    const rightPlayer = players.find(p => p.id === right);
+
+    // Update column titles with player names
+    document.getElementById('scoreboard-left-title').textContent =
+        leftPlayer ? leftPlayer.name.substring(0, 6) : 'Left';
+    document.getElementById('scoreboard-middle-title').textContent = 'Score';
+    document.getElementById('scoreboard-right-title').textContent =
+        rightPlayer ? rightPlayer.name.substring(0, 6) : 'Right';
+
+    // Update values (placeholder - using score for now)
+    document.getElementById('scoreboard-left-value').textContent =
+        viewingPlayer.soups_left ?? 0;
+    document.getElementById('scoreboard-middle-value').textContent =
+        viewingPlayer.score ?? 0;
+    document.getElementById('scoreboard-right-value').textContent =
+        viewingPlayer.soups_right ?? 0;
 }
 
 function renderBiddingHistory() {
