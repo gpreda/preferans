@@ -132,8 +132,8 @@ def generate_large_card_svg(rank: str, suit: str) -> str:
 def generate_centered_card_svg(rank: str, suit: str) -> str:
     """Generate SVG for a single card (centered style).
 
-    Rank and suit centered in the visible overlap region (left 30% of card = 24 units).
-    Center point is at x=12. Same for bottom-right corner (rotated).
+    Rank centered in the visible overlap region (left 30% of card = 24 units).
+    Center point is at x=12. Suit stays in original left-aligned position.
     """
     suit_info = SUITS[suit]
     symbol = suit_info['symbol']
@@ -143,30 +143,31 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     # Center of visible region: 12 units
     visible_center = 12
 
-    # Font sizes
+    # Font sizes (same as compact)
     rank_size = 18
-    suit_size = 14
+    suit_size = 11
 
-    # Vertical positions
-    rank_y = 16
-    suit_y = 30
+    # Positions
+    rank_y = 14
+    suit_x = 1  # Left-aligned like compact
+    suit_y = 22
 
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
   <!-- Card background -->
   <rect x="1" y="1" width="78" height="110" rx="6" ry="6" fill="white" stroke="#ccc" stroke-width="1"/>
 
-  <!-- Top left: rank and suit centered in visible overlap region -->
+  <!-- Top left: rank centered in visible overlap region, suit left-aligned below -->
   <text x="{visible_center}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
-  <text x="{visible_center}" y="{suit_y}" font-family="Arial, sans-serif" font-size="{suit_size}" fill="{color}" text-anchor="middle">{symbol}</text>
+  <text x="{suit_x}" y="{suit_y}" font-family="Arial, sans-serif" font-size="{suit_size}" fill="{color}">{symbol}</text>
 
   <!-- Bottom right: rank and suit (rotated 180°) -->
   <g transform="rotate(180, 40, 56)">
     <text x="{visible_center}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
-    <text x="{visible_center}" y="{suit_y}" font-family="Arial, sans-serif" font-size="{suit_size}" fill="{color}" text-anchor="middle">{symbol}</text>
+    <text x="{suit_x}" y="{suit_y}" font-family="Arial, sans-serif" font-size="{suit_size}" fill="{color}">{symbol}</text>
   </g>
 
   <!-- Center suit symbol -->
-  <text x="40" y="68" font-family="Arial, sans-serif" font-size="32" fill="{color}" text-anchor="middle">{symbol}</text>
+  <text x="40" y="65" font-family="Arial, sans-serif" font-size="28" fill="{color}" text-anchor="middle">{symbol}</text>
 </svg>'''
 
     return svg
