@@ -500,8 +500,9 @@ body {
 }
 
 .talon .card {
-    width: calc(var(--base) * 10);
-    height: calc(var(--base) * 14);
+    /* Same size as bottom player cards */
+    height: calc(var(--container-height) * 0.15);
+    width: calc(var(--container-height) * 0.15 / var(--card-aspect));
 }
 
 .current-trick {
