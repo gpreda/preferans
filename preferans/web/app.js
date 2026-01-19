@@ -1766,6 +1766,10 @@ function showActionPanelForPhase(phase) {
                 // Initialize exchange state if not already done
                 if (!exchangeState && talonCards.length > 0) {
                     initExchange();
+                }
+
+                // Always render exchange state when in exchange mode
+                if (exchangeState) {
                     renderExchangeState();
                 }
 
