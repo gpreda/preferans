@@ -610,9 +610,16 @@ body {
 }
 
 .frame-bottom-left,
-.frame-bottom-middle,
 .frame-bottom-right {
     flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+}
+
+.frame-bottom-middle {
+    flex: 4;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -649,7 +656,7 @@ body {
 .scoreboard-tab {
     flex: 1;
     padding: 2px 4px;
-    font-size: var(--font-xs);
+    font-size: calc(var(--font-xs) - 1px);
     background: #2d4059;
     color: var(--color-text-muted);
     border: none;
@@ -686,7 +693,7 @@ body {
 }
 
 .scoreboard-column-title {
-    font-size: calc(var(--font-xs) * 0.8);
+    font-size: calc(var(--font-xs) * 0.7);
     color: var(--color-text-muted);
     text-transform: uppercase;
     white-space: nowrap;
@@ -700,7 +707,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--font-sm);
+    font-size: calc(var(--font-sm) - 1px);
     font-weight: bold;
     color: #fff;
 }
