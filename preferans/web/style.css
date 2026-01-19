@@ -462,6 +462,52 @@ header h1 {
     transform: scale(1.1);
 }
 
+/* Exchange drag-and-drop styles */
+.card.exchange-draggable {
+    cursor: grab;
+    border: 2px solid var(--color-secondary);
+    box-shadow: 0 0 8px rgba(78, 204, 163, 0.6);
+}
+
+.card.exchange-draggable:hover {
+    box-shadow: 0 0 15px var(--color-secondary);
+    transform: scale(1.08);
+}
+
+.card.exchange-draggable:active {
+    cursor: grabbing;
+}
+
+/* Drop zone styling for player cards */
+.player-cards.drop-target {
+    background: rgba(78, 204, 163, 0.2);
+    border-radius: var(--spacing-sm);
+    outline: 2px dashed var(--color-secondary);
+}
+
+/* Drop zone styling for talon */
+.talon-cards.drop-target {
+    background: rgba(78, 204, 163, 0.2);
+    border-radius: var(--spacing-sm);
+    outline: 2px dashed var(--color-secondary);
+    min-width: calc(var(--card-width) * 2.5);
+    min-height: var(--card-height);
+}
+
+/* Talon placeholder when empty */
+.talon-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: calc(var(--card-width) * 2.5);
+    min-height: var(--card-height);
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: var(--card-radius);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: var(--font-xs);
+    text-transform: uppercase;
+}
+
 .talon .card {
     width: var(--talon-card-width);
     height: var(--talon-card-height);

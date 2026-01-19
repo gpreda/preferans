@@ -48,6 +48,55 @@ class GameEngine:
         forehand = self._get_player_by_position(1)
         self.game.current_round.auction.current_bidder_id = forehand.id
 
+        # Auto-bid if first bidder is AI
+        self._auto_bid_if_ai()
+
+    def _auto_bid_if_ai(self):
+        """If the current bidder is AI, automatically make a bid.
+
+        AI uses a simple strategy: mostly pass, occasionally bid game 2.
+        This keeps the auction moving without complex AI logic.
+        """
+        if not self.game.current_round:
+            return
+
+        if self.game.current_round.phase != RoundPhase.AUCTION:
+            return
+
+        auction = self.game.current_round.auction
+        if auction.phase == AuctionPhase.COMPLETE:
+            return
+
+        if not auction.current_bidder_id:
+            return
+
+        player = self._get_player(auction.current_bidder_id)
+        if not player.is_ai:
+            return  # Human player - wait for user input
+
+        # Get legal bids for this AI player
+        legal_bids = self.get_legal_bids(player.id)
+        if not legal_bids:
+            return
+
+        # Simple AI strategy:
+        # - In initial phase: always bid game 2 (to ensure someone becomes declarer)
+        # - In other phases: always pass (let auction complete quickly)
+        chosen_bid = None
+        if auction.phase == AuctionPhase.INITIAL:
+            # Find game 2 option - always bid to ensure a declarer
+            game_bid = next((b for b in legal_bids if b["bid_type"] == "game" and b["value"] == 2), None)
+            pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
+            # Always bid game 2 if available, otherwise pass
+            chosen_bid = game_bid if game_bid else pass_bid
+        else:
+            # In other phases, just pass to let auction complete
+            chosen_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), legal_bids[0])
+
+        if chosen_bid:
+            # Place the bid - this will recursively call _auto_bid_if_ai for next bidder
+            self.place_bid(player.id, chosen_bid["bid_type"], chosen_bid.get("value", 0))
+
     # === Bidding Phase ===
 
     def place_bid(self, player_id: int, bid_type: str, value: int = 0) -> Bid:
@@ -202,6 +251,9 @@ class GameEngine:
         # Check if auction is complete
         if auction.phase == AuctionPhase.COMPLETE:
             self._finalize_auction()
+        else:
+            # Auto-bid if next bidder is AI
+            self._auto_bid_if_ai()
 
     def _handle_initial_phase_advance(self, auction: Auction, last_bid: Bid):
         """Handle advancement from initial phase."""
@@ -523,6 +575,64 @@ class GameEngine:
             discarded.append(card)
 
         round.discarded = discarded
+        player.sort_hand()
+        return discarded
+
+    def complete_exchange(self, player_id: int, card_ids: list[str]) -> list[Card]:
+        """Complete exchange atomically - picks up talon and discards specified cards.
+
+        This is a single atomic operation that:
+        1. Takes the original talon cards
+        2. Combines them with the player's hand
+        3. Removes the specified cards as discards
+
+        Args:
+            player_id: The declarer's ID
+            card_ids: List of 2 card IDs to discard (can be from original hand or talon)
+
+        Returns:
+            List of discarded cards
+        """
+        self._validate_phase(RoundPhase.EXCHANGING)
+        round = self.game.current_round
+
+        if round.declarer_id != player_id:
+            raise InvalidMoveError("Only declarer can complete exchange")
+
+        if len(card_ids) != 2:
+            raise InvalidMoveError("Must discard exactly 2 cards")
+
+        player = self._get_player(player_id)
+
+        # Get original talon cards
+        original_talon = list(round.talon)
+        if len(original_talon) != 2:
+            raise InvalidMoveError("Talon should have exactly 2 cards")
+
+        # Build combined pool of cards (hand + talon)
+        all_cards = {card.id: card for card in player.hand}
+        for card in original_talon:
+            all_cards[card.id] = card
+
+        # Validate all specified cards exist in the combined pool
+        for card_id in card_ids:
+            if card_id not in all_cards:
+                raise InvalidMoveError(f"Card {card_id} not in hand or talon")
+
+        # Get the cards to discard
+        discarded = [all_cards[card_id] for card_id in card_ids]
+
+        # Determine which cards go to hand (everything except discards)
+        discard_set = set(card_ids)
+        new_hand = [card for card_id, card in all_cards.items() if card_id not in discard_set]
+
+        # Update player's hand
+        player.hand = new_hand
+
+        # Clear talon and set discarded
+        round.talon = []
+        round.discarded = discarded
+
         player.sort_hand()
         return discarded
 
