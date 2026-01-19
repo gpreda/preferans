@@ -2,7 +2,7 @@
 
 let gameState = null;
 let selectedCards = [];
-let currentStyle = 'centered'; // Default deck style
+let currentStyle = 'classic'; // Default deck style
 let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
 // Debug logging utility
