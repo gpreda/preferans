@@ -278,9 +278,9 @@ test.describe('Exchange Flow - Drag and Drop', () => {
 
       await expect(page.locator('#play-controls')).toBeVisible({ timeout: 5000 });
     } else {
-      // AI is declarer - verify exchange UI state
+      // AI is declarer - after exchange they have 10 cards (picked up 2, discarded 2)
       const declarerCards = page.locator('.player:has(.player-role)').filter({ hasText: /declarer/i }).locator('.player-cards img.card');
-      await expect(declarerCards).toHaveCount(12, { timeout: 5000 });
+      await expect(declarerCards).toHaveCount(10, { timeout: 5000 });
     }
   });
 });
