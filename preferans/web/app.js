@@ -994,15 +994,16 @@ function renderPlayers() {
     const currentBidderId = gameState.current_round?.auction?.current_bidder_id;
     const declarerId = gameState.current_round?.declarer_id;
     const phase = gameState.current_round?.phase;
+    const dealerIndex = gameState.dealer_index;
 
-    players.forEach(player => {
+    players.forEach((player, index) => {
         const playerEl = document.getElementById(`player${player.id}`);
         if (!playerEl) return;
 
         // Update player info - use translated name
         playerEl.querySelector('.player-name').textContent = getTranslatedPlayerName(player);
-        playerEl.querySelector('.score-value').textContent = player.score;
-        playerEl.querySelector('.tricks-value').textContent = player.tricks_won;
+        const tricksEl = playerEl.querySelector('.tricks-value');
+        if (tricksEl) tricksEl.textContent = player.tricks_won;
 
         // Role
         const roleEl = playerEl.querySelector('.player-role');
@@ -1014,8 +1015,8 @@ function renderPlayers() {
             roleEl.textContent = '';
         }
 
-        // Active state
-        playerEl.classList.remove('active', 'declarer');
+        // Active state and dealer
+        playerEl.classList.remove('active', 'declarer', 'dealer');
         if (phase === 'auction' && player.id === currentBidderId) {
             playerEl.classList.add('active');
         } else if (phase === 'playing' && player.id === currentPlayerId) {
@@ -1023,6 +1024,11 @@ function renderPlayers() {
         }
         if (player.is_declarer) {
             playerEl.classList.add('declarer');
+        }
+
+        // Mark dealer (dealer_index is the index in players array)
+        if (index === dealerIndex) {
+            playerEl.classList.add('dealer');
         }
 
         // Render cards
@@ -1092,19 +1098,34 @@ function renderTalon() {
     const round = gameState.current_round;
     if (!round) return;
 
+    const talonCards = round.talon || [];
     const talonCount = round.talon_count || 0;
 
-    // Show card backs for talon
-    for (let i = 0; i < talonCount; i++) {
-        const img = document.createElement('img');
-        img.src = '/api/styles/classic/back';
-        img.alt = t('talonCard');
-        img.className = 'card';
-        talonContainer.appendChild(img);
+    if (talonCards.length > 0) {
+        // Show actual talon cards face-up (during exchange before pickup)
+        talonCards.forEach(card => {
+            const img = document.createElement('img');
+            img.src = `/api/cards/${card.id}/image`;
+            img.alt = card.id;
+            img.className = 'card';
+            img.title = formatCardName(card.id);
+            talonContainer.appendChild(img);
+        });
+        elements.talon.style.display = 'flex';
+    } else if (talonCount > 0) {
+        // Show card backs when talon exists but is hidden (during auction)
+        for (let i = 0; i < talonCount; i++) {
+            const img = document.createElement('img');
+            img.src = '/api/styles/classic/back';
+            img.alt = t('talonCard');
+            img.className = 'card';
+            talonContainer.appendChild(img);
+        }
+        elements.talon.style.display = 'flex';
+    } else {
+        // Hide talon section if no cards
+        elements.talon.style.display = 'none';
     }
-
-    // Hide talon section if no cards
-    elements.talon.style.display = talonCount > 0 ? 'flex' : 'none';
 }
 
 function renderCurrentTrick() {
@@ -1321,15 +1342,24 @@ function showActionPanelForPhase(phase) {
 
         case 'exchanging':
             const declarer = gameState.players?.find(p => p.id === declarerId);
-            if (declarer && declarer.hand.length === 10) {
-                // Already discarded, show contract controls
+            const discarded = round?.discarded || [];
+            const talonCount = round?.talon_count || 0;
+
+            if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
+                // Exchange complete (picked up talon and discarded 2), show contract controls
                 elements.contractControls.classList.remove('hidden');
                 populateContractOptions();
-            } else {
-                // Show exchange controls
+            } else if (declarer && declarer.hand.length === 12) {
+                // Talon picked up, need to discard 2 cards
                 elements.exchangeControls.classList.remove('hidden');
-                const pickupBtn = document.getElementById('pickup-talon-btn');
-                pickupBtn.classList.toggle('hidden', declarer && declarer.hand.length === 12);
+                document.getElementById('pickup-talon-btn').classList.add('hidden');
+                document.getElementById('discard-btn').classList.remove('hidden');
+                updateDiscardButton();
+            } else if (talonCount > 0) {
+                // Talon not picked up yet, show pickup button
+                elements.exchangeControls.classList.remove('hidden');
+                document.getElementById('pickup-talon-btn').classList.remove('hidden');
+                document.getElementById('discard-btn').classList.add('hidden');
             }
             break;
 
