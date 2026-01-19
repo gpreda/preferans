@@ -178,7 +178,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check server status
     checkServer();
+
+    // Show initial state with face-down cards
+    renderInitialState();
 });
+
+function renderInitialState() {
+    // Show face-down cards for all players before game starts
+    const cardBackUrl = '/api/styles/classic/back';
+    const cardsPerPlayer = 10;
+
+    for (let playerId = 1; playerId <= 3; playerId++) {
+        const playerEl = document.getElementById(`player${playerId}`);
+        if (!playerEl) continue;
+
+        const cardsContainer = playerEl.querySelector('.player-cards');
+        if (!cardsContainer) continue;
+
+        cardsContainer.innerHTML = '';
+
+        for (let i = 0; i < cardsPerPlayer; i++) {
+            const img = document.createElement('img');
+            img.src = cardBackUrl;
+            img.alt = 'Card';
+            img.className = 'card';
+            cardsContainer.appendChild(img);
+        }
+    }
+}
 
 async function checkServer() {
     debug('API', 'checkServer: checking server health');
