@@ -537,6 +537,7 @@ body {
     color: rgba(255, 255, 255, 0.5);
     font-size: var(--font-xs);
     text-transform: uppercase;
+    pointer-events: none; /* Allow drops to pass through to parent */
 }
 
 /* ========================================
@@ -558,6 +559,8 @@ body {
 .talon-cards {
     display: flex;
     gap: var(--spacing-sm);
+    min-width: calc(var(--card-width) * 2.5);
+    min-height: var(--card-height);
 }
 
 .talon .card {
