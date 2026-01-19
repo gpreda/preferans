@@ -169,8 +169,8 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     <text x="{rank_x}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}">{rank}</text>
   </g>
 
-  <!-- Center suit symbol (twice the size of corner suits) -->
-  <text x="40" y="65" font-family="Arial, sans-serif" font-size="{suit_size * 2}" fill="{color}" text-anchor="middle">{symbol}</text>
+  <!-- Center suit symbol -->
+  <text x="40" y="56" font-family="Arial, sans-serif" font-size="48" fill="{color}" text-anchor="middle" dominant-baseline="central">{symbol}</text>
 </svg>'''
 
     return svg
