@@ -28,8 +28,7 @@
     --buttons-height: 6%;
     --game-status-height: 4%;
     --bids-height: 12%;
-    --status-height: 4%;
-    /* Players & talon gets the rest: 100% - 6% - 4% - 12% - 4% - gaps = ~74% */
+    /* Players & talon gets the rest: 100% - 6% - 4% - 12% - gaps = ~78% */
 
     /* ========================================
        LEVEL 3: Players & Talon layout
@@ -823,33 +822,6 @@ body {
 
 #next-round-btn:hover {
     background: #ff6b6b;
-}
-
-/* ========================================
-   FRAME 5: STATUS / MESSAGE AREA
-   ======================================== */
-.frame-status {
-    height: var(--status-height);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-panel);
-    flex-shrink: 0;
-}
-
-.message-area {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
-    text-align: center;
-    padding: 0 var(--spacing-sm);
-}
-
-.message-area.error {
-    color: var(--color-primary);
-}
-
-.message-area.success {
-    color: var(--color-secondary);
 }
 
 /* ========================================

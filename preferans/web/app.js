@@ -1480,11 +1480,8 @@ function showRoundResult() {
 }
 
 function showMessage(text, type = '') {
-    elements.messageArea.textContent = text;
-    elements.messageArea.className = 'message-area';
-    if (type) {
-        elements.messageArea.classList.add(type);
-    }
+    // Message area removed - function kept for compatibility
+    debug('MSG', text, { type });
 }
 
 function formatCardName(cardId) {
