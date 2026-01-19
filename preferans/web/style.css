@@ -270,6 +270,13 @@ body {
     position: relative;
 }
 
+/* Left/right players: horizontal layout for name and tricks */
+.player-left .player-info,
+.player-right .player-info {
+    flex-direction: row;
+    gap: var(--spacing-xs);
+}
+
 .player-name {
     font-size: var(--font-xs);
     font-weight: bold;
@@ -277,8 +284,16 @@ body {
 }
 
 .player-tricks {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    color: var(--bg-dark);
+    font-size: calc(var(--font-xs) + 2px);
+    font-weight: bold;
+    padding: 1px 4px;
+    border-radius: 3px;
+    min-width: 1.5em;
 }
 
 .player-role {
