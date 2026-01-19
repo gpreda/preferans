@@ -144,8 +144,8 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     # Suit size for corner symbols (reduced by 25% again)
     suit_size = 29
 
-    # Rank position for top-left (2px from top edge of card)
-    rank_x = 3
+    # Rank position - centered in visible overlap region (30% of 80 = 24, center at 12)
+    rank_x = 12
     rank_y = 18
 
     # Suit position - 2px from margins
@@ -155,8 +155,8 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
   <!-- Card background -->
   <rect x="1" y="1" width="78" height="110" rx="6" ry="6" fill="white" stroke="#ccc" stroke-width="1"/>
 
-  <!-- Top left rank -->
-  <text x="{rank_x}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}">{rank}</text>
+  <!-- Top left rank (centered in visible overlap region) -->
+  <text x="{rank_x}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
 
   <!-- Top right suit (2px from top and right edges) -->
   <text x="{80 - suit_margin}" y="{suit_margin}" font-family="Arial, sans-serif" font-size="{suit_size}" fill="{color}" text-anchor="end" dominant-baseline="hanging">{symbol}</text>
@@ -166,7 +166,7 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
 
   <!-- Bottom right rank (rotated 180° around card center) -->
   <g transform="rotate(180, 40, 56)">
-    <text x="{rank_x}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}">{rank}</text>
+    <text x="{rank_x}" y="{rank_y}" font-family="Arial, sans-serif" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
   </g>
 
   <!-- Center suit symbol -->
