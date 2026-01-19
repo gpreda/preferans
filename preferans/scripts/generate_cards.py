@@ -176,30 +176,20 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     return svg
 
 
-def generate_elegant_card_svg(rank: str, suit: str) -> str:
-    """Generate SVG for a single card (elegant style).
+def generate_styled_card_svg(rank: str, suit: str, font: str) -> str:
+    """Generate SVG for a single card with specified font.
 
-    Same layout as centered/classic style but with Georgia serif font for a classic card feel.
+    Same layout as classic style but with custom font.
     """
     suit_info = SUITS[suit]
     symbol = suit_info['symbol']
     color = suit_info['color']
 
-    # Rank size (same as classic)
     rank_size = 20
-
-    # Suit size for corner symbols (same as classic)
     suit_size = 29
-
-    # Rank position - centered in visible overlap region (same as classic)
     rank_x = 12
     rank_y = 18
-
-    # Suit position - 2px from margins (same as classic)
     suit_margin = 2
-
-    # Elegant font stack
-    font = "Georgia, 'Times New Roman', serif"
 
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
   <!-- Card background -->
@@ -226,6 +216,36 @@ def generate_elegant_card_svg(rank: str, suit: str) -> str:
     return svg
 
 
+def generate_elegant_card_svg(rank: str, suit: str) -> str:
+    """Elegant style with Georgia serif font."""
+    return generate_styled_card_svg(rank, suit, "Georgia, 'Times New Roman', serif")
+
+
+def generate_typewriter_card_svg(rank: str, suit: str) -> str:
+    """Typewriter style with Courier monospace font."""
+    return generate_styled_card_svg(rank, suit, "'Courier New', Courier, monospace")
+
+
+def generate_modern_card_svg(rank: str, suit: str) -> str:
+    """Modern style with Verdana sans-serif font."""
+    return generate_styled_card_svg(rank, suit, "Verdana, Geneva, sans-serif")
+
+
+def generate_bold_card_svg(rank: str, suit: str) -> str:
+    """Bold style with Impact font."""
+    return generate_styled_card_svg(rank, suit, "Impact, Haettenschweiler, sans-serif")
+
+
+def generate_playful_card_svg(rank: str, suit: str) -> str:
+    """Playful style with Comic Sans font."""
+    return generate_styled_card_svg(rank, suit, "'Comic Sans MS', cursive, sans-serif")
+
+
+def generate_vintage_card_svg(rank: str, suit: str) -> str:
+    """Vintage style with Palatino serif font."""
+    return generate_styled_card_svg(rank, suit, "'Palatino Linotype', Palatino, 'Book Antiqua', serif")
+
+
 def generate_card_back_svg() -> str:
     """Generate SVG for card back."""
     svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
@@ -250,21 +270,25 @@ def generate_all_cards(style: str = 'classic') -> dict:
     """Generate all 32 cards plus card back.
 
     Args:
-        style: 'classic', 'centered', 'elegant', 'compact', or 'large'
+        style: 'classic', 'elegant', 'typewriter', 'modern', 'bold', 'playful', 'vintage'
     """
     cards = {}
 
-    if style == 'elegant':
-        generator = generate_elegant_card_svg
-    elif style == 'centered':
-        generator = generate_centered_card_svg
-    elif style == 'large':
-        generator = generate_large_card_svg
-    elif style == 'compact':
-        generator = generate_compact_card_svg
-    else:
-        # 'classic' uses the centered generator
-        generator = generate_centered_card_svg
+    generators = {
+        'classic': generate_centered_card_svg,
+        'elegant': generate_elegant_card_svg,
+        'typewriter': generate_typewriter_card_svg,
+        'modern': generate_modern_card_svg,
+        'bold': generate_bold_card_svg,
+        'playful': generate_playful_card_svg,
+        'vintage': generate_vintage_card_svg,
+        # Legacy styles
+        'centered': generate_centered_card_svg,
+        'compact': generate_compact_card_svg,
+        'large': generate_large_card_svg,
+    }
+
+    generator = generators.get(style, generate_centered_card_svg)
 
     for suit in SUITS:
         for rank in RANKS:

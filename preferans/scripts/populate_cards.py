@@ -53,32 +53,33 @@ def populate_cards():
     conn = psycopg2.connect(**DATABASE_CONFIG)
     cur = conn.cursor()
 
-    # Remove old styles (keep only classic and elegant)
+    # Define all styles
+    styles = [
+        ('classic', 'Classic card design with Arial sans-serif font', True),
+        ('elegant', 'Elegant design with Georgia serif font', False),
+        ('typewriter', 'Typewriter style with Courier monospace font', False),
+        ('modern', 'Modern design with Verdana sans-serif font', False),
+        ('bold', 'Bold design with Impact font', False),
+        ('playful', 'Playful design with Comic Sans font', False),
+        ('vintage', 'Vintage design with Palatino serif font', False),
+    ]
+
+    style_names = [s[0] for s in styles]
+
+    # Remove styles not in our list
     print("Removing old styles...")
-    cur.execute("DELETE FROM card_images WHERE style_id IN (SELECT id FROM deck_styles WHERE name NOT IN ('classic', 'elegant'))")
-    cur.execute("DELETE FROM deck_styles WHERE name NOT IN ('classic', 'elegant')")
-
-    # Classic style (default)
-    print("Creating 'classic' deck style...")
-    classic_id = create_style(
-        cur,
-        name='classic',
-        description='Classic card design with centered ranks and corner suits',
-        is_default=True
+    cur.execute(
+        "DELETE FROM card_images WHERE style_id IN (SELECT id FROM deck_styles WHERE name != ALL(%s))",
+        (style_names,)
     )
-    print(f"Populating cards for classic style (ID {classic_id})...")
-    populate_style_cards(cur, classic_id, style='classic')
+    cur.execute("DELETE FROM deck_styles WHERE name != ALL(%s)", (style_names,))
 
-    # Elegant style
-    print("Creating 'elegant' deck style...")
-    elegant_id = create_style(
-        cur,
-        name='elegant',
-        description='Elegant card design with Georgia serif font',
-        is_default=False
-    )
-    print(f"Populating cards for elegant style (ID {elegant_id})...")
-    populate_style_cards(cur, elegant_id, style='elegant')
+    # Create and populate each style
+    for name, description, is_default in styles:
+        print(f"Creating '{name}' deck style...")
+        style_id = create_style(cur, name=name, description=description, is_default=is_default)
+        print(f"Populating cards for {name} style (ID {style_id})...")
+        populate_style_cards(cur, style_id, style=name)
 
     conn.commit()
     cur.close()
