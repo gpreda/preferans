@@ -699,15 +699,6 @@ body {
     text-align: center;
 }
 
-.bidding-history-title {
-    font-size: var(--font-xs);
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    text-align: center;
-    margin-bottom: var(--spacing-xs);
-    flex-shrink: 0;
-}
-
 .bidding-history-list {
     display: flex;
     flex-direction: column;
