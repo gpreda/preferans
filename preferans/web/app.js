@@ -3,6 +3,8 @@
 let gameState = null;
 let selectedCards = [];
 let exchangeState = null; // Tracks exchange phase: { originalHand, originalTalon, currentHand, currentTalon }
+let currentStyle = 'centered'; // Default deck style
+let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
 // Debug logging utility
 const DEBUG = false;
@@ -73,6 +75,7 @@ const elements = {
     phaseIndicator: null,
     status: null,
     messageArea: null,
+    styleSelector: null,
     languageSelector: null,
     // Players
     player1: null,
@@ -98,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.phaseIndicator = document.getElementById('phase-indicator');
     elements.status = document.getElementById('status');
     elements.messageArea = document.getElementById('message-area');
+    elements.styleSelector = document.getElementById('style-selector');
     elements.languageSelector = document.getElementById('language-selector');
 
     elements.player1 = document.getElementById('player1');
@@ -139,6 +143,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Style selector
+    if (elements.styleSelector) {
+        loadStyles();
+        elements.styleSelector.addEventListener('change', (e) => {
+            currentStyle = e.target.value;
+            renderInitialState();
+            if (gameState) {
+                renderGame();
+            }
+        });
+    }
+
     // Bidding buttons are now dynamically generated
 
     // Exchange buttons
@@ -149,6 +165,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Next round button
     document.getElementById('next-round-btn').addEventListener('click', nextRound);
+
+    // Scoreboard tabs
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const playerId = parseInt(e.target.dataset.player);
+            selectScoreboardPlayer(playerId);
+        });
+    });
+    renderScoreboard();
 
     // Play area drop zone
     const playArea = document.getElementById('play-area');
@@ -178,7 +203,80 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check server status
     checkServer();
+
+    // Show initial state with face-down cards
+    renderInitialState();
 });
+
+function getCardImageUrl(cardId) {
+    return `/api/cards/${cardId}/image?style=${currentStyle}`;
+}
+
+function getCardBackUrl() {
+    return `/api/styles/${currentStyle}/back`;
+}
+
+async function loadStyles() {
+    try {
+        const response = await fetch('/api/styles');
+        if (!response.ok) return;
+
+        const styles = await response.json();
+        const selector = elements.styleSelector;
+        selector.innerHTML = '';
+
+        styles.forEach(style => {
+            const option = document.createElement('option');
+            option.value = style.name;
+            option.textContent = style.name.charAt(0).toUpperCase() + style.name.slice(1);
+            if (style.is_default) {
+                option.selected = true;
+                currentStyle = style.name;
+            }
+            selector.appendChild(option);
+        });
+    } catch (error) {
+        debugError('INIT', 'Failed to load styles', error);
+    }
+}
+
+function renderInitialState() {
+    // Show face-down cards for all players before game starts
+    const cardBackUrl = getCardBackUrl();
+    const cardsPerPlayer = 10;
+
+    for (let playerId = 1; playerId <= 3; playerId++) {
+        const playerEl = document.getElementById(`player${playerId}`);
+        if (!playerEl) continue;
+
+        const cardsContainer = playerEl.querySelector('.player-cards');
+        if (!cardsContainer) continue;
+
+        cardsContainer.innerHTML = '';
+
+        for (let i = 0; i < cardsPerPlayer; i++) {
+            const img = document.createElement('img');
+            img.src = cardBackUrl;
+            img.alt = 'Card';
+            img.className = 'card';
+            cardsContainer.appendChild(img);
+        }
+    }
+
+    // Show two face-down talon cards
+    const talonContainer = elements.talon?.querySelector('.talon-cards');
+    if (talonContainer) {
+        talonContainer.innerHTML = '';
+        for (let i = 0; i < 2; i++) {
+            const img = document.createElement('img');
+            img.src = cardBackUrl;
+            img.alt = 'Talon';
+            img.className = 'card';
+            talonContainer.appendChild(img);
+        }
+        elements.talon.style.display = 'flex';
+    }
+}
 
 async function checkServer() {
     debug('API', 'checkServer: checking server health');
@@ -675,7 +773,7 @@ function addCardToTrickDisplay(playerId, card) {
     label.textContent = getPlayerName(playerId);
 
     const img = document.createElement('img');
-    img.src = `/api/cards/${card.id}/image`;
+    img.src = getCardImageUrl(card.id);
     img.alt = card.id;
     img.className = 'card';
     img.onerror = () => debugError('RENDER', `addCardToTrickDisplay: failed to load image for ${card.id}`);
@@ -1207,6 +1305,12 @@ function renderGame() {
         debugError('RENDER', 'renderGame: renderBiddingHistory failed', e);
     }
 
+    try {
+        renderScoreboard();
+    } catch (e) {
+        debugError('RENDER', 'renderGame: renderScoreboard failed', e);
+    }
+
     // Show/hide drop hint based on phase
     const playArea = document.getElementById('play-area');
     if (playArea) {
@@ -1296,7 +1400,7 @@ function renderPlayerCards(player, playerEl) {
 
     player.hand.forEach(card => {
         const img = document.createElement('img');
-        img.src = `/api/cards/${card.id}/image`;
+        img.src = getCardImageUrl(card.id);
         img.alt = card.id;
         img.className = 'card';
         img.title = formatCardName(card.id);
@@ -1351,7 +1455,7 @@ function renderTalon() {
         // Show actual talon cards face-up (during exchange before pickup)
         talonCards.forEach(card => {
             const img = document.createElement('img');
-            img.src = `/api/cards/${card.id}/image`;
+            img.src = getCardImageUrl(card.id);
             img.alt = card.id;
             img.className = 'card';
             img.title = formatCardName(card.id);
@@ -1362,7 +1466,7 @@ function renderTalon() {
         // Show card backs when talon exists but is hidden (during auction)
         for (let i = 0; i < talonCount; i++) {
             const img = document.createElement('img');
-            img.src = '/api/styles/classic/back';
+            img.src = getCardBackUrl();
             img.alt = t('talonCard');
             img.className = 'card';
             talonContainer.appendChild(img);
@@ -1394,7 +1498,7 @@ function renderCurrentTrick() {
         label.textContent = playerName;
 
         const img = document.createElement('img');
-        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.src = getCardImageUrl(cardPlay.card.id);
         img.alt = cardPlay.card.id;
         img.className = 'card';
 
@@ -1459,7 +1563,7 @@ function renderLastTrick() {
         label.textContent = playerName.split(' ')[0].substring(0, 3);
 
         const img = document.createElement('img');
-        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.src = getCardImageUrl(cardPlay.card.id);
         img.alt = cardPlay.card.id;
         img.className = 'card';
 
@@ -1502,6 +1606,65 @@ function renderContractInfo() {
     }
 }
 
+function selectScoreboardPlayer(playerId) {
+    selectedScoreboardPlayer = playerId;
+
+    // Update tab active state
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        const tabPlayerId = parseInt(tab.dataset.player);
+        if (tabPlayerId === playerId) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    renderScoreboard();
+}
+
+function getPlayerLeftRight(playerId) {
+    // In a 3-player game with counter-clockwise play:
+    // If viewing player 1: left is player 3, right is player 2
+    // If viewing player 2: left is player 1, right is player 3
+    // If viewing player 3: left is player 2, right is player 1
+    const leftMap = { 1: 3, 2: 1, 3: 2 };
+    const rightMap = { 1: 2, 2: 3, 3: 1 };
+    return {
+        left: leftMap[playerId],
+        right: rightMap[playerId]
+    };
+}
+
+function renderScoreboard() {
+    const players = gameState?.players || [];
+    const viewingPlayer = players.find(p => p.id === selectedScoreboardPlayer);
+
+    // Update tab labels with player names
+    document.querySelectorAll('.scoreboard-tab').forEach(tab => {
+        const tabPlayerId = parseInt(tab.dataset.player);
+        const player = players.find(p => p.id === tabPlayerId);
+        if (player) {
+            tab.textContent = player.name;
+        }
+    });
+
+    if (!viewingPlayer) {
+        // No game state yet, show placeholders
+        document.getElementById('scoreboard-left-value').textContent = '0';
+        document.getElementById('scoreboard-middle-value').textContent = '0';
+        document.getElementById('scoreboard-right-value').textContent = '0';
+        return;
+    }
+
+    // Update values (placeholder - using score for now)
+    document.getElementById('scoreboard-left-value').textContent =
+        viewingPlayer.soups_left ?? 0;
+    document.getElementById('scoreboard-middle-value').textContent =
+        viewingPlayer.score ?? 0;
+    document.getElementById('scoreboard-right-value').textContent =
+        viewingPlayer.soups_right ?? 0;
+}
+
 function renderBiddingHistory() {
     const historyContainer = document.getElementById('bidding-history');
     const historyList = document.getElementById('bidding-history-list');
@@ -1517,7 +1680,7 @@ function renderBiddingHistory() {
         return;
     }
 
-    historyContainer.style.display = 'block';
+    historyContainer.style.display = 'flex';
     historyList.innerHTML = '';
 
     // Render each bid on a separate line
@@ -1624,7 +1787,7 @@ function showActionPanelForPhase(phase) {
 function translateBidLabel(bid) {
     // Translate bid labels from server to current language
     if (bid.bid_type === 'pass') return t('pass');
-    if (bid.bid_type === 'game') return t('game') + ' ' + bid.value;
+    if (bid.bid_type === 'game') return String(bid.value);
     if (bid.bid_type === 'in_hand') return bid.value > 0 ? t('inHand') + ' ' + bid.value : t('inHand');
     if (bid.bid_type === 'betl') return t('betl');
     if (bid.bid_type === 'sans') return t('sans');
@@ -1649,19 +1812,6 @@ function updateBiddingButtons() {
         btn.textContent = translateBidLabel(bid);
         btn.dataset.bidType = bid.bid_type;
         btn.dataset.value = bid.value;
-
-        // Style pass button differently
-        if (bid.bid_type === 'pass') {
-            btn.classList.add('pass-btn');
-        }
-        // Style special bids
-        if (bid.bid_type === 'in_hand') {
-            btn.classList.add('in-hand-btn');
-        }
-        if (bid.bid_type === 'betl' || bid.bid_type === 'sans') {
-            btn.classList.add('special-btn');
-        }
-
         btn.addEventListener('click', () => placeBid(bid.bid_type, bid.value));
         container.appendChild(btn);
     });
@@ -1679,11 +1829,8 @@ function showRoundResult() {
 }
 
 function showMessage(text, type = '') {
-    elements.messageArea.textContent = text;
-    elements.messageArea.className = 'message-area';
-    if (type) {
-        elements.messageArea.classList.add(type);
-    }
+    // Message area removed - function kept for compatibility
+    debug('MSG', text, { type });
 }
 
 function formatCardName(cardId) {
