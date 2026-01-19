@@ -186,6 +186,8 @@ class Player:
     hand: list[Card] = field(default_factory=list)
     tricks_won: int = 0
     score: int = 0
+    soups_left: int = 0  # Soups owed to player on their left
+    soups_right: int = 0  # Soups owed to player on their right
     is_declarer: bool = False
     has_dropped_out: bool = False
 
@@ -231,6 +233,8 @@ class Player:
             "hand_count": len(self.hand),
             "tricks_won": self.tricks_won,
             "score": self.score,
+            "soups_left": self.soups_left,
+            "soups_right": self.soups_right,
             "is_declarer": self.is_declarer,
             "has_dropped_out": self.has_dropped_out,
         }
