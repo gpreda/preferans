@@ -2,6 +2,7 @@
 
 let gameState = null;
 let selectedCards = [];
+let currentStyle = 'centered'; // Default deck style
 
 // Debug logging utility
 const DEBUG = false;
@@ -72,6 +73,7 @@ const elements = {
     phaseIndicator: null,
     status: null,
     messageArea: null,
+    styleSelector: null,
     languageSelector: null,
     // Players
     player1: null,
@@ -97,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.phaseIndicator = document.getElementById('phase-indicator');
     elements.status = document.getElementById('status');
     elements.messageArea = document.getElementById('message-area');
+    elements.styleSelector = document.getElementById('style-selector');
     elements.languageSelector = document.getElementById('language-selector');
 
     elements.player1 = document.getElementById('player1');
@@ -132,6 +135,18 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.languageSelector.value = window.i18n.getLanguage();
         elements.languageSelector.addEventListener('change', (e) => {
             window.i18n.setLanguage(e.target.value);
+            if (gameState) {
+                renderGame();
+            }
+        });
+    }
+
+    // Style selector
+    if (elements.styleSelector) {
+        loadStyles();
+        elements.styleSelector.addEventListener('change', (e) => {
+            currentStyle = e.target.value;
+            renderInitialState();
             if (gameState) {
                 renderGame();
             }
@@ -183,9 +198,41 @@ document.addEventListener('DOMContentLoaded', () => {
     renderInitialState();
 });
 
+function getCardImageUrl(cardId) {
+    return `/api/cards/${cardId}/image?style=${currentStyle}`;
+}
+
+function getCardBackUrl() {
+    return `/api/styles/${currentStyle}/back`;
+}
+
+async function loadStyles() {
+    try {
+        const response = await fetch('/api/styles');
+        if (!response.ok) return;
+
+        const styles = await response.json();
+        const selector = elements.styleSelector;
+        selector.innerHTML = '';
+
+        styles.forEach(style => {
+            const option = document.createElement('option');
+            option.value = style.name;
+            option.textContent = style.name.charAt(0).toUpperCase() + style.name.slice(1);
+            if (style.is_default) {
+                option.selected = true;
+                currentStyle = style.name;
+            }
+            selector.appendChild(option);
+        });
+    } catch (error) {
+        debugError('INIT', 'Failed to load styles', error);
+    }
+}
+
 function renderInitialState() {
     // Show face-down cards for all players before game starts
-    const cardBackUrl = '/api/styles/classic/back';
+    const cardBackUrl = getCardBackUrl();
     const cardsPerPlayer = 10;
 
     for (let playerId = 1; playerId <= 3; playerId++) {
@@ -715,7 +762,7 @@ function addCardToTrickDisplay(playerId, card) {
     label.textContent = getPlayerName(playerId);
 
     const img = document.createElement('img');
-    img.src = `/api/cards/${card.id}/image`;
+    img.src = getCardImageUrl(card.id);
     img.alt = card.id;
     img.className = 'card';
     img.onerror = () => debugError('RENDER', `addCardToTrickDisplay: failed to load image for ${card.id}`);
@@ -1064,7 +1111,7 @@ function renderPlayerCards(player, playerEl) {
 
     player.hand.forEach(card => {
         const img = document.createElement('img');
-        img.src = `/api/cards/${card.id}/image`;
+        img.src = getCardImageUrl(card.id);
         img.alt = card.id;
         img.className = 'card';
         img.title = formatCardName(card.id);
@@ -1119,7 +1166,7 @@ function renderTalon() {
         // Show actual talon cards face-up (during exchange before pickup)
         talonCards.forEach(card => {
             const img = document.createElement('img');
-            img.src = `/api/cards/${card.id}/image`;
+            img.src = getCardImageUrl(card.id);
             img.alt = card.id;
             img.className = 'card';
             img.title = formatCardName(card.id);
@@ -1130,7 +1177,7 @@ function renderTalon() {
         // Show card backs when talon exists but is hidden (during auction)
         for (let i = 0; i < talonCount; i++) {
             const img = document.createElement('img');
-            img.src = '/api/styles/classic/back';
+            img.src = getCardBackUrl();
             img.alt = t('talonCard');
             img.className = 'card';
             talonContainer.appendChild(img);
@@ -1162,7 +1209,7 @@ function renderCurrentTrick() {
         label.textContent = playerName;
 
         const img = document.createElement('img');
-        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.src = getCardImageUrl(cardPlay.card.id);
         img.alt = cardPlay.card.id;
         img.className = 'card';
 
@@ -1227,7 +1274,7 @@ function renderLastTrick() {
         label.textContent = playerName.split(' ')[0].substring(0, 3);
 
         const img = document.createElement('img');
-        img.src = `/api/cards/${cardPlay.card.id}/image`;
+        img.src = getCardImageUrl(cardPlay.card.id);
         img.alt = cardPlay.card.id;
         img.className = 'card';
 

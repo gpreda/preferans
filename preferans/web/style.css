@@ -145,6 +145,7 @@ body {
     background: #ff6b6b;
 }
 
+.style-selector,
 .lang-selector {
     padding: var(--spacing-xs);
     font-size: var(--font-xs);
