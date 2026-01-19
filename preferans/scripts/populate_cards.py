@@ -53,10 +53,10 @@ def populate_cards():
     conn = psycopg2.connect(**DATABASE_CONFIG)
     cur = conn.cursor()
 
-    # Remove old styles
+    # Remove old styles (keep only classic and elegant)
     print("Removing old styles...")
-    cur.execute("DELETE FROM card_images WHERE style_id IN (SELECT id FROM deck_styles WHERE name != 'classic')")
-    cur.execute("DELETE FROM deck_styles WHERE name != 'classic'")
+    cur.execute("DELETE FROM card_images WHERE style_id IN (SELECT id FROM deck_styles WHERE name NOT IN ('classic', 'elegant'))")
+    cur.execute("DELETE FROM deck_styles WHERE name NOT IN ('classic', 'elegant')")
 
     # Classic style (default)
     print("Creating 'classic' deck style...")
@@ -67,7 +67,18 @@ def populate_cards():
         is_default=True
     )
     print(f"Populating cards for classic style (ID {classic_id})...")
-    populate_style_cards(cur, classic_id, style='centered')
+    populate_style_cards(cur, classic_id, style='classic')
+
+    # Elegant style
+    print("Creating 'elegant' deck style...")
+    elegant_id = create_style(
+        cur,
+        name='elegant',
+        description='Elegant card design with Georgia serif font',
+        is_default=False
+    )
+    print(f"Populating cards for elegant style (ID {elegant_id})...")
+    populate_style_cards(cur, elegant_id, style='elegant')
 
     conn.commit()
     cur.close()
