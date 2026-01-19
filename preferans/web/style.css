@@ -598,18 +598,25 @@ body {
 }
 
 /* ========================================
-   FRAME 4: BIDS & ACTION PANEL
+   FRAME 4: BOTTOM BAR (3 columns)
    ======================================== */
-.frame-bids {
+.frame-bottom-bar {
     height: var(--bids-height);
+    display: flex;
+    gap: var(--frame-gap);
+    padding: var(--spacing-xs);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+}
+
+.frame-bottom-left,
+.frame-bottom-middle,
+.frame-bottom-right {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: var(--bg-panel);
-    flex-shrink: 0;
-    flex-wrap: wrap;
+    min-width: 0;
 }
 
 .bidding-history {
@@ -618,8 +625,32 @@ body {
     background: rgba(0, 0, 0, 0.3);
     border-radius: var(--spacing-xs);
     padding: var(--spacing-xs);
-    height: calc(var(--base) * 20);
-    max-height: calc(var(--base) * 20);
+    width: 100%;
+    height: 100%;
+}
+
+.scoreboard {
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--spacing-xs);
+    padding: var(--spacing-xs);
+    width: 100%;
+    height: 100%;
+}
+
+.scoreboard-title {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+.scoreboard-content {
+    flex: 1;
+    overflow-y: auto;
 }
 
 .bidding-history-title {
