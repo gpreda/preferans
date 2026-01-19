@@ -176,6 +176,56 @@ def generate_centered_card_svg(rank: str, suit: str) -> str:
     return svg
 
 
+def generate_elegant_card_svg(rank: str, suit: str) -> str:
+    """Generate SVG for a single card (elegant style).
+
+    Same layout as centered/classic style but with Georgia serif font for a classic card feel.
+    """
+    suit_info = SUITS[suit]
+    symbol = suit_info['symbol']
+    color = suit_info['color']
+
+    # Rank size (same as classic)
+    rank_size = 20
+
+    # Suit size for corner symbols (same as classic)
+    suit_size = 29
+
+    # Rank position - centered in visible overlap region (same as classic)
+    rank_x = 12
+    rank_y = 18
+
+    # Suit position - 2px from margins (same as classic)
+    suit_margin = 2
+
+    # Elegant font stack
+    font = "Georgia, 'Times New Roman', serif"
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
+  <!-- Card background -->
+  <rect x="1" y="1" width="78" height="110" rx="6" ry="6" fill="white" stroke="#ccc" stroke-width="1"/>
+
+  <!-- Top left rank (centered in visible overlap region) -->
+  <text x="{rank_x}" y="{rank_y}" font-family="{font}" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
+
+  <!-- Top right suit (2px from top and right edges) -->
+  <text x="{80 - suit_margin}" y="{suit_margin}" font-family="{font}" font-size="{suit_size}" fill="{color}" text-anchor="end" dominant-baseline="hanging">{symbol}</text>
+
+  <!-- Bottom left suit (2px from bottom and left edges) -->
+  <text x="{suit_margin}" y="{112 - suit_margin}" font-family="{font}" font-size="{suit_size}" fill="{color}">{symbol}</text>
+
+  <!-- Bottom right rank (rotated 180° around card center) -->
+  <g transform="rotate(180, 40, 56)">
+    <text x="{rank_x}" y="{rank_y}" font-family="{font}" font-size="{rank_size}" font-weight="bold" fill="{color}" text-anchor="middle">{rank}</text>
+  </g>
+
+  <!-- Center suit symbol -->
+  <text x="40" y="56" font-family="{font}" font-size="48" fill="{color}" text-anchor="middle" dominant-baseline="central">{symbol}</text>
+</svg>'''
+
+    return svg
+
+
 def generate_card_back_svg() -> str:
     """Generate SVG for card back."""
     svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 112">
@@ -200,18 +250,21 @@ def generate_all_cards(style: str = 'classic') -> dict:
     """Generate all 32 cards plus card back.
 
     Args:
-        style: 'classic', 'compact', 'large', or 'centered'
+        style: 'classic', 'centered', 'elegant', 'compact', or 'large'
     """
     cards = {}
 
-    if style == 'centered':
+    if style == 'elegant':
+        generator = generate_elegant_card_svg
+    elif style == 'centered':
         generator = generate_centered_card_svg
     elif style == 'large':
         generator = generate_large_card_svg
     elif style == 'compact':
         generator = generate_compact_card_svg
     else:
-        generator = generate_card_svg
+        # 'classic' uses the centered generator
+        generator = generate_centered_card_svg
 
     for suit in SUITS:
         for rank in RANKS:
