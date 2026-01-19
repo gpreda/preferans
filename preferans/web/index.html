@@ -54,6 +54,12 @@
                             <div class="drop-hint" data-i18n="dropCardHere">Drop card here</div>
                         </div>
                     </div>
+                    <!-- Bidding Controls -->
+                    <div class="frame frame-bidding">
+                        <div class="bidding-controls hidden" id="bidding-controls">
+                            <div class="bid-buttons" id="bid-buttons"></div>
+                        </div>
+                    </div>
                     <!-- Last Played Trick -->
                     <div class="frame frame-last-trick">
                         <div class="last-trick visible" id="last-trick">
@@ -99,11 +105,6 @@
             <div class="contract-info" id="contract-info"></div>
             <!-- Action Panel -->
             <div class="action-panel" id="action-panel">
-                <!-- Bidding UI -->
-                <div class="bidding-controls hidden" id="bidding-controls">
-                    <span class="action-label"><span data-i18n="bidding">Bidding</span>:</span>
-                    <div class="bid-buttons" id="bid-buttons"></div>
-                </div>
                 <!-- Exchange UI -->
                 <div class="exchange-controls hidden" id="exchange-controls">
                     <button id="pickup-talon-btn" data-i18n="pickUpTalon">Pick Up Talon</button>
