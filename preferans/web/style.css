@@ -615,11 +615,12 @@ body {
 
 .bidding-history {
     display: none;
+    flex-direction: column;
     background: rgba(0, 0, 0, 0.3);
     border-radius: var(--spacing-xs);
     padding: var(--spacing-xs);
-    max-height: 100%;
-    overflow-y: auto;
+    height: calc(var(--base) * 20);
+    max-height: calc(var(--base) * 20);
 }
 
 .bidding-history-title {
@@ -628,13 +629,15 @@ body {
     text-transform: uppercase;
     text-align: center;
     margin-bottom: var(--spacing-xs);
+    flex-shrink: 0;
 }
 
 .bidding-history-list {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: var(--spacing-xs);
-    justify-content: center;
+    overflow-y: auto;
+    flex: 1;
 }
 
 .bid-line {
