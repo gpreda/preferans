@@ -3,7 +3,7 @@
 let gameState = null;
 let selectedCards = [];
 let exchangeState = null; // Tracks exchange phase: { originalHand, originalTalon, currentHand, currentTalon }
-let currentStyle = 'centered'; // Default deck style
+let currentStyle = 'classic'; // Default deck style
 let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
 // Debug logging utility
@@ -1829,8 +1829,15 @@ function showRoundResult() {
 }
 
 function showMessage(text, type = '') {
-    // Message area removed - function kept for compatibility
     debug('MSG', text, { type });
+    const messageArea = document.getElementById('message-area');
+    if (messageArea) {
+        messageArea.textContent = text;
+        messageArea.className = 'message-area';
+        if (type) {
+            messageArea.classList.add(type);
+        }
+    }
 }
 
 function formatCardName(cardId) {

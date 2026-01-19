@@ -420,7 +420,7 @@ class DSLRunner {
       }
 
       // Try to click pass if available
-      const passBtn = this.page.locator('.pass-btn');
+      const passBtn = this.page.locator('.bid-btn[data-bid-type="pass"]');
       if (await passBtn.isVisible({ timeout: 500 }).catch(() => false)) {
         await passBtn.click();
         await this.page.waitForTimeout(1000);
