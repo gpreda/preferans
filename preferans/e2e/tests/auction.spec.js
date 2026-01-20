@@ -13,7 +13,7 @@ test.describe('Auction/Bidding', () => {
   });
 
   test('pass button available during auction if human turn', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -50,7 +50,7 @@ test.describe('Auction/Bidding', () => {
   });
 
   test('bidding history displays bids', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
