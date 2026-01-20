@@ -488,7 +488,7 @@ class DSLRunner {
  */
 async function runDSL(page, script) {
   // Wait for server connection first
-  await page.goto('/');
+  await page.goto('/?e2e');
   await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
   const runner = new DSLRunner(page);

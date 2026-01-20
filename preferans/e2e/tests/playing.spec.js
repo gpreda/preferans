@@ -7,7 +7,7 @@ const { runDSL, DSLRunner, completeExchangeWithDragDrop } = require('../lib/dsl-
  * Returns true if human (player3) is declarer
  */
 async function setupToPlayingPhase(page) {
-  await page.goto('/');
+  await page.goto('/?e2e');
   await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
   await page.click('#new-game-btn');
@@ -101,7 +101,7 @@ test.describe('Playing Phase', () => {
   });
 
   test('tricks counter starts at 0', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
