@@ -5,7 +5,7 @@ const { DSLRunner, completeExchangeWithDragDrop } = require('../lib/dsl-runner')
 test.describe('Edge Cases', () => {
 
   test('multiple new games can be started in sequence', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     // Start first game
@@ -29,7 +29,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('new game resets trick counters', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -46,7 +46,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('talon has exactly 2 cards', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -62,7 +62,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('AI players have cards rendered', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -77,7 +77,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('human player (player3) cards are face-up', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -92,7 +92,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('page reload preserves server connection', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     // Reload page
@@ -103,7 +103,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('new game button always accessible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     // New game button should always be visible
@@ -116,7 +116,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('bidding history clears on new game', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -136,7 +136,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('declarer role correctly assigned after auction', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -151,7 +151,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('commit button disabled until talon has 2 cards', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -204,7 +204,7 @@ test.describe('Edge Cases', () => {
   });
 
   test('32 cards total in game', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');

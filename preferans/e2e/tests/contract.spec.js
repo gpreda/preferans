@@ -6,7 +6,7 @@ const { DSLRunner, completeExchangeWithDragDrop } = require('../lib/dsl-runner')
  * Helper to get to contract phase (after exchange)
  */
 async function setupToContractPhase(page) {
-  await page.goto('/');
+  await page.goto('/?e2e');
   await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
   await page.click('#new-game-btn');

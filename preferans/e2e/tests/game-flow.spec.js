@@ -6,7 +6,7 @@ const { runDSL, DSLRunner, completeExchangeWithDragDrop } = require('../lib/dsl-
  * Helper to setup game to exchange phase
  */
 async function setupToExchangePhase(page) {
-  await page.goto('/');
+  await page.goto('/?e2e');
   await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
   await page.click('#new-game-btn');
   await page.waitForTimeout(500);
