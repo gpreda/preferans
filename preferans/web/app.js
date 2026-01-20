@@ -1108,26 +1108,34 @@ function renderDeclarerHandForExchange(player, playerEl, handCards) {
 
 function renderTalonForExchange(talonCards) {
     const talonContainer = elements.talon.querySelector('.talon-cards');
+    const playArea = document.getElementById('play-area');
     talonContainer.innerHTML = '';
 
     // Add exchange-mode class for larger drop zone styling
     elements.talon.classList.add('exchange-mode');
+    playArea.classList.add('exchange-mode');
 
-    // Remove existing drop zone handlers from both container and parent
+    // Remove existing drop zone handlers from all containers
     talonContainer.removeEventListener('dragover', handleTalonDragOver);
     talonContainer.removeEventListener('dragleave', handleTalonDragLeave);
     talonContainer.removeEventListener('drop', handleTalonDrop);
     elements.talon.removeEventListener('dragover', handleTalonDragOver);
     elements.talon.removeEventListener('dragleave', handleTalonDragLeave);
     elements.talon.removeEventListener('drop', handleTalonDrop);
+    playArea.removeEventListener('dragover', handleTalonDragOver);
+    playArea.removeEventListener('dragleave', handleTalonDragLeave);
+    playArea.removeEventListener('drop', handleTalonDrop);
 
-    // Add drop zone handlers to both container and parent (for larger drop area)
+    // Add drop zone handlers to all containers (for larger drop area)
     talonContainer.addEventListener('dragover', handleTalonDragOver);
     talonContainer.addEventListener('dragleave', handleTalonDragLeave);
     talonContainer.addEventListener('drop', handleTalonDrop);
     elements.talon.addEventListener('dragover', handleTalonDragOver);
     elements.talon.addEventListener('dragleave', handleTalonDragLeave);
     elements.talon.addEventListener('drop', handleTalonDrop);
+    playArea.addEventListener('dragover', handleTalonDragOver);
+    playArea.addEventListener('dragleave', handleTalonDragLeave);
+    playArea.addEventListener('drop', handleTalonDrop);
 
     if (talonCards.length > 0) {
         talonCards.forEach(card => {
@@ -1475,10 +1483,12 @@ function renderPlayerCards(player, playerEl) {
 
 function renderTalon() {
     const talonContainer = elements.talon.querySelector('.talon-cards');
+    const playArea = document.getElementById('play-area');
     talonContainer.innerHTML = '';
 
     // Remove exchange-mode class (will be added back by renderTalonForExchange if needed)
     elements.talon.classList.remove('exchange-mode');
+    playArea.classList.remove('exchange-mode');
 
     const round = gameState.current_round;
     if (!round) return;
