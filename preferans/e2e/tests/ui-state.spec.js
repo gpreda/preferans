@@ -5,7 +5,7 @@ const { DSLRunner } = require('../lib/dsl-runner');
 test.describe('UI State', () => {
 
   test('phase indicator shows correct phase', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -17,7 +17,7 @@ test.describe('UI State', () => {
   });
 
   test('message area shows game events', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -30,7 +30,7 @@ test.describe('UI State', () => {
   });
 
   test('language selector visible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     const languageSelector = page.locator('#language-selector');
@@ -38,7 +38,7 @@ test.describe('UI State', () => {
   });
 
   test('language switch to Serbian works', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     // Select Serbian
@@ -56,7 +56,7 @@ test.describe('UI State', () => {
   });
 
   test('language switch back to English works', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     // Switch to Serbian first
@@ -74,7 +74,7 @@ test.describe('UI State', () => {
   });
 
   test('player names displayed', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -87,7 +87,7 @@ test.describe('UI State', () => {
   });
 
   test('tricks display shows for all players', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -99,7 +99,7 @@ test.describe('UI State', () => {
   });
 
   test('bidding controls visible during auction', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -114,7 +114,7 @@ test.describe('UI State', () => {
   });
 
   test('exchange controls visible during exchange', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -127,7 +127,7 @@ test.describe('UI State', () => {
   });
 
   test('only one control panel visible at a time', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -148,7 +148,7 @@ test.describe('UI State', () => {
   });
 
   test('talon area visible during exchange', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -161,7 +161,7 @@ test.describe('UI State', () => {
   });
 
   test('current trick area exists', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -171,7 +171,7 @@ test.describe('UI State', () => {
   });
 
   test('header displays game title', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     const header = page.locator('h1');
@@ -179,7 +179,7 @@ test.describe('UI State', () => {
   });
 
   test('dealer marked with dealer class', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -194,7 +194,7 @@ test.describe('UI State', () => {
   });
 
   test('card images load correctly', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -210,7 +210,7 @@ test.describe('UI State', () => {
   });
 
   test('bidding history panel visible during auction', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');

@@ -6,7 +6,7 @@ const { DSLRunner, completeExchangeWithDragDrop } = require('../lib/dsl-runner')
  * Helper to get to playing phase and play through to scoring
  */
 async function setupToPlayingPhase(page) {
-  await page.goto('/');
+  await page.goto('/?e2e');
   await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
   await page.click('#new-game-btn');
@@ -59,7 +59,7 @@ async function playFullRound(page, maxIterations = 50) {
 test.describe('Scoring', () => {
 
   test('tricks counter starts at zero', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');

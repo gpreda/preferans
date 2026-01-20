@@ -6,6 +6,15 @@ let exchangeState = null; // Tracks exchange phase: { originalHand, originalTalo
 let currentStyle = 'classic'; // Default deck style
 let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
+// E2E test mode detection - set delays to 0 for faster tests
+const E2E_TEST_MODE = new URLSearchParams(window.location.search).has('e2e');
+
+// Animation/UI delays (in ms) - set to 0 in E2E test mode
+const DELAYS = {
+    TRICK_DISPLAY: E2E_TEST_MODE ? 0 : 500,      // Time to show complete trick before animating
+    TRICK_ANIMATION: E2E_TEST_MODE ? 0 : 650,    // Time for trick-to-winner animation
+};
+
 // Debug logging utility
 const DEBUG = false;
 function debug(category, message, data = null) {
@@ -706,9 +715,9 @@ async function playCard(cardId) {
 
                 showMessage(t('trickWonBy', winnerName), 'success');
 
-                // Wait 0.5 seconds to show complete trick
-                debug('PLAY', 'playCard: waiting 0.5s to show trick');
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Wait to show complete trick (skipped in E2E test mode)
+                debug('PLAY', `playCard: waiting ${DELAYS.TRICK_DISPLAY}ms to show trick`);
+                await new Promise(resolve => setTimeout(resolve, DELAYS.TRICK_DISPLAY));
 
                 // Animate cards to winner's box
                 debug('PLAY', 'playCard: starting animation to winner');
@@ -854,9 +863,9 @@ async function animateTrickToWinner(winnerId) {
         wrapper.style.opacity = '0';
     });
 
-    // Wait for animation to complete (500ms + stagger delays + buffer)
-    debug('ANIM', 'animateTrickToWinner: waiting 650ms for animation');
-    await new Promise(resolve => setTimeout(resolve, 650));
+    // Wait for animation to complete (skipped in E2E test mode)
+    debug('ANIM', `animateTrickToWinner: waiting ${DELAYS.TRICK_ANIMATION}ms for animation`);
+    await new Promise(resolve => setTimeout(resolve, DELAYS.TRICK_ANIMATION));
     debug('ANIM', 'animateTrickToWinner: animation complete');
 }
 

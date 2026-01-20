@@ -8,7 +8,7 @@ const { runDSL, DSLRunner } = require('../lib/dsl-runner');
  */
 async function setupWithHumanDeclarer(page, maxAttempts = 10) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -234,7 +234,7 @@ test.describe('Exchange Flow - Drag and Drop', () => {
   });
 
   test('full exchange flow completes correctly', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');

@@ -5,7 +5,7 @@ const { runDSL, DSLRunner } = require('../lib/dsl-runner');
 test.describe('Bidding', () => {
 
   test('human can bid Game 2', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -25,7 +25,7 @@ test.describe('Bidding', () => {
   });
 
   test('human can bid Game 3', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -42,7 +42,7 @@ test.describe('Bidding', () => {
   });
 
   test('human can bid Betl', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -59,7 +59,7 @@ test.describe('Bidding', () => {
   });
 
   test('human can bid Sans', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -76,7 +76,7 @@ test.describe('Bidding', () => {
   });
 
   test('human can bid In Hand', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -93,7 +93,7 @@ test.describe('Bidding', () => {
   });
 
   test('higher bid required after AI bids', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -122,7 +122,7 @@ test.describe('Bidding', () => {
   });
 
   test('pass always available during auction', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
@@ -137,7 +137,7 @@ test.describe('Bidding', () => {
   });
 
   test('bidding history shows all bids in order', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e');
     await expect(page.locator('#message-area.success')).toBeVisible({ timeout: 10000 });
 
     await page.click('#new-game-btn');
