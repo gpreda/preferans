@@ -199,11 +199,10 @@ def new_game():
     data = request.get_json() or {}
     player_names = data.get('players', ['Player 1', 'Player 2', 'Player 3'])
 
-    # Create new game with 2 AI players and 1 human player
+    # Create new game with 3 human players
     current_game = Game(id=str(uuid.uuid4()))
-    # Players 1 and 2 are AI, Player 3 is human
-    current_game.add_ai_player(player_names[0] if len(player_names) > 0 else 'Player 1')
-    current_game.add_ai_player(player_names[1] if len(player_names) > 1 else 'Player 2')
+    current_game.add_human_player(player_names[0] if len(player_names) > 0 else 'Player 1')
+    current_game.add_human_player(player_names[1] if len(player_names) > 1 else 'Player 2')
     current_game.add_human_player(player_names[2] if len(player_names) > 2 else 'Player 3')
 
     # Create engine and start game
