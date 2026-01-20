@@ -190,7 +190,7 @@ def get_card_image(card_id):
 
 @app.route('/api/game/new', methods=['POST'])
 def new_game():
-    """Start a new game with 3 human players."""
+    """Start a new game with 2 AI players and 1 human player."""
     global current_game, current_engine
     from models import Game
     from engine import GameEngine
@@ -199,10 +199,12 @@ def new_game():
     data = request.get_json() or {}
     player_names = data.get('players', ['Player 1', 'Player 2', 'Player 3'])
 
-    # Create new game
+    # Create new game with 2 AI players and 1 human player
     current_game = Game(id=str(uuid.uuid4()))
-    for name in player_names[:3]:
-        current_game.add_human_player(name)
+    # Players 1 and 2 are AI, Player 3 is human
+    current_game.add_ai_player(player_names[0] if len(player_names) > 0 else 'Player 1')
+    current_game.add_ai_player(player_names[1] if len(player_names) > 1 else 'Player 2')
+    current_game.add_human_player(player_names[2] if len(player_names) > 2 else 'Player 3')
 
     # Create engine and start game
     current_engine = GameEngine(current_game)
@@ -292,6 +294,32 @@ def discard_cards():
         return jsonify({
             'success': True,
             'discarded': [c.to_dict() for c in discarded],
+            'state': current_engine.get_game_state()
+        })
+    except (InvalidMoveError, InvalidPhaseError) as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/game/exchange', methods=['POST'])
+def complete_exchange():
+    """Complete exchange atomically - picks up talon and discards specified cards."""
+    global current_engine
+    if not current_engine:
+        return jsonify({'error': 'No active game'}), 400
+
+    from engine import InvalidMoveError, InvalidPhaseError
+
+    data = request.get_json()
+    player_id = data.get('player_id')
+    card_ids = data.get('card_ids', [])
+
+    if len(card_ids) != 2:
+        return jsonify({'error': 'Must specify exactly 2 cards to discard'}), 400
+
+    try:
+        current_engine.complete_exchange(player_id, card_ids)
+        return jsonify({
+            'success': True,
             'state': current_engine.get_game_state()
         })
     except (InvalidMoveError, InvalidPhaseError) as e:
@@ -389,4 +417,7 @@ def next_round():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=3000)
+    import os
+    debug_mode = os.environ.get('FLASK_DEBUG', '1') == '1'
+    port = int(os.environ.get('FLASK_PORT', '3000'))
+    app.run(debug=debug_mode, host='127.0.0.1', port=port)

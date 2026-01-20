@@ -2,6 +2,7 @@
 
 let gameState = null;
 let selectedCards = [];
+let exchangeState = null; // Tracks exchange phase: { originalHand, originalTalon, currentHand, currentTalon }
 let currentStyle = 'classic'; // Default deck style
 let selectedScoreboardPlayer = 1; // Which player's scoreboard is being viewed
 
@@ -157,8 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bidding buttons are now dynamically generated
 
     // Exchange buttons
-    document.getElementById('pickup-talon-btn').addEventListener('click', pickUpTalon);
-    document.getElementById('discard-btn').addEventListener('click', discardSelected);
+    document.getElementById('pickup-talon-btn').addEventListener('click', commitExchange);
 
     // Contract controls
     document.getElementById('announce-btn').addEventListener('click', announceContract);
@@ -325,6 +325,7 @@ async function startNewGame() {
             }
             gameState = data.state;
             selectedCards = [];
+            exchangeState = null;
             validateGameState('startNewGame');
             debug('GAME', 'startNewGame: game started successfully', {
                 phase: gameState.current_round?.phase,
@@ -881,6 +882,7 @@ async function nextRound() {
             }
             gameState = data.state;
             selectedCards = [];
+            exchangeState = null;
             debug('GAME', 'nextRound: new round started', {
                 phase: gameState.current_round?.phase,
                 roundNumber: gameState.round_number
@@ -911,6 +913,285 @@ function toggleCardSelection(cardId) {
 function updateDiscardButton() {
     const discardBtn = document.getElementById('discard-btn');
     discardBtn.disabled = selectedCards.length !== 2;
+}
+
+// === Exchange Drag-and-Drop Functions ===
+
+function initExchange() {
+    debug('EXCHANGE', 'initExchange: initializing exchange state');
+    const declarer = gameState.players.find(p => p.id === gameState.current_round.declarer_id);
+    if (!declarer) {
+        debugError('EXCHANGE', 'initExchange: no declarer found');
+        return;
+    }
+    exchangeState = {
+        originalHand: [...declarer.hand],
+        originalTalon: [...gameState.current_round.talon],
+        currentHand: [...declarer.hand],
+        currentTalon: [...gameState.current_round.talon]
+    };
+    debug('EXCHANGE', 'initExchange: exchange state initialized', {
+        handSize: exchangeState.currentHand.length,
+        talonSize: exchangeState.currentTalon.length
+    });
+}
+
+function handleExchangeDragStart(e) {
+    const cardId = e.target.dataset.cardId;
+    const source = e.target.dataset.source;
+    debug('EXCHANGE', `handleExchangeDragStart: cardId=${cardId}, source=${source}`);
+    // Encode both cardId and source in the data (custom MIME types don't work reliably)
+    e.dataTransfer.setData('text/plain', JSON.stringify({ cardId, source }));
+    e.dataTransfer.effectAllowed = 'move';
+    e.target.classList.add('dragging');
+}
+
+function handleExchangeDragEnd(e) {
+    e.target.classList.remove('dragging');
+}
+
+function handleHandDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drop-target');
+}
+
+function handleHandDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+        e.currentTarget.classList.remove('drop-target');
+    }
+}
+
+function handleHandDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-target');
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const { cardId, source } = data;
+        debug('EXCHANGE', `handleHandDrop: cardId=${cardId}, source=${source}`);
+        if (source === 'talon') {
+            moveCardToHand(cardId);
+        }
+    } catch (err) {
+        console.error('handleHandDrop parse error:', err);
+    }
+}
+
+function handleTalonDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drop-target');
+}
+
+function handleTalonDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+        e.currentTarget.classList.remove('drop-target');
+    }
+}
+
+function handleTalonDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drop-target');
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const { cardId, source } = data;
+        debug('EXCHANGE', `handleTalonDrop: cardId=${cardId}, source=${source}`);
+        if (source === 'hand') {
+            moveCardToTalon(cardId);
+        }
+    } catch (err) {
+        console.error('handleTalonDrop parse error:', err);
+    }
+}
+
+function moveCardToHand(cardId) {
+    if (!exchangeState) return;
+
+    const cardIndex = exchangeState.currentTalon.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) {
+        debug('EXCHANGE', `moveCardToHand: card ${cardId} not found in talon`);
+        return;
+    }
+
+    const [card] = exchangeState.currentTalon.splice(cardIndex, 1);
+    exchangeState.currentHand.push(card);
+
+    debug('EXCHANGE', `moveCardToHand: moved ${cardId} to hand`, {
+        handSize: exchangeState.currentHand.length,
+        talonSize: exchangeState.currentTalon.length
+    });
+
+    renderExchangeState();
+    updateCommitButton();
+}
+
+function moveCardToTalon(cardId) {
+    if (!exchangeState) return;
+
+    const cardIndex = exchangeState.currentHand.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) {
+        debug('EXCHANGE', `moveCardToTalon: card ${cardId} not found in hand`);
+        return;
+    }
+
+    const [card] = exchangeState.currentHand.splice(cardIndex, 1);
+    exchangeState.currentTalon.push(card);
+
+    debug('EXCHANGE', `moveCardToTalon: moved ${cardId} to talon`, {
+        handSize: exchangeState.currentHand.length,
+        talonSize: exchangeState.currentTalon.length
+    });
+
+    renderExchangeState();
+    updateCommitButton();
+}
+
+function renderExchangeState() {
+    if (!exchangeState) return;
+
+    const declarerId = gameState.current_round.declarer_id;
+    const declarer = gameState.players.find(p => p.id === declarerId);
+    const playerEl = document.getElementById(`player${declarerId}`);
+
+    if (playerEl) {
+        renderDeclarerHandForExchange(declarer, playerEl, exchangeState.currentHand);
+    }
+
+    renderTalonForExchange(exchangeState.currentTalon);
+}
+
+function renderDeclarerHandForExchange(player, playerEl, handCards) {
+    const cardsContainer = playerEl.querySelector('.player-cards');
+    cardsContainer.innerHTML = '';
+
+    // Remove existing drop zone handlers
+    cardsContainer.removeEventListener('dragover', handleHandDragOver);
+    cardsContainer.removeEventListener('dragleave', handleHandDragLeave);
+    cardsContainer.removeEventListener('drop', handleHandDrop);
+
+    // Add drop zone handlers
+    cardsContainer.addEventListener('dragover', handleHandDragOver);
+    cardsContainer.addEventListener('dragleave', handleHandDragLeave);
+    cardsContainer.addEventListener('drop', handleHandDrop);
+
+    handCards.forEach(card => {
+        const img = document.createElement('img');
+        img.src = `/api/cards/${card.id}/image`;
+        img.alt = card.id;
+        img.className = 'card exchange-draggable';
+        img.title = formatCardName(card.id);
+        img.dataset.cardId = card.id;
+        img.dataset.source = 'hand';
+        img.draggable = true;
+
+        img.addEventListener('dragstart', handleExchangeDragStart);
+        img.addEventListener('dragend', handleExchangeDragEnd);
+
+        cardsContainer.appendChild(img);
+    });
+}
+
+function renderTalonForExchange(talonCards) {
+    const talonContainer = elements.talon.querySelector('.talon-cards');
+    talonContainer.innerHTML = '';
+
+    // Remove existing drop zone handlers
+    talonContainer.removeEventListener('dragover', handleTalonDragOver);
+    talonContainer.removeEventListener('dragleave', handleTalonDragLeave);
+    talonContainer.removeEventListener('drop', handleTalonDrop);
+
+    // Add drop zone handlers
+    talonContainer.addEventListener('dragover', handleTalonDragOver);
+    talonContainer.addEventListener('dragleave', handleTalonDragLeave);
+    talonContainer.addEventListener('drop', handleTalonDrop);
+
+    if (talonCards.length > 0) {
+        talonCards.forEach(card => {
+            const img = document.createElement('img');
+            img.src = `/api/cards/${card.id}/image`;
+            img.alt = card.id;
+            img.className = 'card exchange-draggable';
+            img.title = formatCardName(card.id);
+            img.dataset.cardId = card.id;
+            img.dataset.source = 'talon';
+            img.draggable = true;
+
+            img.addEventListener('dragstart', handleExchangeDragStart);
+            img.addEventListener('dragend', handleExchangeDragEnd);
+
+            talonContainer.appendChild(img);
+        });
+        elements.talon.style.display = 'flex';
+    } else {
+        // Show empty talon placeholder
+        const placeholder = document.createElement('div');
+        placeholder.className = 'talon-placeholder';
+        placeholder.textContent = t('dropCardsHere') || 'Drop cards here';
+        talonContainer.appendChild(placeholder);
+        elements.talon.style.display = 'flex';
+    }
+}
+
+function updateCommitButton() {
+    const commitBtn = document.getElementById('pickup-talon-btn');
+    if (!exchangeState) {
+        commitBtn.disabled = true;
+        return;
+    }
+    commitBtn.disabled = exchangeState.currentTalon.length !== 2;
+    debug('EXCHANGE', `updateCommitButton: talon has ${exchangeState.currentTalon.length} cards, button ${commitBtn.disabled ? 'disabled' : 'enabled'}`);
+}
+
+async function commitExchange() {
+    debug('EXCHANGE', 'commitExchange: committing exchange');
+
+    if (!exchangeState || exchangeState.currentTalon.length !== 2) {
+        debugWarn('EXCHANGE', 'commitExchange: cannot commit - talon does not have exactly 2 cards');
+        return;
+    }
+
+    const declarerId = gameState.current_round.declarer_id;
+    const cardIds = exchangeState.currentTalon.map(c => c.id);
+
+    debug('EXCHANGE', `commitExchange: declarer=${declarerId}, discardIds=${cardIds.join(',')}`);
+
+    try {
+        const response = await fetch('/api/game/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player_id: declarerId,
+                card_ids: cardIds
+            })
+        });
+
+        if (!response.ok) {
+            debugError('API', `commitExchange: HTTP error ${response.status}`);
+            showMessage(`Server error: ${response.status}`, 'error');
+            return;
+        }
+
+        const data = await response.json();
+        debug('API', 'commitExchange: response', { success: data.success });
+
+        if (data.success) {
+            if (!data.state) {
+                debugError('EXCHANGE', 'commitExchange: success but no state');
+                return;
+            }
+            gameState = data.state;
+            exchangeState = null;
+            selectedCards = [];
+            renderGame();
+            showMessage(t('exchangeComplete'), 'success');
+        } else {
+            debugError('EXCHANGE', 'commitExchange: failed', data.error);
+            showMessage(data.error, 'error');
+        }
+    } catch (error) {
+        debugError('API', 'commitExchange: exception', error);
+        showMessage(t('failedToExchange', error.message), 'error');
+    }
 }
 
 function populateContractOptions() {
@@ -1479,23 +1760,28 @@ function showActionPanelForPhase(phase) {
         case 'exchanging':
             const declarer = gameState.players?.find(p => p.id === declarerId);
             const discarded = round?.discarded || [];
-            const talonCount = round?.talon_count || 0;
+            const talonCards = round?.talon || [];
 
             if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
                 // Exchange complete (picked up talon and discarded 2), show contract controls
                 elements.contractControls.classList.remove('hidden');
                 populateContractOptions();
-            } else if (declarer && declarer.hand.length === 12) {
-                // Talon picked up, need to discard 2 cards
-                elements.exchangeControls.classList.remove('hidden');
-                document.getElementById('pickup-talon-btn').classList.add('hidden');
-                document.getElementById('discard-btn').classList.remove('hidden');
-                updateDiscardButton();
-            } else if (talonCount > 0) {
-                // Talon not picked up yet, show pickup button
+            } else if (talonCards.length > 0 || (exchangeState && exchangeState.currentTalon.length >= 0)) {
+                // Exchange phase with drag-and-drop
                 elements.exchangeControls.classList.remove('hidden');
                 document.getElementById('pickup-talon-btn').classList.remove('hidden');
-                document.getElementById('discard-btn').classList.add('hidden');
+
+                // Initialize exchange state if not already done
+                if (!exchangeState && talonCards.length > 0) {
+                    initExchange();
+                }
+
+                // Always render exchange state when in exchange mode
+                if (exchangeState) {
+                    renderExchangeState();
+                }
+
+                updateCommitButton();
             }
             break;
 
@@ -1555,8 +1841,15 @@ function showRoundResult() {
 }
 
 function showMessage(text, type = '') {
-    // Message area removed - function kept for compatibility
     debug('MSG', text, { type });
+    const messageArea = document.getElementById('message-area');
+    if (messageArea) {
+        messageArea.textContent = text;
+        messageArea.className = 'message-area';
+        if (type) {
+            messageArea.classList.add(type);
+        }
+    }
 }
 
 function formatCardName(cardId) {

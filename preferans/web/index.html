@@ -128,9 +128,8 @@
                 <div class="action-panel" id="action-panel">
                     <!-- Exchange UI -->
                     <div class="exchange-controls hidden" id="exchange-controls">
-                        <button id="pickup-talon-btn" data-i18n="pickUpTalon">Pick Up Talon</button>
-                        <span class="action-label" data-i18n="selectCardsToDiscard">Select 2 cards to discard, then:</span>
-                        <button id="discard-btn" disabled data-i18n="discardSelected">Discard Selected</button>
+                        <span class="action-label" data-i18n="dragCardsToExchange">Drag cards between hand and talon</span>
+                        <button id="pickup-talon-btn" disabled data-i18n="commitExchange">Commit Exchange</button>
                     </div>
                     <!-- Contract UI -->
                     <div class="contract-controls hidden" id="contract-controls">
@@ -150,6 +149,8 @@
                 </div>
             </div>
         </div>
+        <!-- Message area -->
+        <div class="message-area" id="message-area"></div>
     </div>
     <script src="i18n.js"></script>
     <script src="app.js"></script>
