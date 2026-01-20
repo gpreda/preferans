@@ -518,7 +518,8 @@ body {
 
 /* Drop zone styling for talon */
 .talon-cards.drop-target,
-.talon.drop-target {
+.talon.drop-target,
+#play-area.exchange-mode.drop-target {
     background: rgba(78, 204, 163, 0.2);
     border-radius: var(--spacing-sm);
     outline: 2px dashed var(--color-secondary);
