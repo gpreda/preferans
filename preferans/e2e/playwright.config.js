@@ -4,8 +4,9 @@ const { defineConfig } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './tests',
 
-  // Run tests in files in parallel
+  // Run tests sequentially - parallel execution causes state conflicts with shared server
   fullyParallel: false,
+  workers: 1,
 
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
@@ -19,7 +20,8 @@ module.exports = defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL to use in actions like `await page.goto('/')`
-    baseURL: 'http://127.0.0.1:3000',
+    // Use port 3001 for E2E tests to avoid conflicts with dev server
+    baseURL: 'http://127.0.0.1:3001',
 
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
@@ -36,11 +38,11 @@ module.exports = defineConfig({
     },
   ],
 
-  // Run Flask server before starting the tests
+  // Run Flask server before starting the tests on port 3001 (to avoid conflicts with dev server)
   webServer: {
-    command: 'cd .. && python -m server.app',
-    url: 'http://127.0.0.1:3000/api/health',
-    reuseExistingServer: !process.env.CI,
+    command: 'cd ../server && source ../venv/bin/activate && FLASK_DEBUG=0 FLASK_PORT=3001 python preferans_server.py',
+    url: 'http://127.0.0.1:3001/api/health',
+    reuseExistingServer: !process.env.CI,  // Reuse existing server locally to avoid port conflicts
     timeout: 30000,
   },
 });

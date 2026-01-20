@@ -33,6 +33,11 @@ const fallbackTranslations = {
         selectTwoCards: 'Select {0} more card(s)',
         talonPickedUp: 'Talon cards added to hand',
         cardsDiscarded: 'Cards discarded',
+        commitExchange: 'Commit Exchange',
+        dragCardsToExchange: 'Drag cards between hand and talon',
+        dropCardsHere: 'Drop cards here',
+        exchangeComplete: 'Exchange complete',
+        failedToExchange: 'Failed to exchange: {0}',
         // Phases
         'phases.auction': 'Auction',
         'phases.exchanging': 'Exchange',
@@ -74,6 +79,11 @@ const fallbackTranslations = {
         selectTwoCards: 'Izaberi još {0} kart(u/e)',
         talonPickedUp: 'Talon karte dodate u ruku',
         cardsDiscarded: 'Karte odbačene',
+        commitExchange: 'Potvrdi razmenu',
+        dragCardsToExchange: 'Prevuci karte između ruke i talona',
+        dropCardsHere: 'Spusti karte ovde',
+        exchangeComplete: 'Razmena završena',
+        failedToExchange: 'Razmena nije uspela: {0}',
         // Phases
         'phases.auction': 'Licitacija',
         'phases.exchanging': 'Razmena',
