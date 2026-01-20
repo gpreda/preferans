@@ -30,12 +30,13 @@ async function setupWithHumanDeclarer(page, maxAttempts = 10) {
 
 /**
  * Helper to drag a card from source to target
+ * Uses force: true to bypass pointer event interception from overlapping cards
  */
 async function dragCard(page, sourceSelector, targetSelector) {
   const source = page.locator(sourceSelector);
   const target = page.locator(targetSelector);
 
-  await source.dragTo(target);
+  await source.dragTo(target, { force: true });
   await page.waitForTimeout(200);
 }
 
@@ -167,6 +168,29 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     await expect(commitBtn).toBeEnabled({ timeout: 5000 });
   });
 
+  test('talon cannot have more than 2 cards', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+    const talonCards = page.locator('.talon-cards img.card');
+
+    // Drag both talon cards to hand (hand: 12, talon: 0)
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await expect(handCards).toHaveCount(12, { timeout: 5000 });
+    await expect(talonCards).toHaveCount(0);
+
+    // Drag 3 hand cards to talon - only 2 should be accepted
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
+
+    // Talon should have max 2 cards, hand should have 10
+    await expect(talonCards).toHaveCount(2, { timeout: 5000 });
+    await expect(handCards).toHaveCount(10);
+  });
+
   test('commit exchange finalizes with correct cards', async ({ page }) => {
     const isHumanDeclarer = await setupWithHumanDeclarer(page);
     test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
@@ -213,6 +237,31 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     // Drag it back to hand
     await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
     await expect(handCards).toHaveCount(12);
+  });
+
+  test('can drop card on talon box area (not just card area)', async ({ page }) => {
+    const isHumanDeclarer = await setupWithHumanDeclarer(page);
+    test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
+
+    // Drag both talon cards to hand first
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+    await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
+
+    const handCards = page.locator('#player3 .player-cards img.card');
+    await expect(handCards).toHaveCount(12, { timeout: 5000 });
+
+    // Talon should be empty
+    const talonCards = page.locator('.talon-cards img.card');
+    await expect(talonCards).toHaveCount(0);
+
+    // Drop on the parent .talon element (the box area) instead of .talon-cards
+    await dragCard(page, '#player3 .player-cards img.card:first-child', '#talon');
+
+    // Hand should have 11 cards now
+    await expect(handCards).toHaveCount(11, { timeout: 5000 });
+
+    // Talon should have 1 card
+    await expect(talonCards).toHaveCount(1);
   });
 
   test('hand can have 10, 11, or 12 cards during exchange', async ({ page }) => {

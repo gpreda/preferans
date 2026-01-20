@@ -106,7 +106,7 @@ class DSLRunner {
       'pickup': '#pickup-talon-btn', // Alias for backward compatibility
       'announce': '#announce-btn',
       'next_round': '#next-round-btn',
-      'pass': '.bid-btn.pass-btn',
+      'pass': '.bid-btn[data-bid-type="pass"]',
       '2': '.bid-btn[data-bid-type="game"][data-value="2"]',
       '3': '.bid-btn[data-bid-type="game"][data-value="3"]',
       '4': '.bid-btn[data-bid-type="game"][data-value="4"]',
@@ -392,12 +392,22 @@ class DSLRunner {
    * Bids Game 2 first to ensure someone becomes declarer, then passes
    */
   async passAuction() {
-    let hasBid = false;
+    // With all human players, we need to manually bid for each player
+    // Strategy: Player 3 bids Game 2 to become declarer, others pass
+    let player3HasBid = false;
 
-    for (let i = 0; i < 20; i++) {
-      // Check if we've reached exchange phase
+    for (let i = 0; i < 30; i++) {
+      console.log(`passAuction: starting iteration ${i}`);
+
+      // Check if we've reached exchange phase - check both visibility and phase indicator
       const exchangeVisible = await this.page.locator('#exchange-controls:not(.hidden)').isVisible().catch(() => false);
-      if (exchangeVisible) {
+      const phaseText = await this.page.locator('#phase-indicator').textContent().catch(() => '');
+      console.log(`passAuction iteration ${i}: exchangeVisible=${exchangeVisible}, phase="${phaseText}"`);
+
+      if (exchangeVisible || phaseText.toLowerCase().includes('exchang')) {
+        console.log(`passAuction: reached exchange phase on iteration ${i}`);
+        // Wait a bit for UI to settle
+        await this.page.waitForTimeout(500);
         return;
       }
 
@@ -408,22 +418,33 @@ class DSLRunner {
         continue;
       }
 
-      // If we haven't bid yet, try to make a Game 2 bid
-      if (!hasBid) {
+      // Wait a bit for buttons to be fully rendered
+      await this.page.waitForTimeout(300);
+
+      // Check which player is active (current bidder)
+      const player3Active = await this.page.locator('#player3.active').isVisible().catch(() => false);
+      console.log(`passAuction iteration ${i}: player3Active=${player3Active}, player3HasBid=${player3HasBid}`);
+
+      if (player3Active && !player3HasBid) {
+        // Player 3's turn - bid Game 2 to become declarer
         const gameBidBtn = this.page.locator('.bid-btn[data-bid-type="game"][data-value="2"]');
-        if (await gameBidBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+        const game2Visible = await gameBidBtn.isVisible().catch(() => false);
+
+        if (game2Visible) {
+          console.log(`passAuction: Player 3 clicking Game 2 button`);
           await gameBidBtn.click();
-          hasBid = true;
+          player3HasBid = true;
           await this.page.waitForTimeout(1000);
           continue;
         }
       }
 
-      // Try to click pass if available
+      // For any player (including Player 3 after bidding), click pass if available
       const passBtn = this.page.locator('.bid-btn[data-bid-type="pass"]');
       if (await passBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+        console.log(`passAuction: clicking Pass button`);
         await passBtn.click();
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(500);
       } else {
         await this.page.waitForTimeout(500);
       }

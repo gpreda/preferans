@@ -517,7 +517,8 @@ body {
 }
 
 /* Drop zone styling for talon */
-.talon-cards.drop-target {
+.talon-cards.drop-target,
+.talon.drop-target {
     background: rgba(78, 204, 163, 0.2);
     border-radius: var(--spacing-sm);
     outline: 2px dashed var(--color-secondary);
@@ -547,6 +548,15 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding: var(--spacing-sm);
+}
+
+/* During exchange, make talon fill its container for larger drop zone */
+.talon.exchange-mode {
+    flex: 1;
+    justify-content: center;
+    width: 100%;
+    align-self: stretch;
 }
 
 .talon-label {
@@ -554,6 +564,7 @@ body {
     color: var(--color-text-muted);
     margin-bottom: var(--spacing-xs);
     text-transform: uppercase;
+    pointer-events: none; /* Don't block drops */
 }
 
 .talon-cards {
