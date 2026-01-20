@@ -54,48 +54,10 @@ class GameEngine:
     def _auto_bid_if_ai(self):
         """If the current bidder is AI, automatically make a bid.
 
-        AI uses a simple strategy: mostly pass, occasionally bid game 2.
-        This keeps the auction moving without complex AI logic.
+        Currently disabled - all players are human-controlled.
         """
-        if not self.game.current_round:
-            return
-
-        if self.game.current_round.phase != RoundPhase.AUCTION:
-            return
-
-        auction = self.game.current_round.auction
-        if auction.phase == AuctionPhase.COMPLETE:
-            return
-
-        if not auction.current_bidder_id:
-            return
-
-        player = self._get_player(auction.current_bidder_id)
-        if not player.is_ai:
-            return  # Human player - wait for user input
-
-        # Get legal bids for this AI player
-        legal_bids = self.get_legal_bids(player.id)
-        if not legal_bids:
-            return
-
-        # Simple AI strategy:
-        # - In initial phase: always bid game 2 (to ensure someone becomes declarer)
-        # - In other phases: always pass (let auction complete quickly)
-        chosen_bid = None
-        if auction.phase == AuctionPhase.INITIAL:
-            # Find game 2 option - always bid to ensure a declarer
-            game_bid = next((b for b in legal_bids if b["bid_type"] == "game" and b["value"] == 2), None)
-            pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
-            # Always bid game 2 if available, otherwise pass
-            chosen_bid = game_bid if game_bid else pass_bid
-        else:
-            # In other phases, just pass to let auction complete
-            chosen_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), legal_bids[0])
-
-        if chosen_bid:
-            # Place the bid - this will recursively call _auto_bid_if_ai for next bidder
-            self.place_bid(player.id, chosen_bid["bid_type"], chosen_bid.get("value", 0))
+        # AI auto-bidding disabled - all players are human
+        return
 
     # === Bidding Phase ===
 
@@ -467,6 +429,8 @@ class GameEngine:
             if next_player.id not in auction.passed_players and next_player.id != current.id:
                 auction.current_bidder_id = next_player.id
                 return
+        # No other active bidders - current player wins the auction
+        auction.phase = AuctionPhase.COMPLETE
 
     def _set_next_bidder_for_in_hand_deciding(self, auction: Auction):
         """Set next bidder for in_hand deciding phase (clockwise)."""
