@@ -584,13 +584,14 @@ async function announceContract() {
             })
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
-            debugError('API', `announceContract: HTTP error ${response.status}`);
-            showMessage(`Server error: ${response.status}`, 'error');
+            const errorMsg = data.error || `HTTP error ${response.status}`;
+            debugError('API', `announceContract: ${errorMsg}`);
+            showMessage(errorMsg, 'error');
             return;
         }
-
-        const data = await response.json();
         debug('API', 'announceContract: response', { success: data.success });
 
         if (data.success) {
