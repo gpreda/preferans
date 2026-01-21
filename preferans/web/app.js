@@ -1025,6 +1025,9 @@ function moveCardToHand(cardId) {
     const [card] = exchangeState.currentTalon.splice(cardIndex, 1);
     exchangeState.currentHand.push(card);
 
+    // Keep hand sorted by suit and rank
+    sortCards(exchangeState.currentHand);
+
     debug('EXCHANGE', `moveCardToHand: moved ${cardId} to hand`, {
         handSize: exchangeState.currentHand.length,
         talonSize: exchangeState.currentTalon.length
@@ -1894,4 +1897,24 @@ function formatCardName(cardId) {
     const rankName = t('ranks.' + rank);
     const suitName = t('suits.' + suit);
     return t('cardName', rankName, suitName);
+}
+
+/**
+ * Sort cards by suit (spades, diamonds, clubs, hearts) then by rank (7-A)
+ */
+function sortCards(cards) {
+    const suitOrder = { spades: 0, diamonds: 1, clubs: 2, hearts: 3 };
+    const rankOrder = { '7': 0, '8': 1, '9': 2, '10': 3, 'J': 4, 'Q': 5, 'K': 6, 'A': 7 };
+
+    return cards.sort((a, b) => {
+        const [rankA, suitA] = a.id.split('_');
+        const [rankB, suitB] = b.id.split('_');
+
+        // First sort by suit
+        const suitDiff = suitOrder[suitA] - suitOrder[suitB];
+        if (suitDiff !== 0) return suitDiff;
+
+        // Then by rank
+        return rankOrder[rankA] - rankOrder[rankB];
+    });
 }
