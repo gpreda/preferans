@@ -450,8 +450,8 @@ body {
 
 /* Card interactions */
 .card:hover {
-    transform: scale(1.05);
-    z-index: 10;
+    outline: 2px solid rgba(255, 255, 255, 0.6);
+    outline-offset: -2px;
 }
 
 .card.selectable {
@@ -501,8 +501,9 @@ body {
 }
 
 .card.exchange-draggable:hover {
-    box-shadow: 0 0 15px var(--color-secondary);
-    transform: scale(1.08);
+    box-shadow: 0 0 10px var(--color-secondary);
+    outline: 2px solid var(--color-secondary);
+    outline-offset: -2px;
 }
 
 .card.exchange-draggable:active {
