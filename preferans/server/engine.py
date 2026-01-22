@@ -1124,9 +1124,11 @@ class GameEngine:
                 print(f"[get_legal_contract_levels] In_hand undeclared -> [2, 3, 4, 5]")
                 return [2, 3, 4, 5]
         else:
-            # Regular game bid - must use the winning bid level
-            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> [{winner_bid.value}]")
-            return [winner_bid.value]
+            # Regular game bid - can use winning bid level or higher (2-7)
+            min_level = winner_bid.value
+            legal = list(range(min_level, 8))  # min_level to 7 inclusive
+            print(f"[get_legal_contract_levels] Regular game bid value={winner_bid.value} -> {legal}")
+            return legal
 
     def get_game_state(self, viewer_id: Optional[int] = None) -> dict:
         """Get the current game state, optionally from a player's perspective."""
