@@ -166,11 +166,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Bidding buttons are now dynamically generated
 
-    // Exchange buttons
-    document.getElementById('pickup-talon-btn').addEventListener('click', commitExchange);
+    // Exchange button
+    document.getElementById('commit-exchange-btn').addEventListener('click', commitExchange);
 
-    // Contract controls
-    document.getElementById('announce-btn').addEventListener('click', announceContract);
+    // Contract buttons are now dynamically generated
 
     // Next round button
     document.getElementById('next-round-btn').addEventListener('click', nextRound);
@@ -471,7 +470,7 @@ async function pickUpTalon() {
             renderGame();
             showMessage(t('talonPickedUp'), 'success');
             // Hide pickup button, show discard section
-            document.getElementById('pickup-talon-btn').classList.add('hidden');
+            document.getElementById('commit-exchange-btn').classList.add('hidden');
         } else {
             debugError('EXCHANGE', 'pickUpTalon: failed', data.error);
             showMessage(data.error, 'error');
@@ -545,8 +544,8 @@ async function discardSelected() {
     }
 }
 
-async function announceContract() {
-    debug('CONTRACT', 'announceContract: starting');
+async function announceContract(level) {
+    debug('CONTRACT', `announceContract: level=${level}`);
 
     if (!gameState) {
         debugError('CONTRACT', 'announceContract: no game state');
@@ -559,17 +558,8 @@ async function announceContract() {
         return;
     }
 
-    const levelSelect = document.getElementById('contract-level');
-    if (!levelSelect) {
-        debugError('CONTRACT', 'announceContract: contract-level select not found');
-        return;
-    }
-
-    const selectedLevel = parseInt(levelSelect.value, 10);
-    debug('CONTRACT', `announceContract: level=${selectedLevel}, declarer=${declarerId}`);
-
-    if (isNaN(selectedLevel) || selectedLevel < 2 || selectedLevel > 7) {
-        debugError('CONTRACT', `announceContract: invalid level ${levelSelect.value}`);
+    if (isNaN(level) || level < 2 || level > 7) {
+        debugError('CONTRACT', `announceContract: invalid level ${level}`);
         showMessage('Invalid contract selection', 'error');
         return;
     }
@@ -580,7 +570,7 @@ async function announceContract() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 player_id: declarerId,
-                level: selectedLevel
+                level: level
             })
         });
 
@@ -1169,7 +1159,7 @@ function renderTalonForExchange(talonCards) {
 }
 
 function updateCommitButton() {
-    const commitBtn = document.getElementById('pickup-talon-btn');
+    const commitBtn = document.getElementById('commit-exchange-btn');
     if (!exchangeState) {
         commitBtn.disabled = true;
         return;
@@ -1230,9 +1220,9 @@ async function commitExchange() {
     }
 }
 
-function populateContractOptions() {
-    const levelSelect = document.getElementById('contract-level');
-    levelSelect.innerHTML = '';
+function populateContractButtons() {
+    const container = document.getElementById('contract-buttons');
+    container.innerHTML = '';
 
     const auction = gameState.current_round?.auction;
 
@@ -1249,27 +1239,29 @@ function populateContractOptions() {
         minLevel = Math.max(2, Math.min(bidValue, 7));
     }
 
-    // Add level options starting from minimum (2-7)
+    // Add contract buttons starting from minimum (2-5 are suit contracts)
     for (let level = minLevel; level <= 5; level++) {
-        addOption(levelSelect, level.toString(), level.toString());
+        addContractButton(container, level, level.toString());
     }
 
     // Add Betl (6) if minimum allows
     if (minLevel <= 6) {
-        addOption(levelSelect, '6', `6 (${t('betl')})`);
+        addContractButton(container, 6, t('betl'));
     }
 
     // Add Sans (7) if minimum allows
     if (minLevel <= 7) {
-        addOption(levelSelect, '7', `7 (${t('sans')})`);
+        addContractButton(container, 7, t('sans'));
     }
 }
 
-function addOption(select, value, label) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = label;
-    select.appendChild(option);
+function addContractButton(container, level, label) {
+    const button = document.createElement('button');
+    button.className = 'action-btn contract-btn';
+    button.dataset.level = level;
+    button.textContent = label;
+    button.addEventListener('click', () => announceContract(level));
+    container.appendChild(button);
 }
 
 function getPlayerName(playerId) {
@@ -1806,11 +1798,11 @@ function showActionPanelForPhase(phase) {
             if (declarer && declarer.hand.length === 10 && discarded.length === 2) {
                 // Exchange complete (picked up talon and discarded 2), show contract controls
                 elements.contractControls.classList.remove('hidden');
-                populateContractOptions();
+                populateContractButtons();
             } else if (talonCards.length > 0 || (exchangeState && exchangeState.currentTalon.length >= 0)) {
                 // Exchange phase with drag-and-drop
                 elements.exchangeControls.classList.remove('hidden');
-                document.getElementById('pickup-talon-btn').classList.remove('hidden');
+                document.getElementById('commit-exchange-btn').classList.remove('hidden');
 
                 // Initialize exchange state if not already done
                 if (!exchangeState && talonCards.length > 0) {

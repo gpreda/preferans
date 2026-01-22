@@ -55,7 +55,7 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     const isHumanDeclarer = await setupWithHumanDeclarer(page);
     test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
 
-    const commitBtn = page.locator('#pickup-talon-btn');
+    const commitBtn = page.locator('#commit-exchange-btn');
     await expect(page.locator('#exchange-controls')).toBeVisible();
     await expect(commitBtn).toBeVisible();
     // Button is enabled because talon has 2 cards (user can discard original talon)
@@ -132,7 +132,7 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     const isHumanDeclarer = await setupWithHumanDeclarer(page);
     test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
 
-    const commitBtn = page.locator('#pickup-talon-btn');
+    const commitBtn = page.locator('#commit-exchange-btn');
 
     // Initially talon has 2 cards - button should be enabled
     await expect(commitBtn).toBeEnabled();
@@ -154,7 +154,7 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     const isHumanDeclarer = await setupWithHumanDeclarer(page);
     test.skip(!isHumanDeclarer, 'Human was not declarer after multiple attempts');
 
-    const commitBtn = page.locator('#pickup-talon-btn');
+    const commitBtn = page.locator('#commit-exchange-btn');
 
     // Drag both talon cards to hand
     await dragCard(page, '.talon-cards img.card:first-child', '#player3 .player-cards');
@@ -204,7 +204,7 @@ test.describe('Exchange Flow - Drag and Drop', () => {
     await dragCard(page, '#player3 .player-cards img.card:first-child', '.talon-cards');
 
     // Click commit
-    const commitBtn = page.locator('#pickup-talon-btn');
+    const commitBtn = page.locator('#commit-exchange-btn');
     await expect(commitBtn).toBeEnabled({ timeout: 5000 });
     await commitBtn.click();
 
@@ -316,14 +316,15 @@ test.describe('Exchange Flow - Drag and Drop', () => {
       await expect(handCards).toHaveCount(10);
 
       // Commit the exchange
-      const commitBtn = page.locator('#pickup-talon-btn');
+      const commitBtn = page.locator('#commit-exchange-btn');
       await expect(commitBtn).toBeEnabled();
       await commitBtn.click();
 
       await expect(page.locator('#contract-controls')).toBeVisible({ timeout: 5000 });
       await expect(handCards).toHaveCount(10);
 
-      await page.click('#announce-btn');
+      // Click the first contract button (e.g., "2" for Game 2)
+      await page.click('#contract-buttons .action-btn');
 
       await expect(page.locator('#play-controls')).toBeVisible({ timeout: 5000 });
     } else {
