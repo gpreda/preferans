@@ -435,11 +435,13 @@ def load_config():
 
 
 def initialize_gemini():
-    config = load_config()
-    api_key = config.get('gemini_api_key')
+    api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key:
-        print("Error: gemini_api_key not found in config file")
-        raise SystemExit(1)
+        config = load_config()
+        api_key = config.get('gemini_api_key')
+        if not api_key:
+            print("Error: gemini_api_key not found in config file")
+            raise SystemExit(1)
     genai.configure(api_key=api_key)
     print(f'Using model: {GEMINI_MODEL}')
     return genai.GenerativeModel(GEMINI_MODEL)
