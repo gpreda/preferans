@@ -1,0 +1,4814 @@
+[
+  {
+    "state_id": 1,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 2",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 2
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 2",
+        "next_state_id": 3
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 4
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 5
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ]
+  },
+  {
+    "state_id": 2,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 2",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 7
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 2",
+        "next_state_id": 8
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 9
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 10
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      null,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 3,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 12
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 13
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 9
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 10
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 4,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 14
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "In Hand",
+        "next_state_id": 15
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 16
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 5,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 17
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 6,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 18
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 19
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      []
+    ]
+  },
+  {
+    "state_id": 7,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 2",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 2",
+        "next_state_id": 20
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 21
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      null,
+      [
+        1,
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 8,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 24
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 25
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 26
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 9,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 27
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "In Hand",
+        "next_state_id": 28
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 10,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 11,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 30
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 31
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      []
+    ]
+  },
+  {
+    "state_id": 12,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 32
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 33
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 26
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 13,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 34
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 35
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "In Hand",
+        "next_state_id": 26
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 14,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 36
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "In Hand",
+        "next_state_id": 37
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 15,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "In Hand",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 38
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "In Hand",
+        "next_state_id": 39
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 16,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 17,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 40
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 18,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 19,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 41
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 20,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 42
+      }
+    ],
+    "context": [
+      3,
+      2
+    ]
+  },
+  {
+    "state_id": 21,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "in_hand 2",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "in_hand 2",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      3,
+      [
+        1,
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 22,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 44
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 45
+      }
+    ],
+    "context": [
+      3,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 23,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 46
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 47
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      []
+    ]
+  },
+  {
+    "state_id": 24,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 48
+      }
+    ],
+    "context": [
+      2,
+      2
+    ]
+  },
+  {
+    "state_id": 25,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 49
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 50
+      }
+    ],
+    "context": [
+      3,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 26,
+    "player": 3,
+    "phase": "playing",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 43
+      }
+    ]
+  },
+  {
+    "state_id": 27,
+    "player": 2,
+    "phase": "playing",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 51
+      }
+    ]
+  },
+  {
+    "state_id": 28,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "in_hand 2",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "in_hand 2",
+        "next_state_id": 52
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 53
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 54
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 55
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 29,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 56
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 57
+      }
+    ],
+    "context": [
+      2,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 30,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 31,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 58
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 32,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 59
+      }
+    ],
+    "context": [
+      1,
+      2
+    ]
+  },
+  {
+    "state_id": 33,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 49
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 60
+      }
+    ],
+    "context": [
+      3,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 34,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 3"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 61
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 3",
+        "next_state_id": 62
+      }
+    ],
+    "context": [
+      2,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 35,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 63
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 64
+      }
+    ],
+    "context": [
+      3,
+      []
+    ]
+  },
+  {
+    "state_id": 36,
+    "player": 1,
+    "phase": "playing",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 65
+      }
+    ]
+  },
+  {
+    "state_id": 37,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "in_hand 2",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "in_hand 2",
+        "next_state_id": 66
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 67
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 68
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 69
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 38,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "in_hand 2",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "in_hand 2",
+        "next_state_id": 70
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 71
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 72
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 73
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 39,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "in_hand 2",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "in_hand 2",
+        "next_state_id": 74
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 75
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 76
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 77
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 40,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 78
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 79
+      }
+    ],
+    "context": [
+      1,
+      "betl",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 41,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 80
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 81
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 42,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 6,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      3,
+      2
+    ]
+  },
+  {
+    "state_id": 43,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 82
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 83
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      []
+    ]
+  },
+  {
+    "state_id": 44,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 45
+      }
+    ],
+    "context": [
+      3,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 45,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 46,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 47,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 84
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 48,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Betl",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 6,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      2,
+      2
+    ]
+  },
+  {
+    "state_id": 49,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 85
+      }
+    ],
+    "context": [
+      3,
+      3
+    ]
+  },
+  {
+    "state_id": 50,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 61
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 86
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 51,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 87
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 88
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      []
+    ]
+  },
+  {
+    "state_id": 52,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 53,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 54,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 55,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 56,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 57
+      }
+    ],
+    "context": [
+      2,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 57,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "betl",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 58,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 89
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 90
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 59,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Spades",
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Spades",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Diamonds",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Hearts",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Clubs",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Betl",
+        "next_state_id": 40
+      },
+      {
+        "cmd_idx": 6,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ],
+    "context": [
+      1,
+      2
+    ]
+  },
+  {
+    "state_id": 60,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 91
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 92
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 61,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 93
+      }
+    ],
+    "context": [
+      2,
+      3
+    ]
+  },
+  {
+    "state_id": 62,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 91
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 94
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 63,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 95
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 96
+      }
+    ],
+    "context": [
+      3,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 64,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 97
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 98
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 65,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 99
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 100
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      []
+    ]
+  },
+  {
+    "state_id": 66,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 67,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 68,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 69,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 70,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 51
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 71,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 51
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 72,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 51
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 73,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 65
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 74,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 3",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 66
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 3",
+        "next_state_id": 101
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 102
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 103
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 75,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 67
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 102
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 103
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 76,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 68
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 103
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 77,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 69
+      }
+    ],
+    "context": [
+      1,
+      []
+    ]
+  },
+  {
+    "state_id": 78,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 79
+      }
+    ],
+    "context": [
+      1,
+      "betl",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 79,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "betl",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 80,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 81
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 81,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 82,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 83,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 104
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 105
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 84,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 106
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 107
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 85,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Diamonds",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Hearts",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Clubs",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      3,
+      3
+    ]
+  },
+  {
+    "state_id": 86,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 95
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 108
+      }
+    ],
+    "context": [
+      3,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 87,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 88,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 109
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 110
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 89,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 90
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 90,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 91,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 111
+      }
+    ],
+    "context": [
+      1,
+      3
+    ]
+  },
+  {
+    "state_id": 92,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 95
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 97
+      }
+    ],
+    "context": [
+      3,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 93,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Diamonds",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Hearts",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Clubs",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      2,
+      3
+    ]
+  },
+  {
+    "state_id": 94,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 4"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 112
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 4",
+        "next_state_id": 113
+      }
+    ],
+    "context": [
+      2,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 95,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 114
+      }
+    ],
+    "context": [
+      3,
+      4
+    ]
+  },
+  {
+    "state_id": 96,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 115
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 116
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 97,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 117
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 118
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 98,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 119
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 120
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 99,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": -1
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 100,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Pass",
+      "Follow"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 121
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Follow",
+        "next_state_id": 122
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 101,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 4",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 4",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 102,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "in_hand 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "in_hand 5",
+        "next_state_id": 43
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 103,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 51
+      }
+    ],
+    "context": [
+      2,
+      []
+    ]
+  },
+  {
+    "state_id": 104,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 123
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 105,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 124
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 125
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 106,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 107
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 107,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 108,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 112
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 126
+      }
+    ],
+    "context": [
+      2,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 109,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 127
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "1",
+          "pass"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 110,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 128
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 129
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 111,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Diamonds",
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Diamonds",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Hearts",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Clubs",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Betl",
+        "next_state_id": 40
+      },
+      {
+        "cmd_idx": 5,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ],
+    "context": [
+      1,
+      3
+    ]
+  },
+  {
+    "state_id": 112,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 130
+      }
+    ],
+    "context": [
+      2,
+      4
+    ]
+  },
+  {
+    "state_id": 113,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 117
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 119
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 114,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Hearts",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Clubs",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      3,
+      4
+    ]
+  },
+  {
+    "state_id": 115,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 131
+      }
+    ],
+    "context": [
+      2,
+      5
+    ]
+  },
+  {
+    "state_id": 116,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 132
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 133
+      }
+    ],
+    "context": [
+      3,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 117,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 134
+      }
+    ],
+    "context": [
+      1,
+      4
+    ]
+  },
+  {
+    "state_id": 118,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 135
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 136
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 17
+      }
+    ],
+    "context": [
+      3,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 119,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 115
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 137
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 138
+      }
+    ],
+    "context": [
+      2,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 120,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 116
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 139
+      }
+    ],
+    "context": [
+      3,
+      []
+    ]
+  },
+  {
+    "state_id": 121,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 140
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 122,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 141
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 142
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 123,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 124,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 125
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 125,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 126,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Game 5",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 135
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Game 5",
+        "next_state_id": 96
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 10
+      }
+    ],
+    "context": [
+      3,
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "state_id": 127,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "1",
+          "pass"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 128,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 129
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 129,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "suit",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 130,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Hearts",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Clubs",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      2,
+      4
+    ]
+  },
+  {
+    "state_id": 131,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Clubs",
+        "next_state_id": 51
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 29
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      2,
+      5
+    ]
+  },
+  {
+    "state_id": 132,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 143
+      }
+    ],
+    "context": [
+      3,
+      6
+    ]
+  },
+  {
+    "state_id": 133,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 144
+      }
+    ],
+    "context": [
+      2,
+      7
+    ]
+  },
+  {
+    "state_id": 134,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Hearts",
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Hearts",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Clubs",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Betl",
+        "next_state_id": 40
+      },
+      {
+        "cmd_idx": 4,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ],
+    "context": [
+      1,
+      4
+    ]
+  },
+  {
+    "state_id": 135,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 145
+      }
+    ],
+    "context": [
+      3,
+      5
+    ]
+  },
+  {
+    "state_id": 136,
+    "player": 3,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 146
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 147
+      }
+    ],
+    "context": [
+      1,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 137,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 146
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 148
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 138,
+    "player": 2,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 149
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 133
+      }
+    ],
+    "context": [
+      1,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 139,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 150
+      }
+    ],
+    "context": [
+      1,
+      7
+    ]
+  },
+  {
+    "state_id": 140,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 141,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Counter",
+        "next_state_id": 142
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 142,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "suit",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "follow"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 143,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      }
+    ],
+    "context": [
+      3,
+      6
+    ]
+  },
+  {
+    "state_id": 144,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Sans",
+        "next_state_id": 11
+      }
+    ],
+    "context": [
+      2,
+      7
+    ]
+  },
+  {
+    "state_id": 145,
+    "player": 3,
+    "phase": "exchanging",
+    "commands": [
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Clubs",
+        "next_state_id": 43
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 22
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Sans",
+        "next_state_id": 23
+      }
+    ],
+    "context": [
+      3,
+      5
+    ]
+  },
+  {
+    "state_id": 146,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 151
+      }
+    ],
+    "context": [
+      1,
+      5
+    ]
+  },
+  {
+    "state_id": 147,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 132
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 139
+      }
+    ],
+    "context": [
+      3,
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "state_id": 148,
+    "player": 1,
+    "phase": "auction",
+    "commands": [
+      "Pass",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Pass",
+        "next_state_id": 152
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Sans",
+        "next_state_id": 139
+      }
+    ],
+    "context": [
+      2,
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "state_id": 149,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 153
+      }
+    ],
+    "context": [
+      1,
+      6
+    ]
+  },
+  {
+    "state_id": 150,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ],
+    "context": [
+      1,
+      7
+    ]
+  },
+  {
+    "state_id": 151,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Clubs",
+      "Betl",
+      "Sans"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Clubs",
+        "next_state_id": 65
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Betl",
+        "next_state_id": 40
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Sans",
+        "next_state_id": 6
+      }
+    ],
+    "context": [
+      1,
+      5
+    ]
+  },
+  {
+    "state_id": 152,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "discard"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "discard",
+        "next_state_id": 154
+      }
+    ],
+    "context": [
+      2,
+      6
+    ]
+  },
+  {
+    "state_id": 153,
+    "player": 1,
+    "phase": "exchanging",
+    "commands": [
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Betl",
+        "next_state_id": 40
+      }
+    ],
+    "context": [
+      1,
+      6
+    ]
+  },
+  {
+    "state_id": 154,
+    "player": 2,
+    "phase": "exchanging",
+    "commands": [
+      "Betl"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Betl",
+        "next_state_id": 29
+      }
+    ],
+    "context": [
+      2,
+      6
+    ]
+  }
+]
