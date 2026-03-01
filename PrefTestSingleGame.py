@@ -295,6 +295,115 @@ def _random_weights(rng):
     }
 
 
+# ---------------------------------------------------------------------------
+# Betl hand analysis helpers (gap-based suit safety)
+# ---------------------------------------------------------------------------
+
+def betl_suit_safety(held_ranks):
+    """Per-suit safety analysis for betl.
+
+    held_ranks: sorted list of Rank int values (1=7, 2=8, ..., 8=A).
+
+    A card is "dangerous" if opponents cannot beat it — i.e. the highest
+    held card has no opponent card above it (gap to top = 0). Consecutive
+    cards forming an unbroken chain from the top are all dangerous.
+
+    Examples:
+      {1,3,5} (7,9,J): highest=5, gap=8-5=3 → safe
+      {2} (8):          highest=2, gap=8-2=6 → safe
+      {8} (A):          highest=8, gap=8-8=0 → danger=[8]
+      {7,8} (K,A):      highest=8, gap=0, chain K-A → danger=[7,8]
+      {1,3,5,8} (7,9,J,A): highest=8, gap=0 → danger=[8]
+      {7} (K):          highest=7, gap=8-7=1 → safe (A covers)
+      {1,2,3} (7,8,9):  highest=3, gap=8-3=5 → safe
+    """
+    if not held_ranks:
+        return {"safe": True, "danger_cards": [], "can_lead": True, "num_cards": 0}
+
+    ranks = sorted(held_ranks)
+    danger_cards = []
+
+    # Check highest card: if gap to top is 0, it's dangerous
+    highest = ranks[-1]
+    highest_gap = 8 - highest
+    if highest_gap == 0:
+        # Ace (rank 8) — always dangerous, and check for downward chain
+        danger_cards.append(highest)
+        # Walk down: consecutive cards below the highest are also dangerous
+        for i in range(len(ranks) - 2, -1, -1):
+            if ranks[i] == ranks[i + 1] - 1:
+                danger_cards.append(ranks[i])
+            else:
+                break
+        danger_cards.sort()
+
+    can_lead = highest_gap >= 1
+
+    return {
+        "safe": len(danger_cards) == 0,
+        "danger_cards": danger_cards,
+        "can_lead": can_lead,
+        "num_cards": len(ranks),
+    }
+
+
+def betl_hand_analysis(hand):
+    """Aggregate per-suit betl safety analysis.
+
+    hand: list of Card objects with .suit and .rank attributes.
+    Returns dict with safe_suits, danger_count, danger_list, has_ace,
+    can_lead, void_count, max_suit_len, details.
+    """
+    all_ranks = [c.rank for c in hand]
+    suit_ranks = {}
+    for c in hand:
+        suit_ranks.setdefault(c.suit, []).append(c.rank)
+
+    all_suits = {1, 2, 3, 4}  # Clubs, Diamonds, Hearts, Spades
+    void_suits = all_suits - set(suit_ranks.keys())
+
+    details = {}
+    safe_suits = len(void_suits)  # voids are safe
+    danger_count = 0
+    danger_list = []
+    has_ace = False
+    any_can_lead = False
+    max_suit_len = 0
+
+    suit_name_map = {1: "clubs", 2: "diamonds", 3: "hearts", 4: "spades"}
+
+    for suit_val, ranks in suit_ranks.items():
+        analysis = betl_suit_safety(ranks)
+        details[suit_val] = analysis
+        if analysis["safe"]:
+            safe_suits += 1
+        danger_count += len(analysis["danger_cards"])
+        for r in analysis["danger_cards"]:
+            danger_list.append((suit_name_map.get(suit_val, str(suit_val)), r))
+        if analysis["can_lead"] and analysis["num_cards"] > 0:
+            any_can_lead = True
+        if analysis["num_cards"] > max_suit_len:
+            max_suit_len = analysis["num_cards"]
+        if 8 in ranks:
+            has_ace = True
+
+    max_rank = max(all_ranks) if all_ranks else 0
+    high_card_count = sum(1 for r in all_ranks if r >= 6)  # Q/K/A
+
+    return {
+        "safe_suits": safe_suits,
+        "danger_count": danger_count,
+        "danger_list": danger_list,
+        "has_ace": has_ace,
+        "can_lead": any_can_lead,
+        "void_count": len(void_suits),
+        "max_suit_len": max_suit_len,
+        "max_rank": max_rank,
+        "high_card_count": high_card_count,
+        "details": details,
+    }
+
+
 class PlayerAlice(WeightedRandomPlayer):
     """Alice: AGGRESSIVE Preferans player aiming for HIGH scores.
 
@@ -326,6 +435,7 @@ class PlayerAlice(WeightedRandomPlayer):
         self._is_declarer = False
         self._trump_suit_val = None   # suit enum value when we're declarer
         self._highest_bid_seen = 0    # track auction escalation
+        self._betl_intent = False     # True when bidding in_hand with betl in mind
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -557,15 +667,19 @@ class PlayerAlice(WeightedRandomPlayer):
         return max(tricks, 0.0)
 
     def _is_good_betl_hand(self, hand):
-        """Check if hand is suitable for betl (need very low cards, no gaps)."""
-        max_rank = max(c.rank for c in hand)
-        if max_rank >= 7:  # King or Ace — too risky
-            return False
-        groups = self._suit_groups(hand)
-        for suit, cards in groups.items():
-            if len(cards) == 1 and cards[0].rank >= 5:  # Lone J+ is dangerous
-                return False
-        return max_rank <= 4  # Only 10 or below is safe
+        """AGGRESSIVE betl: trust talon to fix 1-2 dangers."""
+        a = betl_hand_analysis(hand)
+        if a["danger_count"] == 0:
+            return True
+        # Allow up to 2 dangers if enough safe suits (talon can discard them)
+        if a["danger_count"] <= 2 and a["safe_suits"] >= 2:
+            return True
+        return False
+
+    def _is_good_betl_hand_in_hand(self, hand):
+        """In-hand betl (no talon): must be zero danger with 3+ safe suits."""
+        a = betl_hand_analysis(hand)
+        return a["danger_count"] == 0 and a["safe_suits"] >= 3
 
     def _is_good_sans_hand(self, hand):
         """Check if hand has enough aces and high cards for sans (need 6 tricks).
@@ -592,6 +706,7 @@ class PlayerAlice(WeightedRandomPlayer):
         self._is_declarer = False
         self._highest_bid_seen = 0
         self._trump_suit_val = None
+        self._betl_intent = False
 
         # Track auction escalation for whisting decisions
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
@@ -696,14 +811,24 @@ class PlayerAlice(WeightedRandomPlayer):
             if pass_bid:
                 return {"bid": pass_bid, "intent": intent}
 
-        # Check for sans/betl with hand evaluation
+        # Check for sans/betl/in_hand with hand evaluation
         if hand:
             sans_bids = [b for b in legal_bids if b["bid_type"] == "sans"]
             if sans_bids and self._is_good_sans_hand(hand):
                 return {"bid": sans_bids[0], "intent": f"sans — dominant high cards (aces={aces})"}
+            # Betl in auction = in-hand betl (no exchange), so use strict check
             betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
-            if betl_bids and self._is_good_betl_hand(hand):
-                return {"bid": betl_bids[0], "intent": "betl — very low cards"}
+            if betl_bids and self._is_good_betl_hand_in_hand(hand):
+                a = betl_hand_analysis(hand)
+                return {"bid": betl_bids[0],
+                        "intent": f"betl — zero danger in-hand (safe_suits={a['safe_suits']})"}
+            # In-hand bid with betl intent
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids and self._is_good_betl_hand_in_hand(hand):
+                self._betl_intent = True
+                a = betl_hand_analysis(hand)
+                return {"bid": in_hand_bids[0],
+                        "intent": f"in_hand (betl intent) — zero danger, safe_suits={a['safe_suits']}"}
 
         pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
         if pass_bid:
@@ -718,7 +843,8 @@ class PlayerAlice(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def discard_decision(self, hand_card_ids, talon_card_ids):
-        """Keep best trump suit cards and aces; discard weakest. Try to create voids."""
+        """Keep best trump suit cards and aces; discard weakest. Try to create voids.
+        If betl looks promising, discard highest/most dangerous cards instead."""
         all_ids = hand_card_ids + talon_card_ids
         rank_order = {"7": 1, "8": 2, "9": 3, "10": 4, "J": 5, "Q": 6, "K": 7, "A": 8}
 
@@ -727,6 +853,12 @@ class PlayerAlice(WeightedRandomPlayer):
 
         def card_suit(cid):
             return cid.split("_")[1]
+
+        # Try betl-optimized discard: discard 2 highest-ranked cards,
+        # check if resulting 10-card hand is good for betl
+        betl_discard = self._try_betl_discard(all_ids, card_rank, card_suit)
+        if betl_discard:
+            return betl_discard
 
         suit_counts = {}
         suit_cards = {}
@@ -766,6 +898,61 @@ class PlayerAlice(WeightedRandomPlayer):
         return {"discard": sorted_cards[:2],
                 "intent": f"discard weakest cards (trump={best_suit})"}
 
+    def _try_betl_discard(self, all_ids, card_rank, card_suit):
+        """Try discarding for betl. Returns discard decision if resulting hand
+        would be good for betl, otherwise None.
+
+        Only triggers when the 12-card pool already has ≤ 3 high cards (Q/K/A)
+        AND the resulting 10-card hand has zero danger, max_rank ≤ 6 (Queen),
+        and no Aces.
+        """
+        from itertools import combinations
+
+        suit_map_vals = {"spades": 4, "diamonds": 2, "hearts": 3, "clubs": 1}
+
+        # Quick pre-check: if pool has too many high cards, skip betl discard
+        high_count = sum(1 for c in all_ids if card_rank(c) >= 6)
+        if high_count > 3:
+            return None
+
+        class FakeCard:
+            def __init__(self, rank, suit):
+                self.rank = rank
+                self.suit = suit
+
+        def ids_to_cards(ids):
+            cards = []
+            for cid in ids:
+                r = card_rank(cid)
+                sv = suit_map_vals.get(card_suit(cid))
+                if sv is not None:
+                    cards.append(FakeCard(r, sv))
+            return cards
+
+        # Sort by rank desc — try discarding the 2 most dangerous cards
+        sorted_by_rank = sorted(all_ids, key=lambda c: card_rank(c), reverse=True)
+        best_discard = None
+        best_analysis = None
+        best_score = -1
+        for pair in combinations(range(min(6, len(sorted_by_rank))), 2):
+            discard = [sorted_by_rank[i] for i in pair]
+            remaining = [c for c in all_ids if c not in discard]
+            hand = ids_to_cards(remaining)
+            a = betl_hand_analysis(hand)
+            if a["danger_count"] == 0 and not a["has_ace"] and a["max_rank"] <= 6:
+                # Score: prefer lower max_rank, more safe suits, fewer high cards
+                score = (7 - a["max_rank"]) * 100 + a["safe_suits"] * 10 - a["high_card_count"]
+                if score > best_score:
+                    best_score = score
+                    best_discard = discard
+                    best_analysis = a
+
+        if best_discard:
+            return {"discard": best_discard,
+                    "intent": f"betl discard — safe (max_rank={best_analysis['max_rank']}, "
+                              f"safe_suits={best_analysis['safe_suits']})"}
+        return None
+
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
@@ -777,9 +964,27 @@ class PlayerAlice(WeightedRandomPlayer):
 
     def bid_decision(self, hand, legal_levels, winner_bid):
         """Pick safest contract. Prefer cheaper suits (lower game_value) when tied."""
-        if 6 in legal_levels and self._is_good_betl_hand(hand):
+        # In-hand betl: if we bid in_hand with betl intent, choose betl
+        if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
-                    "intent": "betl — hand has only low cards"}
+                    "intent": "betl — in-hand betl intent"}
+        # Post-exchange betl (aggressive): zero danger + extra low-card heuristics
+        if 6 in legal_levels:
+            a = betl_hand_analysis(hand)
+            # Zero danger — always bid betl
+            if a["danger_count"] == 0:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — zero danger (safe_suits={a['safe_suits']})"}
+            # All low cards: max rank ≤ Jack (5), no Aces → every card has 3+
+            # opponent cards above it. Very safe for betl.
+            if not a["has_ace"] and a["max_rank"] <= 5:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — all low (max_rank={a['max_rank']}, no aces)"}
+            # Mostly low + spread: max rank ≤ Queen (6), no Aces, no long suits
+            # (≤3). Spread shape reduces chance of being stuck in any one suit.
+            if not a["has_ace"] and a["max_rank"] <= 6 and a["max_suit_len"] <= 3:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — low+spread (max_rank={a['max_rank']}, longest={a['max_suit_len']})"}
 
         if 7 in legal_levels and self._is_good_sans_hand(hand):
             return {"contract_type": "sans", "trump": None, "level": 7,
@@ -985,6 +1190,14 @@ class PlayerAlice(WeightedRandomPlayer):
             self._cards_played += 1
             return legal_cards[0].id
 
+        contract_type = getattr(self, '_contract_type', None)
+
+        # Betl-specific card play
+        if contract_type == "betl":
+            card = self._betl_choose_card(legal_cards)
+            self._cards_played += 1
+            return card.id
+
         hand_size = self._total_hand_size - self._cards_played
         is_leading = len(legal_cards) == hand_size
         suits_in_legal = {c.suit for c in legal_cards}
@@ -1046,6 +1259,122 @@ class PlayerAlice(WeightedRandomPlayer):
             worst_card = groups[longest_suit][-1]
             self._cards_played += 1
             return worst_card.id
+
+    def _betl_choose_card(self, legal_cards):
+        """Betl card play using trick context.
+
+        Declarer: play the highest card that still loses the trick.
+        Defender: if before declarer play lowest; if after declarer play
+                  highest card lower than declarer's, or 1 above other defender.
+        """
+        rnd = getattr(self, '_rnd', None)
+        trick = rnd.current_trick if rnd else None
+        my_id = getattr(self, '_player_id', None)
+        declarer_id = rnd.declarer_id if rnd else None
+        # Cards already played in this trick: [(player_id, Card), ...]
+        played = trick.cards if trick else []
+
+        hand_size = self._total_hand_size - self._cards_played
+        is_leading = len(played) == 0
+        suits_in_legal = {c.suit for c in legal_cards}
+        must_follow = len(suits_in_legal) == 1 and len(legal_cards) < hand_size
+
+        if self._is_declarer:
+            return self._betl_declarer_play(legal_cards, played, is_leading, must_follow)
+        else:
+            return self._betl_defender_play(legal_cards, played, is_leading,
+                                            must_follow, declarer_id)
+
+    def _betl_declarer_play(self, legal_cards, played, is_leading, must_follow):
+        """Declarer in betl: play the highest card that still LOSES the trick."""
+        if is_leading:
+            # Leading: play highest card that opponents can beat (gap > 0)
+            # Prefer longest suit to burn safe cards
+            groups = self._suit_groups(legal_cards)
+            best_card = None
+            best_score = -1
+            for suit, cards in groups.items():
+                for c in cards:
+                    gap = 8 - c.rank  # how many opponent cards rank above this
+                    if gap > 0:
+                        # Prefer: higher rank (burn more), longer suit, larger gap
+                        score = c.rank * 100 + len(cards) * 10 + gap
+                        if score > best_score:
+                            best_score = score
+                            best_card = c
+            if best_card:
+                return best_card
+            # All cards are unbeatable (aces etc) — play lowest to minimize damage
+            return min(legal_cards, key=lambda c: c.rank)
+
+        elif must_follow:
+            # Must follow suit: play highest card that is LOWER than the
+            # current highest card in the trick (to lose)
+            suit_led = played[0][1].suit if played else None
+            # Find the highest card of the led suit already played
+            max_played = 0
+            for pid, card in played:
+                if card.suit == suit_led:
+                    if card.rank > max_played:
+                        max_played = card.rank
+            # Play highest card below max_played
+            below = [c for c in legal_cards if c.rank < max_played]
+            if below:
+                return max(below, key=lambda c: c.rank)
+            # All our cards are >= max_played — we'll win. Play lowest to
+            # minimize the "height" of the winning card.
+            return min(legal_cards, key=lambda c: c.rank)
+
+        else:
+            # Can't follow suit: discard highest/most dangerous card
+            return max(legal_cards, key=lambda c: c.rank)
+
+    def _betl_defender_play(self, legal_cards, played, is_leading,
+                            must_follow, declarer_id):
+        """Defender in betl: force declarer to win tricks."""
+        if is_leading:
+            # Lead highest card — force declarer to play over it or duck
+            return max(legal_cards, key=lambda c: c.rank)
+
+        elif must_follow:
+            suit_led = played[0][1].suit if played else None
+
+            # Check if declarer has already played in this trick
+            declarer_card = None
+            other_defender_card = None
+            my_id = getattr(self, '_player_id', None)
+            for pid, card in played:
+                if card.suit == suit_led:
+                    if pid == declarer_id:
+                        declarer_card = card
+                    elif pid != my_id:
+                        other_defender_card = card
+
+            if declarer_card:
+                # Declarer already played: play highest card LOWER than
+                # declarer's card (duck under so declarer wins the trick)
+                below = [c for c in legal_cards if c.rank < declarer_card.rank]
+                if below:
+                    return max(below, key=lambda c: c.rank)
+                # All our cards beat declarer — play lowest (we win but
+                # save high cards for future tricks)
+                return min(legal_cards, key=lambda c: c.rank)
+            else:
+                # Declarer hasn't played yet (we're before declarer)
+                if other_defender_card:
+                    # Other defender already played: play just 1 above their
+                    # card to coordinate (don't waste high cards)
+                    above = sorted([c for c in legal_cards
+                                    if c.rank > other_defender_card.rank],
+                                   key=lambda c: c.rank)
+                    if above:
+                        return above[0]  # smallest card above other defender
+                # Play lowest — save high cards, force declarer to play high
+                return min(legal_cards, key=lambda c: c.rank)
+
+        else:
+            # Can't follow suit: discard lowest (save high cards for later)
+            return min(legal_cards, key=lambda c: c.rank)
 
     def _declarer_lead(self, legal_cards):
         """Declarer leading: draw trumps first, then cash side aces."""
@@ -1158,6 +1487,7 @@ class PlayerBob(WeightedRandomPlayer):
         self._is_declarer = False
         self._trump_suit_val = None   # suit enum value when we're declarer
         self._highest_bid_seen = 0    # track auction escalation for whisting
+        self._betl_intent = False     # True when bidding in_hand with betl in mind
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -1254,15 +1584,32 @@ class PlayerBob(WeightedRandomPlayer):
         return tricks
 
     def _is_good_betl_hand(self, hand):
-        """Check if hand is suitable for betl (need very low cards, no gaps)."""
-        max_rank = max(c.rank for c in hand)
-        if max_rank >= 7:  # King or Ace — too risky
-            return False
-        groups = self._suit_groups(hand)
-        for suit, cards in groups.items():
-            if len(cards) == 1 and cards[0].rank >= 5:  # Lone J+ is dangerous
-                return False
-        return max_rank <= 4  # Only 10 or below is safe
+        """CAUTIOUS betl: zero danger, 3+ safe suits, no uncovered high cards.
+
+        Allow 1 "soft danger" — solo 8 (rank 2) or solo 9 (rank 3) counts
+        as safe enough since 6+ opponent cards sit above them.
+        """
+        a = betl_hand_analysis(hand)
+        if a["danger_count"] == 0 and a["safe_suits"] >= 3:
+            return True
+        # Allow 1 soft danger: a solo low card (rank <= 3 i.e. 7/8/9) in a
+        # 1-card suit — 5+ opponent cards above it = very likely covered
+        if a["danger_count"] == 1 and a["safe_suits"] >= 3:
+            d_suit, d_rank = a["danger_list"][0]
+            suit_detail = None
+            for sv, det in a["details"].items():
+                suit_name_map = {1: "clubs", 2: "diamonds", 3: "hearts", 4: "spades"}
+                if suit_name_map.get(sv) == d_suit:
+                    suit_detail = det
+                    break
+            if suit_detail and suit_detail["num_cards"] == 1 and d_rank <= 3:
+                return True
+        return False
+
+    def _is_good_betl_hand_in_hand(self, hand):
+        """In-hand betl (no talon): zero danger, all 4 suits safe."""
+        a = betl_hand_analysis(hand)
+        return a["danger_count"] == 0 and a["safe_suits"] == 4
 
     def _is_good_sans_hand(self, hand):
         """Check if hand has enough aces and high cards for sans (need 6 tricks)."""
@@ -1284,6 +1631,7 @@ class PlayerBob(WeightedRandomPlayer):
         self._cards_played = 0
         self._is_declarer = False
         self._highest_bid_seen = 0
+        self._betl_intent = False
 
         # Track auction escalation for whisting decisions later
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
@@ -1337,11 +1685,24 @@ class PlayerBob(WeightedRandomPlayer):
             if pass_bid:
                 return {"bid": pass_bid, "intent": intent}
 
-        # No game bids — pass (avoid sans/betl/in_hand)
+        # Check for betl/in_hand betl — auction betl = in-hand (no exchange)
+        if hand:
+            betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
+            if betl_bids and self._is_good_betl_hand_in_hand(hand):
+                a = betl_hand_analysis(hand)
+                return {"bid": betl_bids[0],
+                        "intent": f"betl — cautious zero danger (safe_suits={a['safe_suits']})"}
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids and self._is_good_betl_hand_in_hand(hand):
+                self._betl_intent = True
+                a = betl_hand_analysis(hand)
+                return {"bid": in_hand_bids[0],
+                        "intent": f"in_hand (betl intent) — zero danger, safe_suits={a['safe_suits']}"}
+
         pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
         if pass_bid:
             return {"bid": pass_bid,
-                    "intent": f"pass — no game bids, avoiding sans/betl/in_hand (aces={aces}, high={high})"}
+                    "intent": f"pass — no suitable bids (aces={aces}, high={high})"}
 
         # Fallback
         return super().bid_intent(hand, legal_bids)
@@ -1351,7 +1712,8 @@ class PlayerBob(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def discard_decision(self, hand_card_ids, talon_card_ids):
-        """Keep best trump suit cards and aces; discard weakest. Try to create voids."""
+        """Keep best trump suit cards and aces; discard weakest. Try to create voids.
+        If betl looks promising, discard highest/most dangerous cards instead."""
         all_ids = hand_card_ids + talon_card_ids
         rank_order = {"7": 1, "8": 2, "9": 3, "10": 4, "J": 5, "Q": 6, "K": 7, "A": 8}
 
@@ -1360,6 +1722,11 @@ class PlayerBob(WeightedRandomPlayer):
 
         def card_suit(cid):
             return cid.split("_")[1]
+
+        # Try betl-optimized discard first
+        betl_discard = self._try_betl_discard(all_ids, card_rank, card_suit)
+        if betl_discard:
+            return betl_discard
 
         suit_counts = {}
         suit_cards = {}
@@ -1418,6 +1785,8 @@ class PlayerBob(WeightedRandomPlayer):
         return {"discard": sorted_cards[:2],
                 "intent": f"discard weakest cards (trump={best_suit})"}
 
+    _try_betl_discard = PlayerAlice._try_betl_discard
+
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
@@ -1429,9 +1798,26 @@ class PlayerBob(WeightedRandomPlayer):
 
     def bid_decision(self, hand, legal_levels, winner_bid):
         """Pick safest contract based on hand evaluation."""
-        if 6 in legal_levels and self._is_good_betl_hand(hand):
+        # In-hand betl: if we bid in_hand with betl intent, choose betl
+        if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
-                    "intent": "betl — hand has only low cards"}
+                    "intent": "betl — in-hand betl intent"}
+        # Post-exchange betl (cautious): zero danger preferred, very conservative extras
+        if 6 in legal_levels:
+            a = betl_hand_analysis(hand)
+            # Zero danger + 3 safe suits — guaranteed safe
+            if a["danger_count"] == 0 and a["safe_suits"] >= 3:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — zero danger post-exchange (safe_suits={a['safe_suits']})"}
+            # All very low cards: max rank ≤ 10 (rank 4), no aces — every card
+            # has 4+ opponent cards above it; even without safe_suits it's hard to win a trick
+            if not a["has_ace"] and a["max_rank"] <= 4 and a["safe_suits"] >= 2:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — very low cards (max_rank={a['max_rank']}, cautious)"}
+            # Zero danger but only 2 safe suits — still safe if spread thin
+            if a["danger_count"] == 0 and a["safe_suits"] >= 2 and a["max_suit_len"] <= 3:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — zero danger spread (safe={a['safe_suits']}, longest={a['max_suit_len']})"}
 
         if 7 in legal_levels and self._is_good_sans_hand(hand):
             return {"contract_type": "sans", "trump": None, "level": 7,
@@ -1727,6 +2113,14 @@ class PlayerBob(WeightedRandomPlayer):
             self._cards_played += 1
             return legal_cards[0].id
 
+        contract_type = getattr(self, '_contract_type', None)
+
+        # Betl-specific card play
+        if contract_type == "betl":
+            card = self._betl_choose_card(legal_cards)
+            self._cards_played += 1
+            return card.id
+
         hand_size = self._total_hand_size - self._cards_played
         is_leading = len(legal_cards) == hand_size
         suits_in_legal = {c.suit for c in legal_cards}
@@ -1797,6 +2191,10 @@ class PlayerBob(WeightedRandomPlayer):
             worst_card = groups[longest_suit][-1]
             self._cards_played += 1
             return worst_card.id
+
+    _betl_choose_card = PlayerAlice._betl_choose_card
+    _betl_declarer_play = PlayerAlice._betl_declarer_play
+    _betl_defender_play = PlayerAlice._betl_defender_play
 
     def _declarer_lead(self, legal_cards):
         """Declarer leading: draw trumps first, then cash side aces."""
@@ -1884,7 +2282,8 @@ class PlayerCarol(WeightedRandomPlayer):
       NEW scattered jacks penalty: 3+ jacks in different suits → -0.15.
       Scaled king penalty: 3+ → -0.40.
       Void-suit bonus (+0.25) for ruffing potential.
-    - NEVER declare sans or betl — catastrophic downside (-140/-120)
+    - Betl bidding: pragmatic — ≤1 danger with safe suits + voids; in-hand
+      betl only with zero danger + 2+ voids. NEVER declare sans.
     - Smart exchange: void short off-suits, keep trump + aces; cost-aware suit
     - Declarer card play: draw ALL trumps then cash aces; lead from longest
       off-suit in Phase 4 to develop length winners.
@@ -1901,10 +2300,25 @@ class PlayerCarol(WeightedRandomPlayer):
         self._trump_suit = None       # trump suit name for card play
         self._trump_suit_val = None   # trump suit enum value for card play
         self._highest_bid_seen = 0    # track auction escalation for whisting
+        self._betl_intent = False     # True when bidding in_hand with betl in mind
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
     # ------------------------------------------------------------------
+
+    def _is_good_betl_hand(self, hand):
+        """PRAGMATIC betl: ≤1 danger + safe suits or voids."""
+        a = betl_hand_analysis(hand)
+        if a["danger_count"] == 0:
+            return True
+        if a["danger_count"] <= 1 and a["safe_suits"] >= 2 and a["void_count"] >= 1:
+            return True
+        return False
+
+    def _is_good_betl_hand_in_hand(self, hand):
+        """In-hand betl (no talon): zero danger + 2+ voids."""
+        a = betl_hand_analysis(hand)
+        return a["danger_count"] == 0 and a["void_count"] >= 2
 
     def _suit_groups(self, hand):
         """Group cards by suit → {suit_value: [Card, ...]} sorted high→low."""
@@ -2134,6 +2548,7 @@ class PlayerCarol(WeightedRandomPlayer):
         self._is_declarer = False
         self._trump_suit = None
         self._trump_suit_val = None
+        self._betl_intent = False
 
         # Track auction escalation for whisting decisions later.
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
@@ -2259,11 +2674,24 @@ class PlayerCarol(WeightedRandomPlayer):
             if pass_bid:
                 return {"bid": pass_bid, "intent": intent}
 
-        # Pass everything else (never sans/betl/in_hand)
+        # Check for betl/in_hand betl — auction betl = in-hand (no exchange)
+        if hand:
+            betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
+            if betl_bids and self._is_good_betl_hand_in_hand(hand):
+                a = betl_hand_analysis(hand)
+                return {"bid": betl_bids[0],
+                        "intent": f"betl — pragmatic zero danger (safe_suits={a['safe_suits']}, voids={a['void_count']})"}
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids and self._is_good_betl_hand_in_hand(hand):
+                self._betl_intent = True
+                a = betl_hand_analysis(hand)
+                return {"bid": in_hand_bids[0],
+                        "intent": f"in_hand (betl intent) — zero danger, voids={a['void_count']}"}
+
         pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
         if pass_bid:
             return {"bid": pass_bid,
-                    "intent": f"pass — no game bids, avoiding sans/betl/in_hand (aces={aces}, high={high})"}
+                    "intent": f"pass — no suitable bids (aces={aces}, high={high})"}
 
         # Fallback
         return super().bid_intent(hand, legal_bids)
@@ -2273,7 +2701,8 @@ class PlayerCarol(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def discard_decision(self, hand_card_ids, talon_card_ids):
-        """Keep trump-suit cards and aces; discard weakest. Try to create voids."""
+        """Keep trump-suit cards and aces; discard weakest. Try to create voids.
+        If betl looks promising, discard highest/most dangerous cards instead."""
         all_ids = hand_card_ids + talon_card_ids
         rank_order = {"7": 1, "8": 2, "9": 3, "10": 4, "J": 5, "Q": 6, "K": 7, "A": 8}
 
@@ -2282,6 +2711,11 @@ class PlayerCarol(WeightedRandomPlayer):
 
         def card_suit(cid):
             return cid.split("_")[1]
+
+        # Try betl-optimized discard first
+        betl_discard = self._try_betl_discard(all_ids, card_rank, card_suit)
+        if betl_discard:
+            return betl_discard
 
         suit_counts = {}
         suit_cards = {}
@@ -2334,6 +2768,8 @@ class PlayerCarol(WeightedRandomPlayer):
         return {"discard": sorted_cards[:2],
                 "intent": f"discard weakest cards (trump={best_suit})"}
 
+    _try_betl_discard = PlayerAlice._try_betl_discard
+
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
@@ -2344,10 +2780,23 @@ class PlayerCarol(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def bid_decision(self, hand, legal_levels, winner_bid):
-        """Always pick suit contract at minimum level. Prefer cheaper suits.
+        """Pick contract. Prefer suit, but allow betl when intent is set."""
+        # In-hand betl: if we bid in_hand with betl intent, choose betl
+        if self._betl_intent and 6 in legal_levels:
+            return {"contract_type": "betl", "trump": None, "level": 6,
+                    "intent": "betl — in-hand betl intent"}
+        # Post-exchange betl (pragmatic): zero danger + low-card heuristic with void
+        if 6 in legal_levels:
+            a = betl_hand_analysis(hand)
+            # Zero danger — always take it
+            if a["danger_count"] == 0:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — zero danger post-exchange (safe_suits={a['safe_suits']})"}
+            # All low cards: max rank ≤ Jack (5), no aces + at least 1 void for escape
+            if not a["has_ace"] and a["max_rank"] <= 5 and a["void_count"] >= 1:
+                return {"contract_type": "betl", "trump": None, "level": 6,
+                        "intent": f"betl — low cards + void (max_rank={a['max_rank']}, voids={a['void_count']})"}
 
-        NEVER choose sans or betl — catastrophic downside.
-        """
         min_bid = winner_bid.effective_value if winner_bid else 0
         suit_bid = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
         groups = self._suit_groups(hand)
@@ -2556,6 +3005,14 @@ class PlayerCarol(WeightedRandomPlayer):
             self._cards_played += 1
             return legal_cards[0].id
 
+        contract_type = getattr(self, '_contract_type', None)
+
+        # Betl-specific card play
+        if contract_type == "betl":
+            card = self._betl_choose_card(legal_cards)
+            self._cards_played += 1
+            return card.id
+
         hand_size = self._total_hand_size - self._cards_played
         is_leading = len(legal_cards) == hand_size
         suits_in_legal = {c.suit for c in legal_cards}
@@ -2618,6 +3075,10 @@ class PlayerCarol(WeightedRandomPlayer):
             worst_card = groups[longest_suit][-1]
             self._cards_played += 1
             return worst_card.id
+
+    _betl_choose_card = PlayerAlice._betl_choose_card
+    _betl_declarer_play = PlayerAlice._betl_declarer_play
+    _betl_defender_play = PlayerAlice._betl_defender_play
 
     def _declarer_lead(self, legal_cards):
         """Declarer leading: draw ALL trumps, then cash side aces.
@@ -3487,6 +3948,7 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
 
             strat = strategies[next_id]
             strat._rnd = rnd
+            strat._player_id = next_id
             card_id = strat.choose_card(legal_cards)
             card_obj = next(c for c in legal_cards if c.id == card_id)
 
