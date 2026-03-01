@@ -465,18 +465,53 @@ function renderScoring() {
         log('ALL PASSED \u2014 redeal', 'yellow');
     } else if (state.no_followers) {
         log('NO FOLLOWERS \u2014 ' + playerName(state.declarer) + ' wins with ' + contractStr(state.contract), 'yellow');
+        renderScoreTable();
     } else {
-        log('GAME OVER  contract: ' + contractStr(state.contract) + '  declarer: ' + playerName(state.declarer), 'cyan');
-        const tw = state.tricks_won || {};
-        for (const p of [1, 2, 3]) {
-            const n = tw[String(p)] || 0;
-            const name = playerName(p);
-            const role = p === state.declarer ? ' (declarer)' : state.followers.includes(p) ? ' (follower)' : ' (dropped)';
-            log('  ' + name + role + ': ' + n + ' tricks', 'info');
-        }
+        const s = state.scoring;
+        const won = s && s.declarer_won;
+        const result = won ? 'WON' : 'LOST';
+        const resultCls = won ? 'green' : 'red';
+        log('GAME OVER  ' + playerName(state.declarer) + ' ' + result + '  contract: ' + contractStr(state.contract), resultCls);
+
+        // Needed tricks
+        const needed = state.contract && state.contract.type === 'betl' ? 0 : 6;
+        const dt = s ? s.declarer_tricks : (state.tricks_won || {})[String(state.declarer)] || 0;
+        log('  declarer took ' + dt + ' tricks (needed ' + needed + ')', 'info');
+
+        renderScoreTable();
     }
     sep();
     log('click New Game to play again', 'dim');
+}
+
+function renderScoreTable() {
+    const s = state.scoring;
+    if (!s || !s.players) return;
+
+    sep();
+    log('SCORES', 'cyan');
+    for (const p of [1, 2, 3]) {
+        const pd = s.players[String(p)];
+        if (!pd) continue;
+        const name = playerName(p);
+
+        // Role
+        let role;
+        if (p === state.declarer) {
+            role = 'declarer';
+        } else if (state.followers && state.followers.includes(p)) {
+            role = pd.role || 'follower';
+        } else {
+            role = 'passed';
+        }
+
+        const tricks = pd.tricks || 0;
+        const score = pd.score != null ? pd.score : 0;
+        const sign = score >= 0 ? '+' : '';
+        const cls = score > 0 ? 'green' : score < 0 ? 'red' : 'info';
+
+        log('  ' + name + ' (' + role + ')  tricks: ' + tricks + '  score: ' + sign + score, cls);
+    }
 }
 
 // ── init ────────────────────────────────────────────────────────────

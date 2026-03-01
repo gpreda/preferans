@@ -235,6 +235,14 @@ def _engine_execute(cmd_idx):
     })
 
 
+def _fetch_scoring():
+    """Fetch scoring results from engine and store in session."""
+    cmds = _engine_commands()
+    scoring = cmds.get('scoring')
+    if scoring:
+        session['scoring_data'] = scoring
+
+
 AI_NAMES = ['Alice', 'Bob', 'Carol', 'Neural']
 
 
@@ -418,6 +426,7 @@ def _sync_phase():
             if not followers:
                 session['phase'] = 'scoring'
                 session['scoring_reason'] = 'no_followers'
+                _fetch_scoring()
                 return
 
             session['active'] = [declarer] + followers
@@ -544,6 +553,7 @@ def _exec_play(data):
                               params={'game_id': session['game_id']}).json()
             session['tricks_won'] = tricks['tricks']
             session['phase'] = 'scoring'
+            _fetch_scoring()
 
     state = _build_state()
     state['play_result'] = result
@@ -629,6 +639,7 @@ def _build_state():
         state['tricks_won'] = s.get('tricks_won', {})
         state['all_pass'] = s.get('scoring_reason') == 'all_pass'
         state['no_followers'] = s.get('scoring_reason') == 'no_followers'
+        state['scoring'] = s.get('scoring_data')
         state['player_on_move'] = None
         state['commands'] = []
 

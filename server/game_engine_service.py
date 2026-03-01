@@ -249,6 +249,34 @@ def ep_commands():
                     whist_decls.append([p_pos, action])
             resp['context'] = [declarer_pos, ctype, whist_decls]
 
+        # Include scoring results (keyed by position)
+        if phase == 'scoring' and hasattr(round_obj, 'results') and round_obj.results:
+            res = round_obj.results
+            scoring = {
+                'declarer': declarer_pos,
+                'declarer_won': res.get('declarer_won', False),
+                'declarer_tricks': res.get('declarer_tricks', 0),
+                'contract_type': res.get('contract_type'),
+                'game_value': res.get('game_value', 0),
+                'players': {},
+            }
+            for p in st.get('players', []):
+                pid = p['id']
+                pos = str(p['position'])
+                score = res['scores'].get(pid, 0)
+                scoring['players'][pos] = {
+                    'score': round(score, 1),
+                    'tricks': next((pp for pp in sess.engine.game.players if pp.id == pid), None).tricks_won,
+                }
+            # Defender details (role, score_change)
+            for dr in res.get('defender_results', []):
+                dp = str(sess._pid_to_position(st, dr['player_id']))
+                if dp in scoring['players']:
+                    scoring['players'][dp]['score_change'] = round(dr.get('score_change', 0), 1)
+                    if dr.get('role'):
+                        scoring['players'][dp]['role'] = dr['role']
+            resp['scoring'] = scoring
+
     elif phase == 'exchanging':
         # For discard step: context = [declarer_pos, bid_level]
         did = rnd.get('declarer_id')

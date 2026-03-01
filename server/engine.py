@@ -1286,6 +1286,7 @@ class GameEngine:
                     pass  # declarer adjustment tracked in results below
         results["zero_sum_adjustment"] = -adjustment
         results["scores"] = {p.id: p.score for p in self.game.players}
+        round.results = results
         return results
 
     def start_next_round(self):
