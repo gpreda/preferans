@@ -24,7 +24,7 @@ if not os.environ.get('WERKZEUG_RUN_MAIN'):
 
     engine_port = int(os.environ.get('ENGINE_PORT', '3001'))
     _engine = subprocess.Popen(
-        [sys.executable, 'bidding_engine_service.py'],
+        [sys.executable, 'game_engine_service.py'],
         env={**os.environ, 'ENGINE_PORT': str(engine_port)},
     )
     atexit.register(_engine.terminate)

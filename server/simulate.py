@@ -14,6 +14,7 @@ from models import (
     SUIT_NAMES, RANK_NAMES,
 )
 from engine import GameEngine
+from game_engine_service import GameSession
 
 
 # Unicode suit symbols
@@ -279,18 +280,13 @@ def simulate_round(seed: int, suit_only: bool = False) -> list[str]:
     """Simulate one complete round. Returns list of text blocks (params + steps)."""
     rng = random.Random(seed)
 
-    # Use seed for shuffle, then restore so rng state is independent
+    # Use seed for shuffle so deck is deterministic, then restore global rng
     old_state = random.getstate()
     random.setstate(rng.getstate())
 
-    game = Game(id=f"sim_{seed:03d}")
-    game.add_player(Alice(id=0))
-    game.add_player(Bob(id=0))
-    game.add_player(Carol(id=0))
-
-    engine = GameEngine(game)
-    game.assign_positions()
-    game.shuffle_and_deal()
+    session = GameSession(["Alice", "Bob", "Carol"])
+    engine = session.engine
+    game = engine.game
 
     random.setstate(old_state)
 
@@ -304,10 +300,6 @@ def simulate_round(seed: int, suit_only: bool = False) -> list[str]:
     for p in players_sorted:
         param_lines.append(f"P{p.id}: target={target_label(player_targets[p.id])}")
     blocks = ["\n".join(param_lines)]
-
-    # Set first bidder to forehand
-    forehand = engine._get_player_by_position(1)
-    game.current_round.auction.current_bidder_id = forehand.id
 
     initial_talon = list(game.current_round.talon)
     step_num = 1

@@ -1,6 +1,5 @@
 """Play a single Preferans game with three RandomMove players and log every move."""
 
-import json
 import os
 import sys
 import random
@@ -11,59 +10,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ser
 
 from models import (
     Game, Player, PlayerType, RoundPhase, ContractType, Suit,
-    SUIT_NAMES, RANK_NAMES,
+    SUIT_NAMES, RANK_NAMES, Card,
 )
-from engine import GameEngine
-
-# ---------------------------------------------------------------------------
-# Bidding state machine
-# ---------------------------------------------------------------------------
-_sm_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "server", "bidding_state_machine.json")
-with open(_sm_path, "r", encoding="utf-8") as _f:
-    _sm_list = json.load(_f)
-SM = {s["state_id"]: s for s in _sm_list}
-
-# Map SM auction command labels → bid dicts (bid_type, value, label)
-_AUCTION_CMD_TO_BID = {
-    "Pass":      {"bid_type": "pass",    "value": 0, "label": "Pass"},
-    "Game 2":    {"bid_type": "game",    "value": 2, "label": "Game 2"},
-    "Game 3":    {"bid_type": "game",    "value": 3, "label": "Game 3"},
-    "Game 4":    {"bid_type": "game",    "value": 4, "label": "Game 4"},
-    "Game 5":    {"bid_type": "game",    "value": 5, "label": "Game 5"},
-    "In Hand":   {"bid_type": "in_hand", "value": 0, "label": "In Hand"},
-    "In Hand 2": {"bid_type": "in_hand", "value": 2, "label": "In Hand 2"},
-    "In Hand 3": {"bid_type": "in_hand", "value": 3, "label": "In Hand 3"},
-    "In Hand 4": {"bid_type": "in_hand", "value": 4, "label": "In Hand 4"},
-    "In Hand 5": {"bid_type": "in_hand", "value": 5, "label": "In Hand 5"},
-    "Betl":      {"bid_type": "betl",    "value": 0, "label": "Betl"},
-    "Sans":      {"bid_type": "sans",    "value": 0, "label": "Sans"},
-    # in_hand N labels from SM (lowercase with space)
-    "in_hand 2": {"bid_type": "in_hand", "value": 2, "label": "In Hand 2"},
-    "in_hand 3": {"bid_type": "in_hand", "value": 3, "label": "In Hand 3"},
-    "in_hand 4": {"bid_type": "in_hand", "value": 4, "label": "In Hand 4"},
-    "in_hand 5": {"bid_type": "in_hand", "value": 5, "label": "In Hand 5"},
-}
-
-# Map SM whisting command labels → action dicts
-_WHIST_CMD_TO_ACTION = {
-    "Pass":           {"action": "pass",           "label": "Pass"},
-    "Follow":         {"action": "follow",         "label": "Follow"},
-    "Call":           {"action": "call",            "label": "Call"},
-    "Counter":        {"action": "counter",         "label": "Counter"},
-    "Start game":     {"action": "start_game",      "label": "Start game"},
-    "Double counter": {"action": "double_counter",  "label": "Double counter"},
-}
-
-# Map SM exchange suit labels → contract type/trump for announce_contract
-_EXCHANGE_SUIT_TO_CONTRACT = {
-    "Spades":   ("suit", "spades"),
-    "Diamonds": ("suit", "diamonds"),
-    "Hearts":   ("suit", "hearts"),
-    "Clubs":    ("suit", "clubs"),
-    "Betl":     ("betl", None),
-    "Sans":     ("sans", None),
-}
+from game_engine_service import GameSession
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +248,15 @@ def _random_weights(rng):
 # Betl hand analysis helpers (gap-based suit safety)
 # ---------------------------------------------------------------------------
 
+def _ids_to_cards(card_ids):
+    """Convert card id strings to Card objects."""
+    return [Card.from_id(cid) for cid in card_ids]
+
+
+# Suit bid values: the inherent level of each suit contract
+_SUIT_BID_VALUE = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
+
+
 def betl_suit_safety(held_ranks):
     """Per-suit safety analysis for betl.
 
@@ -407,24 +365,24 @@ def betl_hand_analysis(hand):
 class PlayerAlice(WeightedRandomPlayer):
     """Alice: AGGRESSIVE Preferans player aiming for HIGH scores.
 
-    Key strategies (iteration 24):
-    - Declaring: G9(+60) — 3-ace auto-bid, clean win. Only 1 declaration in
-      10 games; Carol dominated unopposed (+520). Bidding thresholds fine but
-      few strong hands dealt. Keep current declaring logic.
-    - Whisting: G3(-100) + G7(-80) = -180 from whisting! Both were 1-ace
-      hands with est ~0.85-1.2 where the 40% rate at est 1.0-1.5 fired.
-      The iter23 bump 30%→40% was too aggressive — immediately catastrophic.
-      G3: [[D,10,9,7],[K,D,J],[10,7],[A]] — 1A scattered, called vs Carol's
-      strong 3-suit hand. G7: [[A,J,9],[9,8,7],[K,7],[10,7]] — 1A, called
-      TWICE vs Carol's [[A,K,J,8],[K,D,10],[J,8],[K]]. Junk around the ace.
-    - Fix: 1-ace est 1.0-1.5 rate reduced 40% → 25%. Still above iter21's
-      20% for aggression, but much less exposed. -180 in one iteration proves
-      40% fires too often on scattered 1-ace hands.
-    - Fix: Add scattered-cards penalty: when 1 ace is the only high card and
-      remaining cards are below Queen across 3+ suits, subtract 0.15 est.
-      G3/G7 both had ace surrounded by J/10/9/7 junk that inflated est.
-    - 0-ace rates unchanged (no 0-ace whist losses this iter).
-    - Flat 2-ace whist rate unchanged at 55% (no 2-ace data this iter).
+    Key strategies (iteration 34):
+    - Iter33 (iter10) results: +372 across 18 games (20.7/game avg, 3rd).
+      Carol dominated at 672/17 (39.5 avg). Declaring excellent: G10(+120
+      betl), G11(+100), G15(+60), G19(+80), G20(+100) = +460. One whist
+      loss: G18(-100) called twice vs Neural's game. 12/18 games at 0 —
+      too passive.
+    - G18(-100): 1A [[D,J,10,7],[A,10,8],[J,8,7],[]] vs Neural's game 3.
+      Called twice (both defenders called). 3 jacks, est ~0.6-0.8. Even
+      if rate fires once, calling a second time doubles risk. NEW: track
+      whist call count; reduce rate by 50% on second call.
+    - 12/18 at 0: Too many passes. Need bolder bidding. (1) 0-ace hands
+      with 5-card K-headed suit + 5+ high cards should bid. G1 hand
+      [[K,D,10,9,8],[K,D,J],[8],[7]] = 5 high cards, strong shape. (2)
+      Bump 0-ace high-card dense rate 48%→55%. (3) Bump marginal shaped
+      rate 90%→95%.
+    - Whisting rates: only 1 loss (G18) vs 12 games at 0. Bump 1-ace
+      rates: est>=1.0: 40→45%, est>=0.7: 18→22%. Bump 0-ace rates:
+      est>=1.5: 48→55%, est>=1.0: 35→40%.
     """
 
     def __init__(self, seed: int | None = None):
@@ -436,6 +394,7 @@ class PlayerAlice(WeightedRandomPlayer):
         self._trump_suit_val = None   # suit enum value when we're declarer
         self._highest_bid_seen = 0    # track auction escalation
         self._betl_intent = False     # True when bidding in_hand with betl in mind
+        self._whist_call_count = 0    # how many times we called whist this round
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -586,9 +545,11 @@ class PlayerAlice(WeightedRandomPlayer):
         # Jack-heavy hands look "full" but can't take tricks as whister.
         # G7 iter14: [[J,10,9,8],[A,J],[J,8],[10,8]] — 3 jacks, only ace
         # contributed. Jacks lose to K/Q/A and waste space.
+        # G10 iter9: 1A + 3 jacks + 2 unsup queens → est ~1.0-1.2, lost -40.
+        # -0.15 was too weak; bumped to -0.25 for 3+ jacks.
         total_jacks = sum(1 for c in hand if c.rank == 5)
         if total_jacks >= 3:
-            tricks -= 0.15
+            tricks -= 0.25
 
         # Penalty for holding many cards in declarer's trump suit: these cards
         # are wasted — declarer has length advantage and will overtrump us.
@@ -632,11 +593,30 @@ class PlayerAlice(WeightedRandomPlayer):
         # Long non-trump suit penalty: 5+ cards in one non-trump suit = dead weight.
         # G8 iter19: AKDJ8 in suit 1 (5 cards, non-trump). Declarer ruffs after
         # first 1-2 tricks; remaining 3 cards are wasted. Bob/Carol already have this.
+        # EXCEPTION: AK-headed long suits are genuine trick sources (A + promoted K),
+        # not dead weight. G15 iter5: [[A,K,J,9,8,7],...] — AK anchor = ~1.5 tricks
+        # from that suit alone. Don't penalize these.
+        # G12 iter8: [[A,D,9,8,7],...] — 5-card suit with ace but no king. Ace
+        # takes 1 trick but remaining 4 cards (D,9,8,7) are dead weight that
+        # declarer ruffs. Increased penalty for ace-only long suits.
         if declarer_trump is not None:
+            total_aces_check = sum(1 for c in hand if c.rank == 8)
             for suit, cards in groups.items():
                 if suit != declarer_trump and len(cards) >= 5:
-                    tricks -= 0.30
-                    break  # Only penalize once
+                    has_ace = any(c.rank == 8 for c in cards)
+                    has_king = any(c.rank == 7 for c in cards)
+                    if has_ace and has_king:
+                        pass  # AK anchor — no penalty
+                    elif has_ace and not has_king:
+                        tricks -= 0.40  # Ace-only long suit: ace takes 1 trick but 4+ cards wasted
+                        break
+                    else:
+                        # G12 iter9: [[D,J,10,9,8],[A,J,8],[K,7],[]] — 5-card
+                        # suit without A/K, only 1 ace in hand. Junk suit crowds
+                        # out useful cards and gets trumped after 0-1 tricks.
+                        # Increased penalty when hand has only 1 ace.
+                        tricks -= 0.40 if total_aces_check <= 1 else 0.30
+                        break  # Only penalize once
 
         # Void-suit bonus: void in a non-trump suit = ruffing potential.
         # Bob already has this (+0.25). Ruffing lets us win tricks even with
@@ -707,6 +687,7 @@ class PlayerAlice(WeightedRandomPlayer):
         self._highest_bid_seen = 0
         self._trump_suit_val = None
         self._betl_intent = False
+        self._whist_call_count = 0
 
         # Track auction escalation for whisting decisions
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
@@ -763,22 +744,37 @@ class PlayerAlice(WeightedRandomPlayer):
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — ace + 4-card suit strong (tricks={est_tricks:.1f}, longest={max_suit_len})"}
                 if aces >= 2 and max_suit_len < 4:
-                    # Flat 2-ace hand — bumped 70% → 75%: iter20 had 0 losses,
-                    # scored 0 in 8/10 games. Need more declaration opportunities.
-                    if self.rng.random() < 0.75:
+                    # Flat 2-ace hand — bumped 75% → 80%: declaring excellent in
+                    # iter10, too many 0-score games.
+                    if self.rng.random() < 0.80:
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — 2 aces but flat (tricks={est_tricks:.1f}, longest={max_suit_len})"}
-                # Marginal hands: bumped 85% → 90%. Iter 20: 2/2 declaring
-                # wins (+180). Alice rarely loses when declaring — maximize
-                # declaration frequency.
+                # Marginal hands: 95% for shaped, 65% for flat.
+                # Bumped shaped 90%→95%: declaring wins are excellent (460 from 5 wins iter10).
+                # Bumped flat 60%→65%: 12/18 at 0 too passive, need more declaration.
                 if est_tricks >= 1.5 and aces >= 1:
-                    if self.rng.random() < 0.90:
+                    doubletons = sum(1 for cards in groups.values() if len(cards) == 2)
+                    is_flat = max_suit_len <= 4 and doubletons >= 2
+                    marginal_rate = 0.65 if is_flat else 0.95
+                    if self.rng.random() < marginal_rate:
                         return {"bid": game_bids[0],
-                                "intent": f"game 2 — marginal aggressive (tricks={est_tricks:.1f}, aces={aces})"}
-                # High-card-dense hands without aces: bid 45% if lots of high cards
-                # Lowered from high >= 5 to >= 4 — G2 iter13 had 4 high cards, missed bid
+                                "intent": f"game 2 — marginal {'flat ' if is_flat else ''}aggressive (tricks={est_tricks:.1f}, aces={aces})"}
+                # 0-ace hands with 5-card K-headed suit + many high cards: strong shape.
+                # G1 iter10: [[K,D,10,9,8],[K,D,J],[8],[7]] — 0A, 5-card suit with
+                # K,D,10,9,8 + 3 hearts KDJ = 5 high cards. Talon adds ~1.5 tricks,
+                # and K becomes near-ace when opponents draw aces early.
+                if aces == 0 and max_suit_len >= 5 and high >= 5:
+                    # Check if longest suit has K
+                    best_suit_cards = groups.get(best_suit, [])
+                    has_king_in_best = any(c.rank == 7 for c in best_suit_cards) if hand else False
+                    if has_king_in_best:
+                        if self.rng.random() < 0.65:
+                            return {"bid": game_bids[0],
+                                    "intent": f"game 2 — 0A K-headed 5+suit (tricks={est_tricks:.1f}, high={high})"}
+                # High-card-dense hands without aces: bid with lots of high cards
+                # Bumped from 48%→55%: declaring win rate strong, 12/18 at 0 too passive
                 if est_tricks >= 1.5 and high >= 4:
-                    if self.rng.random() < 0.45:
+                    if self.rng.random() < 0.55:
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — high-card dense (tricks={est_tricks:.1f}, high={high})"}
                 intent = f"pass — weak hand for game 2 (tricks={est_tricks:.1f}, aces={aces}, high={high})"
@@ -792,10 +788,10 @@ class PlayerAlice(WeightedRandomPlayer):
                 if est_tricks >= 4.5:
                     return {"bid": game_bids[0],
                             "intent": f"game 3 — very strong (tricks={est_tricks:.1f}, aces={aces})"}
-                if aces >= 2 and max_suit_len >= 4 and est_tricks >= 3.5:
+                if aces >= 2 and max_suit_len >= 4 and est_tricks >= 4.0:
                     return {"bid": game_bids[0],
                             "intent": f"game 3 — 2+ aces with shape (tricks={est_tricks:.1f}, longest={max_suit_len})"}
-                if est_tricks >= 3.5 and aces >= 1 and self.rng.random() < 0.30:
+                if est_tricks >= 3.5 and aces >= 1 and self.rng.random() < 0.20:
                     return {"bid": game_bids[0],
                             "intent": f"game 3 — aggressive gamble (tricks={est_tricks:.1f}, aces={aces})"}
                 intent = f"pass — too weak for game 3 (tricks={est_tricks:.1f}, aces={aces}, high={high})"
@@ -955,15 +951,126 @@ class PlayerAlice(WeightedRandomPlayer):
 
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
+        winner_bid = getattr(self, '_winner_bid', None)
+        if winner_bid:
+            result = self._evaluate_12_card_contracts(hand_card_ids, talon_card_ids, winner_bid)
+            self._pre_chosen_contract = result["contract"]
+            return result["discard"]
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
         return decision["discard"]
 
     # ------------------------------------------------------------------
-    # Contract — pick best trump, minimum level, prefer cheaper suits
+    # 12-card evaluation — unified discard + contract selection
+    # ------------------------------------------------------------------
+
+    def _score_hand_for_contract(self, hand, contract_type, trump_suit=None):
+        """Score a 10-card hand for a specific contract.
+        Returns a numeric score (higher = better hand for that contract)."""
+        if contract_type == "betl":
+            a = betl_hand_analysis(hand)
+            # CRITICAL: Aces are guaranteed losers in betl — declarer MUST
+            # lose every trick. G2/G12/G13 iter25: -360 total from declaring
+            # betl with 1-3 aces. Any ace → disqualify betl entirely.
+            if a["has_ace"]:
+                return -200
+            # Also reject if too many high cards (K/Q) — they win tricks
+            if a["high_card_count"] >= 3:
+                return -150
+            # Betl score: zero danger is great, fewer dangers = better
+            # Base: 100 if zero danger, penalize each danger heavily
+            score = 100 - a["danger_count"] * 40
+            score += a["safe_suits"] * 5
+            score -= a["max_rank"] * 3
+            # Alice aggressive: low cards + spread also good
+            if a["max_rank"] <= 5:
+                score += 20
+            if a["max_rank"] <= 6 and a["max_suit_len"] <= 3:
+                score += 10
+            return score
+        elif contract_type == "sans":
+            if not self._is_good_sans_hand(hand):
+                return -100  # not viable
+            aces = self._count_aces(hand)
+            high = self._count_high_cards(hand)
+            return 80 + aces * 15 + high * 5
+        else:
+            # Suit contract
+            strength = self._hand_strength_for_suit(hand, trump_suit)
+            groups = self._suit_groups(hand)
+            trump_len = len(groups.get(trump_suit, []))
+            # Scale: 6 tricks needed. strength * 15 gives a good range.
+            # Bonus for trump length, penalty for suit cost
+            cost_penalty = (_SUIT_BID_VALUE.get(trump_suit, 2) - 2) * 2
+            return strength * 15 + trump_len * 3 - cost_penalty
+
+    def _evaluate_12_card_contracts(self, hand_card_ids, talon_card_ids, winner_bid):
+        """Evaluate all 66 discard combos × all legal contracts.
+        Returns {"discard": [id, id], "contract": (type, trump, level)}."""
+        from itertools import combinations
+
+        all_ids = hand_card_ids + talon_card_ids
+        min_bid = winner_bid.effective_value if winner_bid else 0
+
+        # Pre-check: skip betl evaluation if pool has 2+ aces.
+        # Can only discard 2 cards, so at least 1 ace remains → betl is suicide.
+        # G2/G12/G13 iter25: -360 from betl with ace-heavy hands.
+        pool_aces = sum(1 for cid in all_ids if cid.startswith("A_"))
+        skip_betl = pool_aces >= 2
+
+        best_score = -999
+        best_discard = None
+        best_contract = None
+
+        for pair in combinations(range(len(all_ids)), 2):
+            discard = [all_ids[i] for i in pair]
+            remaining_ids = [cid for cid in all_ids if cid not in discard]
+            hand = _ids_to_cards(remaining_ids)
+
+            # Evaluate betl (skip if pool has too many aces)
+            if not skip_betl:
+                betl_sc = self._score_hand_for_contract(hand, "betl")
+                if betl_sc > best_score:
+                    best_score = betl_sc
+                    best_discard = discard
+                    best_contract = ("betl", None, 6)
+
+            # Evaluate sans (level 7, needs min_bid <= 7)
+            if min_bid <= 7:
+                sans_sc = self._score_hand_for_contract(hand, "sans")
+                if sans_sc > best_score:
+                    best_score = sans_sc
+                    best_discard = discard
+                    best_contract = ("sans", None, 7)
+
+            # Evaluate each suit at minimum legal level
+            for suit, suit_level in _SUIT_BID_VALUE.items():
+                if suit_level < min_bid:
+                    continue
+                level = max(suit_level, min_bid)
+                sc = self._score_hand_for_contract(hand, "suit", trump_suit=suit)
+                if sc > best_score:
+                    best_score = sc
+                    best_discard = discard
+                    best_contract = ("suit", SUIT_NAMES[suit], level)
+
+        return {"discard": best_discard, "contract": best_contract}
+
+    # ------------------------------------------------------------------
+    # Contract — use pre-evaluated choice or fall back to heuristic
     # ------------------------------------------------------------------
 
     def bid_decision(self, hand, legal_levels, winner_bid):
         """Pick safest contract. Prefer cheaper suits (lower game_value) when tied."""
+        # Use pre-evaluated contract from 12-card analysis if available
+        pre = getattr(self, '_pre_chosen_contract', None)
+        if pre:
+            self._pre_chosen_contract = None
+            ctype, trump, level = pre
+            if ctype == "suit" and trump:
+                self._trump_suit_val = {v: k for k, v in SUIT_NAMES.items()}.get(trump)
+            return {"contract_type": ctype, "trump": trump, "level": level,
+                    "intent": f"{ctype} — 12-card evaluation"}
+
         # In-hand betl: if we bid in_hand with betl intent, choose betl
         if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
@@ -1051,6 +1158,29 @@ class PlayerAlice(WeightedRandomPlayer):
             aces = self._count_aces(hand) if hand else 0
             est_whist_tricks = self._estimate_tricks_as_whister(hand, trump_suit) if hand else 0.0
             is_high_level = self._highest_bid_seen >= 3
+            # Track repeat calls: G18 iter10 called twice → -100. Second call
+            # means both defenders are in, doubling the risk. Halve effective rate.
+            is_repeat_call = self._whist_call_count > 0
+
+            # HARD PASS: Sans contracts — declarer has 3+ aces + high cards.
+            # G4 iter7: Alice called sans with [[A,K,8,7],[D,10,9],[9,8],[9]] —
+            # only AK in one suit, lost -40. Sans declarers dominate all suits.
+            # Require 2+ aces minimum; even then only whist with strong est.
+            if contract_type == "sans":
+                if aces >= 3:
+                    self._whist_call_count += 1
+                    return {"action": "follow",
+                            "intent": f"follow — sans whist with {aces} aces ({est_whist_tricks:.1f} tricks)"}
+                if aces >= 2 and est_whist_tricks >= 1.5:
+                    rate = 0.70
+                    if is_repeat_call:
+                        rate *= 0.5
+                    if self.rng.random() < rate:
+                        self._whist_call_count += 1
+                        return {"action": "follow",
+                                "intent": f"follow — sans whist 2A strong ({est_whist_tricks:.1f} tricks, {int(rate*100)}%)"}
+                return {"action": "pass",
+                        "intent": f"pass — sans contract, need 2+ aces ({aces}A, {est_whist_tricks:.1f} tricks)"}
 
             # HARD PASS: 4+ cards in declarer's trump suit = dead hand.
             # G10 iter12: [[J,9,8,7],[A,9,8],[J,10,9],[]] — 4 spades in
@@ -1077,23 +1207,61 @@ class PlayerAlice(WeightedRandomPlayer):
                             "intent": f"pass — {unsup_kings} unsupported kings = unreliable ({est_whist_tricks:.1f} tricks)"}
 
             # 2+ aces: whist most of the time, but check for flat/weak hands.
-            # G6 iter17: [[A,J,10,8],[A,10,9],[9,8],[8]] — 2A, flat 4+3+2+1, lost -40.
-            # G7 iter17: [[A,9,8,7],[A,D],[D,8],[10,8]] — 2A, weak support, lost -80.
-            # Both had est ~1.5-1.7 and failed: scattered J/10/9 can't take tricks.
+            # On repeat call (both defenders in), halve the rate — risk doubles.
             if aces >= 2:
                 groups = self._suit_groups(hand) if hand else {}
                 max_suit_len = max((len(cards) for cards in groups.values()), default=0)
-                if aces >= 3 or est_whist_tricks >= 2.0 or max_suit_len >= 4:
+                high = self._count_high_cards(hand) if hand else 0
+                if aces >= 3:
+                    self._whist_call_count += 1
                     return {"action": "follow",
                             "intent": f"follow — {aces} aces, {est_whist_tricks:.1f} est tricks"}
-                # Flat 2-ace hand: bumped 45% → 55%. Iter 22: STILL 0 whist
-                # attempts after 5 iterations of bumps. Aggressive style needs
-                # whist income — 2 aces alone usually take 2 tricks = +8.
-                if self.rng.random() < 0.55:
+
+                # Queen-scatter penalty for 2-ace hands: G14 iter5
+                # [[A,D,J,10,7],[K,9],[D,J],[A]] — 2A + 2 unsupported queens.
+                # est ~2.0 but queens can't beat K/A as whister. Called twice → -100.
+                two_ace_q_penalty = False
+                if hand:
+                    unsup_q = 0
+                    for suit, cards in groups.items():
+                        if trump_suit is not None and suit == trump_suit:
+                            continue
+                        has_a = any(c.rank == 8 for c in cards)
+                        has_q = any(c.rank == 6 for c in cards)
+                        if has_q and not has_a:
+                            unsup_q += 1
+                    if unsup_q >= 2:
+                        two_ace_q_penalty = True
+
+                if high <= 3:
+                    junk_rate = 0.45 if est_whist_tricks >= 1.5 else 0.30
+                    if is_repeat_call:
+                        junk_rate *= 0.5
+                    if self.rng.random() < junk_rate:
+                        self._whist_call_count += 1
+                        return {"action": "follow",
+                                "intent": f"follow — 2A junk hand {int(junk_rate*100)}% ({est_whist_tricks:.1f} tricks, high={high})"}
+                    return {"action": "pass",
+                            "intent": f"pass — 2A junk hand ({est_whist_tricks:.1f} tricks, high={high})"}
+                if est_whist_tricks >= 2.0 or max_suit_len >= 4:
+                    rate = 0.79 if two_ace_q_penalty else 0.94
+                    if is_repeat_call:
+                        rate *= 0.5
+                    if self.rng.random() < rate:
+                        self._whist_call_count += 1
+                        return {"action": "follow",
+                                "intent": f"follow — {aces} aces, {est_whist_tricks:.1f} est tricks ({int(rate*100)}%{', Q-penalty' if two_ace_q_penalty else ''})"}
+                    return {"action": "pass",
+                            "intent": f"pass — 2 aces dodged ({est_whist_tricks:.1f} tricks{', Q-penalty' if two_ace_q_penalty else ''})"}
+                flat_rate = 0.52 if two_ace_q_penalty else 0.68
+                if is_repeat_call:
+                    flat_rate *= 0.5
+                if self.rng.random() < flat_rate:
+                    self._whist_call_count += 1
                     return {"action": "follow",
-                            "intent": f"follow — {aces} aces flat ({est_whist_tricks:.1f} tricks, longest={max_suit_len})"}
+                            "intent": f"follow — {aces} aces flat ({est_whist_tricks:.1f} tricks, longest={max_suit_len}{', Q-penalty' if two_ace_q_penalty else ''})"}
                 return {"action": "pass",
-                        "intent": f"pass — 2 aces but flat shape ({est_whist_tricks:.1f} tricks, longest={max_suit_len})"}
+                        "intent": f"pass — 2 aces but flat shape ({est_whist_tricks:.1f} tricks, longest={max_suit_len}{', Q-penalty' if two_ace_q_penalty else ''})"}
 
             # 1 ace: whist based on trick potential — need 2+ tricks total
             if aces == 1:
@@ -1111,68 +1279,73 @@ class PlayerAlice(WeightedRandomPlayer):
                             has_ak_combo = True
                             break
 
+                # Queen-scatter penalty: G10 iter28 [[A,D,8],[K,D,8],[D,J,10],[7]]
+                # — 3 queens scattered across suits + 1A. Queens inflate est but
+                # can't beat K/A as whister. Called twice and lost -60.
+                queen_penalty = False
+                if hand:
+                    groups = self._suit_groups(hand)
+                    unsup_queens = 0
+                    for suit, cards in groups.items():
+                        if trump_suit is not None and suit == trump_suit:
+                            continue
+                        has_a = any(c.rank == 8 for c in cards)
+                        has_q = any(c.rank == 6 for c in cards)
+                        if has_q and not has_a:
+                            unsup_queens += 1
+                    if unsup_queens >= 2:
+                        queen_penalty = True
+
                 if is_high_level:
-                    # High-level: G10 iter8 lost -80 calling twice on escalated game.
                     rate = 0.45 if est_whist_tricks >= 1.5 else 0.20
                 else:
-                    # Game 2: AGGRESSIVE — iter22 had 0 whist attempts for 5th
-                    # straight iteration. Problem isn't rates, it's thresholds:
-                    # most hands land at est 0.8-1.3, below the 1.5 high-rate tier.
-                    # Lowering boundaries so more hands reach actionable rates.
                     if est_whist_tricks >= 2.0:
                         rate = 1.0   # Very strong 1-ace hand — always whist
                     elif est_whist_tricks >= 1.5:
-                        rate = 0.90  # Strong 1-ace: near-certain whist
+                        rate = 0.97
                     elif est_whist_tricks >= 1.0:
-                        # Reduced 40% → 25%: iter23 G3(-100) + G7(-80) = -180.
-                        # 40% fired on scattered 1-ace hands (est ~1.0-1.2)
-                        # where only the ace contributed. 25% still above
-                        # iter21's 20% for aggression but much safer.
-                        rate = 0.25
+                        rate = 0.45  # Bumped from 40%: only 1 whist loss iter10, 12/18 at 0
                     elif est_whist_tricks >= 0.7:
-                        # NEW tier: hands with est 0.7-1.0 were falling into
-                        # the 5% catch-all. With 1 ace that's ~0.85 tricks from
-                        # ace alone — 15% gives some action on decent support.
-                        rate = 0.15
+                        rate = 0.22  # Bumped from 18%: more income from marginal hands
                     else:
-                        rate = 0.05  # Very weak — near-pure gamble
-                    # A-K combo in side suit bumps rate: guaranteed ~1.5 tricks
-                    if has_ak_combo:
+                        rate = 0.08  # Bumped from 6%: more speculative whisting
+                    if has_ak_combo and not queen_penalty:
                         rate = min(rate + 0.20, 1.0)
-                    # Void in declarer's trump = ruffing potential. New iter 22:
-                    # When we hold 0 cards in trump, we can ruff declarer's
-                    # side-suit leads — pushes borderline hands above thresholds.
                     if hand and trump_suit is not None:
                         trump_count = sum(1 for c in hand if c.suit == trump_suit)
                         if trump_count == 0:
                             rate = min(rate + 0.10, 1.0)
+                    if queen_penalty:
+                        rate = max(rate - 0.15, 0.05)
+                # G18 iter10: called twice → -100. Second call doubles risk.
+                if is_repeat_call:
+                    rate *= 0.5
                 if self.rng.random() < rate:
+                    self._whist_call_count += 1
                     return {"action": "follow",
-                            "intent": f"follow — 1 ace, {int(rate*100)}% rate ({est_whist_tricks:.1f} tricks)"}
+                            "intent": f"follow — 1 ace, {int(rate*100)}% rate ({est_whist_tricks:.1f} tricks{', Q-penalty' if queen_penalty else ''})"}
                 return {"action": "pass",
-                        "intent": f"pass — 1 ace but rolled >{int(rate*100)}% ({est_whist_tricks:.1f} tricks)"}
+                        "intent": f"pass — 1 ace but rolled >{int(rate*100)}% ({est_whist_tricks:.1f} tricks{', Q-penalty' if queen_penalty else ''})"}
 
             # 0 aces: whist based on estimated trick potential — controlled aggression
-            # Tightened: 0-ace whists produced net negative in iter 8 analysis.
+            # Iter10: zero 0-ace whist losses, 12/18 at 0. Bump rates for more income.
             if is_high_level:
-                if est_whist_tricks >= 1.5 and self.rng.random() < 0.15:
-                    return {"action": "follow",
-                            "intent": f"follow — 0 aces, high-level speculative ({est_whist_tricks:.1f} tricks)"}
+                rate = 0.28 if est_whist_tricks >= 1.5 else 0.0
             else:
-                # Iter 22: ~50% of non-declaring hands had 0 aces (G3,G6,G10).
-                # These represent a huge missed income pool. Bumping rates and
-                # adding lower tier to capture more hands for aggressive style.
                 if est_whist_tricks >= 1.5:
-                    rate = 0.30  # Strong 0-ace hand (multiple K/Q combos)
+                    rate = 0.55  # Bumped from 48%: strong 0-ace hand
                 elif est_whist_tricks >= 1.0:
-                    rate = 0.18  # Decent kings/queens
+                    rate = 0.40  # Bumped from 35%: decent kings/queens
                 elif est_whist_tricks >= 0.5:
-                    rate = 0.08  # NEW tier: some kings = marginal action
+                    rate = 0.18  # Bumped from 15%
                 else:
-                    rate = 0.03  # Very weak — rarely profitable
-                if self.rng.random() < rate:
-                    return {"action": "follow",
-                            "intent": f"follow — 0 aces, {int(rate*100)}% rate ({est_whist_tricks:.1f} tricks)"}
+                    rate = 0.06  # Bumped from 5%
+            if is_repeat_call:
+                rate *= 0.5
+            if rate > 0 and self.rng.random() < rate:
+                self._whist_call_count += 1
+                return {"action": "follow",
+                        "intent": f"follow — 0 aces, {int(rate*100)}% rate ({est_whist_tricks:.1f} tricks)"}
             return {"action": "pass",
                     "intent": f"pass — 0 aces ({est_whist_tricks:.1f} tricks)"}
 
@@ -1447,36 +1620,20 @@ class PlayerAlice(WeightedRandomPlayer):
 class PlayerBob(WeightedRandomPlayer):
     """Bob: CAUTIOUS Preferans player — minimize negative scores.
 
-    Key strategies (iteration 26):
-    - Declaring: 4/4 wins iter22 (G3+40, G6+40, G8+40, G10+140 sans!).
-      +260 declaring income. Bidding calibration excellent — keep thresholds.
-    - Whisting: G5(+24) correct 2-ace whist. Net whist: +24. Zero negatives!
-      G4 missed: 1A + void [[A,J,9,7],[J,10,9,8],[D,10],[]] at ~37% rate.
-      Void-suit hands are profitable — bump void boost +0.10 → +0.12.
-    - Total: +284 (1st place). Zero negatives across multiple iterations.
-    - Shape-aware bidding: 3-ace auto-bid requires longest suit >= 4.
-      Flat 3-ace hands (3+3+2+2) downgraded to 60%.
-      Flat 2-ace hands (3+3+2+2) downgraded to 30% borderline.
-    - 2-ace auto-bid tightened: requires strength >= 3.8 (was 3.5).
-    - Borderline bidding requires 1+ ace at 30%, threshold 2.8.
-    - Trump AK combo bonus +0.2 in hand strength.
-    - Never game 3+.
-    - Whisting: Hard pass gate: 4+ cards in declarer's trump → always pass.
-      Hard pass gate: 3+ unsupported kings → always pass.
-    - 2-ace whisting: est >= 2.0 at 92%; est < 2.0 at 85% game 2, 30% high-level.
-    - Queen penalty in whist estimation: 3+ queens without ace → -0.25.
-    - 1-ace whisting: A-K combo boost +0.15 to rate. Rates 78/62/29.
-      Void-suit bonus +0.12 to rate (ruffing potential, was +0.10).
-    - 0-ace whisting: 22% when est >= 2.0 on game 2 (was 20%).
-    - Whist estimation: A-K combo bonus (+0.20) for ace+king in same side suit.
-      Void-suit bonus (+0.25) for ruffing potential.
-      Long non-trump suit penalty (-0.30) for 5+ cards in single non-trump suit.
-      Low trump count penalty (-0.35) for 0-1 cards in declarer's trump.
-      Flat shape penalty (-0.20) for no 4+ non-trump suit as whister.
-    - Smart exchange: void short off-suits, singleton pairs below King.
-    - Card play: whister King/Queen ducking early, declarer draws trumps then
-      cashes aces, Phase 4 from longest off-suit.
-    - Whister lead: prefer aces from A-K combo suits first (cash ace, promote king).
+    Key strategies (iteration 40):
+    - Iter 10 results: Bob=+208 across 11 games. ZERO negatives (perfect
+      cautious goal again). 3 declaration wins: G3(+60), G13(+100), G16(+40).
+      1 whist win: G2(+8). But 7/11 games at 0 — still too passive on whisting.
+    - G7(0, missed whist): 1A [[A,10,9,7],[10,9,8],[10,8],[K]], Carol scored
+      100. 4-card A-high suit, est ~1.2. Missed at 32% rate for est>=1.0.
+    - G14(0, missed whist): 1A [[A,D,10],[K,J,8],[D,8],[J,8]], Carol scored
+      60. est ~1.2-1.4. Missed at 32% rate. Two consecutive iterations of
+      zero whist losses proves 1A est>=1.0 rate too conservative.
+    - Bump 1A rates: est>=2.0 82→86%, est>=1.5 62→68%, est>=1.0 32→40%.
+    - Bump 2A rates: strong 92→94%, weak 78→82%. High-level hedge 32→36%.
+    - Bump 0A rate 22→26%. 1A high-level 16→20%.
+    - Whist card play: as whister when forced to trump, play highest trump
+      to maximize trick-winning chance (was playing lowest).
     """
 
     def __init__(self, seed: int | None = None):
@@ -1488,6 +1645,7 @@ class PlayerBob(WeightedRandomPlayer):
         self._trump_suit_val = None   # suit enum value when we're declarer
         self._highest_bid_seen = 0    # track auction escalation for whisting
         self._betl_intent = False     # True when bidding in_hand with betl in mind
+        self._i_bid_in_auction = False  # True if Bob bid (not just passed) in auction
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -1533,13 +1691,16 @@ class PlayerBob(WeightedRandomPlayer):
         Game 2 needs 6 tricks. Talon adds ~1.5 tricks on average,
         so we need ~4.5 estimated tricks pre-exchange to be comfortable.
         """
-        groups = self._suit_groups(hand)
         best_suit, _ = self._best_trump_suit(hand)
         if best_suit is None:
             return 0.0
+        return self._hand_strength_for_suit(hand, best_suit)
 
+    def _hand_strength_for_suit(self, hand, trump_suit):
+        """Estimate tricks with a specific trump suit (cautious coefficients)."""
+        groups = self._suit_groups(hand)
         tricks = 0.0
-        trump_cards = groups.get(best_suit, [])
+        trump_cards = groups.get(trump_suit, [])
 
         # Trump tricks
         for c in trump_cards:
@@ -1566,7 +1727,7 @@ class PlayerBob(WeightedRandomPlayer):
 
         # Side suit aces
         for suit, cards in groups.items():
-            if suit == best_suit:
+            if suit == trump_suit:
                 continue
             for c in cards:
                 if c.rank == 8:
@@ -1632,6 +1793,7 @@ class PlayerBob(WeightedRandomPlayer):
         self._is_declarer = False
         self._highest_bid_seen = 0
         self._betl_intent = False
+        self._i_bid_in_auction = False
 
         # Track auction escalation for whisting decisions later
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
@@ -1660,22 +1822,39 @@ class PlayerBob(WeightedRandomPlayer):
                 # across 3+3+2+2 shape, aces spread = no ruffing, no long suit.
                 # G5 iter13: lost -40 with 2A+str3.5+longest4 — trump AJ109 lacked K.
                 # Raised 2-ace threshold from 3.5 to 3.8 to require stronger trump.
-                if (aces >= 3 and max_suit_len >= 4) or strength >= 4.0 or (aces >= 2 and strength >= 3.8 and max_suit_len >= 4):
+                # 2-ace with all 4 suits (no void): need higher strength.
+                # G18 iter27: 2A + 4+2+2+2 shape, str 4.05, no voids → -60.
+                # No void = no ruffing, flat shape = risky. Require 4.2.
+                # G3 iter29: 1A + 5-card K-high trump (KJXXX), str 4.3 → -120.
+                # K-high trump without ace loses control. With ≤1 ace, require
+                # ace in best trump suit for str >= 4.0 auto-bid, else 4.5.
+                num_suits_held = len(groups)
+                two_ace_threshold = 4.2 if (aces == 2 and num_suits_held >= 4) else 3.8
+                # Trump-ace gate: with ≤1 ace, trump ace is critical for control
+                best_suit_obj, _ = self._best_trump_suit(hand)
+                has_trump_ace = best_suit_obj and any(
+                    c.rank == 8 and c.suit == best_suit_obj for c in hand)
+                str_threshold = 4.0 if (aces >= 2 or has_trump_ace) else 4.2
+                if (aces >= 3 and max_suit_len >= 4) or strength >= str_threshold or (aces >= 2 and strength >= two_ace_threshold and max_suit_len >= 4):
+                    self._i_bid_in_auction = True
                     return {"bid": game_bids[0],
-                            "intent": f"game 2 — strong (strength {strength:.1f}, aces={aces}, longest={max_suit_len})"}
+                            "intent": f"game 2 — strong (strength {strength:.1f}, aces={aces}, longest={max_suit_len}, trump_ace={has_trump_ace})"}
                 elif aces >= 3 and max_suit_len < 4 and self.rng.random() < 0.60:
+                    self._i_bid_in_auction = True
                     return {"bid": game_bids[0],
                             "intent": f"game 2 — flat 3-ace 60% (strength {strength:.1f}, longest={max_suit_len})"}
                 # Flat 2-ace hands (max suit < 4): 30% borderline — G6 iter7
                 # lost -60 with 2 aces but 3+3+2+2 shape
-                elif aces >= 2 and strength >= 3.0 and self.rng.random() < 0.30:
+                elif aces >= 2 and strength >= 3.0 and self.rng.random() < 0.28:
+                    self._i_bid_in_auction = True
                     return {"bid": game_bids[0],
                             "intent": f"game 2 — flat 2-ace borderline (strength {strength:.1f}, longest={max_suit_len})"}
                 # Borderline hands (2.8+): bid 30% with 1+ ace — G5 iter10 missed
                 # AKQ8 spades+side K (strength 2.95) that should have been bid
-                elif strength >= 2.8 and aces >= 1 and self.rng.random() < 0.30:
+                elif strength >= 2.8 and aces >= 1 and self.rng.random() < 0.40:
+                    self._i_bid_in_auction = True
                     return {"bid": game_bids[0],
-                            "intent": f"game 2 — borderline strength {strength:.1f}, 30% roll (aces={aces}, longest={max_suit_len})"}
+                            "intent": f"game 2 — borderline strength {strength:.1f}, 40% roll (aces={aces}, longest={max_suit_len})"}
                 else:
                     intent = f"pass — strength {strength:.1f} below 2.8 for cautious game 2 (aces={aces}, longest={max_suit_len})"
             else:
@@ -1689,11 +1868,13 @@ class PlayerBob(WeightedRandomPlayer):
         if hand:
             betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
             if betl_bids and self._is_good_betl_hand_in_hand(hand):
+                self._i_bid_in_auction = True
                 a = betl_hand_analysis(hand)
                 return {"bid": betl_bids[0],
                         "intent": f"betl — cautious zero danger (safe_suits={a['safe_suits']})"}
             in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
             if in_hand_bids and self._is_good_betl_hand_in_hand(hand):
+                self._i_bid_in_auction = True
                 self._betl_intent = True
                 a = betl_hand_analysis(hand)
                 return {"bid": in_hand_bids[0],
@@ -1789,15 +1970,117 @@ class PlayerBob(WeightedRandomPlayer):
 
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
+        winner_bid = getattr(self, '_winner_bid', None)
+        if winner_bid:
+            result = self._evaluate_12_card_contracts(hand_card_ids, talon_card_ids, winner_bid)
+            self._pre_chosen_contract = result["contract"]
+            return result["discard"]
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
         return decision["discard"]
 
     # ------------------------------------------------------------------
-    # Contract — pick best trump, minimum level, prefer cheap suits
+    # 12-card evaluation — unified discard + contract selection
+    # ------------------------------------------------------------------
+
+    def _score_hand_for_contract(self, hand, contract_type, trump_suit=None):
+        """Score a 10-card hand for a specific contract (cautious style)."""
+        if contract_type == "betl":
+            a = betl_hand_analysis(hand)
+            # CRITICAL: Aces are guaranteed trick-winners in betl = instant loss.
+            # G18(-120): 2A chose betl. G19(-120): A+K+Q+J chose betl. -240 total.
+            if a["has_ace"]:
+                return -200
+            # 3+ high cards (K/Q/A) make betl very risky even without aces
+            if a["high_card_count"] >= 3:
+                return -150
+            # Bob is cautious: require zero danger + safe suits
+            score = 100 - a["danger_count"] * 50
+            if a["safe_suits"] >= 3:
+                score += 15
+            elif a["safe_suits"] >= 2 and a["max_suit_len"] <= 3:
+                score += 5
+            score -= a["max_rank"] * 3
+            # Very low cards bonus (cautious threshold)
+            if a["max_rank"] <= 4 and a["safe_suits"] >= 2:
+                score += 15
+            return score
+        elif contract_type == "sans":
+            if not self._is_good_sans_hand(hand):
+                return -100
+            aces = self._count_aces(hand)
+            high = self._count_high_cards(hand)
+            return 80 + aces * 15 + high * 5
+        else:
+            strength = self._hand_strength_for_suit(hand, trump_suit)
+            groups = self._suit_groups(hand)
+            trump_len = len(groups.get(trump_suit, []))
+            cost_penalty = (_SUIT_BID_VALUE.get(trump_suit, 2) - 2) * 2
+            return strength * 15 + trump_len * 3 - cost_penalty
+
+    def _evaluate_12_card_contracts(self, hand_card_ids, talon_card_ids, winner_bid):
+        """Evaluate all 66 discard combos × all legal contracts."""
+        from itertools import combinations
+
+        all_ids = hand_card_ids + talon_card_ids
+        min_bid = winner_bid.effective_value if winner_bid else 0
+
+        # Skip betl evaluation entirely if pool has 2+ aces — can only discard 2,
+        # so at least 1 ace remains → betl is suicide. G18/G19: -240 from betl
+        # with ace-heavy hands.
+        pool_aces = sum(1 for cid in all_ids if cid.startswith("A_"))
+        skip_betl = pool_aces >= 2
+
+        best_score = -999
+        best_discard = None
+        best_contract = None
+
+        for pair in combinations(range(len(all_ids)), 2):
+            discard = [all_ids[i] for i in pair]
+            remaining_ids = [cid for cid in all_ids if cid not in discard]
+            hand = _ids_to_cards(remaining_ids)
+
+            if not skip_betl:
+                betl_sc = self._score_hand_for_contract(hand, "betl")
+                if betl_sc > best_score:
+                    best_score = betl_sc
+                    best_discard = discard
+                    best_contract = ("betl", None, 6)
+
+            if min_bid <= 7:
+                sans_sc = self._score_hand_for_contract(hand, "sans")
+                if sans_sc > best_score:
+                    best_score = sans_sc
+                    best_discard = discard
+                    best_contract = ("sans", None, 7)
+
+            for suit, suit_level in _SUIT_BID_VALUE.items():
+                if suit_level < min_bid:
+                    continue
+                level = max(suit_level, min_bid)
+                sc = self._score_hand_for_contract(hand, "suit", trump_suit=suit)
+                if sc > best_score:
+                    best_score = sc
+                    best_discard = discard
+                    best_contract = ("suit", SUIT_NAMES[suit], level)
+
+        return {"discard": best_discard, "contract": best_contract}
+
+    # ------------------------------------------------------------------
+    # Contract — use pre-evaluated choice or fall back to heuristic
     # ------------------------------------------------------------------
 
     def bid_decision(self, hand, legal_levels, winner_bid):
         """Pick safest contract based on hand evaluation."""
+        # Use pre-evaluated contract from 12-card analysis if available
+        pre = getattr(self, '_pre_chosen_contract', None)
+        if pre:
+            self._pre_chosen_contract = None
+            ctype, trump, level = pre
+            if ctype == "suit" and trump:
+                self._trump_suit_val = {v: k for k, v in SUIT_NAMES.items()}.get(trump)
+            return {"contract_type": ctype, "trump": trump, "level": level,
+                    "intent": f"{ctype} — 12-card evaluation"}
+
         # In-hand betl: if we bid in_hand with betl intent, choose betl
         if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
@@ -1948,11 +2231,12 @@ class PlayerBob(WeightedRandomPlayer):
         # Low trump count penalty: 0-1 cards in declarer's trump suit = no trump power.
         # G3 iter19: Bob had 0 trump cards (void in trump). Couldn't ruff, couldn't
         # defend trump leads. Declarer draws zero trumps from you — your high cards
-        # in side suits are vulnerable to being ruffed. -0.35 penalty.
+        # in side suits are vulnerable to being ruffed.
+        # G8 iter8: 0 trumps, est 1.15, whisted → -90. Penalty increased -0.35→-0.45.
         if trump_suit:
             trump_count = sum(1 for c in hand if c.suit == trump_suit)
             if trump_count <= 1:
-                tricks -= 0.35
+                tricks -= 0.45
 
         # Flat shape penalty: when no non-trump suit has 4+ cards, high cards are
         # spread thin and can't develop length winners. G9 iter21: Bob had 4+4+1+1
@@ -1971,14 +2255,10 @@ class PlayerBob(WeightedRandomPlayer):
     def following_decision(self, hand, contract_type, trump_suit, legal_actions):
         """Hand-strength-aware whisting — CAUTIOUS style with trump awareness.
 
-        Key insights (iteration 25):
-        - Iter 21: Bob scored -4 (3rd). Declared 2 games: G6(+40), G8(+40) —
-          both wins (+80). Whisted 2 games: G5(+16), G9(-100). Net whist: -84.
-          G9's -100 with 2A + AKQ9 + A1098 devastated score.
-        - G9 root cause: 2A + est >= 2.0 triggered always-whist (100% gate).
-          Carol had dominant 5+4 shape. No escape valve on the "always" gate.
-          Fix: reduce 2A+est>=2.0 from 100% to 92%. Add flat shape penalty
-          (-0.20) when no non-trump suit has 4+ cards — spreads tricks thin.
+        Iter5: ALL 3 negatives (-36,-72,-40) came from 2-ace whist calls.
+        Slashed rates across the board: 2A strong 92→78, weak 85→60,
+        high-level 82→62/70→45. Outbid penalty 15→25%. 1A rates reduced,
+        0A rate 24→12%.
 
         Scoring math (single whister, game_value=v):
           2+ tricks -> positive.  1 trick -> -(v*9).  0 tricks -> -(v*10).
@@ -2024,43 +2304,50 @@ class PlayerBob(WeightedRandomPlayer):
             # 2+ aces: whist when est is good, hedge when weak/flat
             # G4 iter14: 2A + flat (3+3+2+2) + 3 scattered queens, est ~1.8 → -90.
             # "Always whist" was too aggressive for weak 2-ace hands.
+            # G9 iter28: Bob bid, Neural outbid, Bob whisted → -72. When you bid
+            # and get outbid, declarer is proven strong → reduce rates by 15%.
+            outbid_penalty = 0.25 if self._i_bid_in_auction else 0.0
             if aces >= 2:
                 if is_high_level and est_tricks < 2.5:
-                    # High-level + weak support: 30% hedge (was 35%)
-                    if self.rng.random() < 0.30:
+                    # High-level + weak support: 36% hedge (was 32%, zero losses iters 1-10)
+                    rate = max(0.36 - outbid_penalty, 0.12)
+                    if self.rng.random() < rate:
                         return {"action": "follow",
-                                "intent": f"follow — {aces} aces, high-level 30% hedge ({est_tricks:.1f} est tricks)"}
+                                "intent": f"follow — {aces} aces, high-level {int(rate*100)}% hedge ({est_tricks:.1f} est tricks)"}
                     return {"action": "pass",
                             "intent": f"pass — {aces} aces, high-level cautious hedge ({est_tricks:.1f} est tricks)"}
                 if est_tricks >= 2.0:
-                    # G9 iter21: 2A + est >= 2.0 always-whisted → -100 against Carol's
-                    # dominant 5+4 hand. 100% rate too aggressive — no escape valve.
-                    # Reduce to 92% to give 8% dodge chance on catastrophic matchups.
-                    if self.rng.random() < 0.92:
+                    # Bumped: 92→94 / 78→82. Zero 2A whist losses iters 1-10.
+                    base_strong_2a = 0.82 if is_high_level else 0.94
+                    rate = max(base_strong_2a - outbid_penalty, 0.55)
+                    if self.rng.random() < rate:
                         return {"action": "follow",
-                                "intent": f"follow — {aces} aces, strong est 92% whist ({est_tricks:.1f} est tricks)"}
+                                "intent": f"follow — {aces} aces, strong est {int(rate*100)}% whist ({est_tricks:.1f} est tricks)"}
                     return {"action": "pass",
-                            "intent": f"pass — {aces} aces, strong est 8% safety dodge ({est_tricks:.1f} est tricks)"}
-                # Weak 2-ace (est < 2.0): 85% on game 2 (was 80%) — iter20 had
-                # zero whist negatives again, room for more income
-                if self.rng.random() < 0.85:
+                            "intent": f"pass — {aces} aces, strong est safety dodge ({est_tricks:.1f} est tricks)"}
+                # Weak 2-ace (est < 2.0): bumped 78→82, 64→68.
+                # Zero 2A whist losses iters 1-10.
+                base_weak_2a = 0.68 if is_high_level else 0.82
+                rate = max(base_weak_2a - outbid_penalty, 0.35)
+                if self.rng.random() < rate:
                     return {"action": "follow",
-                            "intent": f"follow — {aces} aces, weak est 75% ({est_tricks:.1f} est tricks)"}
+                            "intent": f"follow — {aces} aces, weak est {int(rate*100)}% ({est_tricks:.1f} est tricks)"}
                 return {"action": "pass",
                         "intent": f"pass — {aces} aces, weak est cautious ({est_tricks:.1f} est tricks)"}
 
-            # 1 ace: Zero negatives iter22. 4/4 declaring wins, 1/1 whist win (+24).
-            # G4 missed whist with 1A + void (est ~1.3, rate ~37%) — just variance.
-            # Small 3% bump across tiers: 78/62/29 (was 75/60/27). Proven safe.
+            # 1 ace: bumped rates. Zero 1A whist losses iters 8-10.
+            # Rates: est>=2.0 82→86, est>=1.5 62→68, est>=1.0 32→40.
+            outbid_1a = 0.18 if self._i_bid_in_auction else 0.0
             if aces == 1:
                 if is_high_level:
-                    rate = 0.0   # Never whist game 3+ with 1 ace — losses too big
+                    # Allow strong 1-ace hands to whist game 3+ at 20% (was 16%)
+                    rate = max(0.20 - outbid_1a, 0.0) if est_tricks >= 2.0 else 0.0
                 elif est_tricks >= 2.0:
-                    rate = 0.78  # Bumped from 0.75 — zero negatives, safe tier
+                    rate = max(0.86 - outbid_1a, 0.48)
                 elif est_tricks >= 1.5:
-                    rate = 0.62  # Bumped from 0.60 — zero negatives, room for income
+                    rate = max(0.68 - outbid_1a, 0.35)
                 elif est_tricks >= 1.0:
-                    rate = 0.29  # Bumped from 0.27 — G4 iter22 missed at ~37%
+                    rate = max(0.40 - outbid_1a, 0.18)
                 else:
                     rate = 0.0   # Too weak, pass
                 # A-K combo boost: ace + king in same non-trump side suit = concentrated
@@ -2090,10 +2377,9 @@ class PlayerBob(WeightedRandomPlayer):
                 return {"action": "pass",
                         "intent": f"pass — 1 ace, cautious ({est_tricks:.1f} tricks)"}
 
-            # 0 aces: small chance on game 2 with very strong kings
-            # Bumped 20% → 22%: iter22 had zero negatives from any whisting tier.
-            # Strong-king hands (est >= 2.0) can take 2 tricks on game 2.
-            if not is_high_level and est_tricks >= 2.0 and self.rng.random() < 0.22:
+            # 0 aces: small chance on game 2 with very strong kings.
+            # Bumped 22% → 26%: zero 0A whist losses iters 8-10.
+            if not is_high_level and est_tricks >= 2.0 and self.rng.random() < 0.26:
                 return {"action": "follow",
                         "intent": f"follow — 0 aces, 15% rate on strong kings ({est_tricks:.1f} tricks)"}
             return {"action": "pass",
@@ -2180,9 +2466,10 @@ class PlayerBob(WeightedRandomPlayer):
                     return card.id
             # As whister or if no trump: discard lowest card overall
             # (engine already filtered to only legal cards — trump or discard)
-            # If forced to trump (all legal cards are trump), play lowest trump
+            # If forced to trump (all legal cards are trump), play highest trump
+            # to maximize trick-winning chance (G10: whisted betl but got 0)
             if len(suits_in_legal) == 1:
-                card = min(legal_cards, key=lambda c: c.rank)
+                card = max(legal_cards, key=lambda c: c.rank) if not self._is_declarer else min(legal_cards, key=lambda c: c.rank)
                 self._cards_played += 1
                 return card.id
             # Discard lowest from longest off-suit to preserve short suits
@@ -2260,35 +2547,23 @@ class PlayerBob(WeightedRandomPlayer):
 class PlayerCarol(WeightedRandomPlayer):
     """Carol: PRAGMATIC Preferans player — calculated risks for best EV.
 
-    Key strategies (iteration 22):
-    - Bidding: 3+ aces always bid. 2 aces + concentrated (longest >= 4) auto-bid
-      BUT require king or ace in trump for concentrated 2A.
-      Flat 2-ace: always bid if est >= 3.0, else 60% (was 55%). Carol declared
-      only 1 game in iter22 (+60) — too passive. Need more declarations.
-      Strong hands (3.0+) always bid.
-      1-ace + 5-card suit always bids. 1-ace + 4-card suit + void: require est >= 2.5
-      or king in trump.
-      Marginal (2.0-3.0) at 65%/50% (was 60/45). Marginal 1-ace without 4+ trump at 50%.
-      1 ace + dense high cards: 30% (was 25%).
-    - Whisting: Hard pass gate: 4+ cards in declarer's trump → always pass.
-      Hard pass gate: 3+ unsupported kings → always pass.
-      NEW hard pass gate: 3+ scattered jacks without aces → always pass.
-      2 aces: est >= 2.5 always whist; est 2.0-2.5 at 80%/50% (was 85/55).
-      Below 2.0: 70%/50% (was 80/60). G6+G8 iter22 both lost -36 with 2A —
-      both had scattered jacks inflating est. Reduce 2-ace rates.
-      1-ace rates: unchanged. 0-ace at 8%/3%.
-    - Whist estimation: A-K side-suit bonus (+0.20). Unsupported kings devalued.
-      Queen-heavy penalty: 2+ unsupported queens → -0.20, 3+ → -0.30.
-      NEW scattered jacks penalty: 3+ jacks in different suits → -0.15.
-      Scaled king penalty: 3+ → -0.40.
-      Void-suit bonus (+0.25) for ruffing potential.
-    - Betl bidding: pragmatic — ≤1 danger with safe suits + voids; in-hand
-      betl only with zero danger + 2+ voids. NEVER declare sans.
-    - Smart exchange: void short off-suits, keep trump + aces; cost-aware suit
-    - Declarer card play: draw ALL trumps then cash aces; lead from longest
-      off-suit in Phase 4 to develop length winners.
-    - Whister card play: lead aces from A-K combo suits first; kings from longest;
-      improved following discipline; second-hand-low conservation.
+    Key strategies (iteration 32):
+    - Iter31 (iter10) results: +672 across 17 games (1st place! 39.5/game avg).
+      Declaring: 9/9 wins (+640): G2(+40), G5(+40), G6(+140 sans), G7(+100),
+      G8(+60), G9(+60), G12(+100), G14(+60), G17(+40). ZERO declaring losses.
+      Whist: G1(+12), G18(+20) = +32. 8/17 games at 0. Zero whist losses.
+    - Declaring is flawless — no changes needed.
+    - G11(0, missed whist): [[A,D,10,8],[D,J],[J,8],[9,8]] — 1A, est ~0.8.
+      30% rate rolled high. 2 scattered queens + 2 jacks. Correctly marginal.
+    - G13(0, missed whist): [[K,D,J,10],[A,J,8],[9,7],[8]] — 1A, est ~1.1.
+      55% rate rolled high (variance). Reasonable.
+    - G16(0, missed whist): [[D,10,9,8],[K,10,8],[A,10],[7]] — 1A, est ~0.9.
+      55% rate. A10 in suit3 worth more than singleton ace — 10 promotes
+      after ace. Bumped singleton ace from 0.70→0.75 and 10-support bonus.
+    - Zero whist losses for 4 consecutive iters proves room for rate bumps.
+    - 1-ace rates bumped: est>=1.0: 55→62%, est<1.0: 30→36%.
+    - 0-ace rates bumped: est>=1.0: 35→42%, est<1.0: 22→28%.
+    - Whister card play: third-position play high when holding top 2 cards.
     """
 
     def __init__(self, seed: int | None = None):
@@ -2420,14 +2695,17 @@ class PlayerCarol(WeightedRandomPlayer):
         for suit, cards in groups.items():
             is_trump = (suit == declarer_trump) if declarer_trump else False
             has_ace = any(c.rank == 8 for c in cards)
+            has_ten = any(c.rank == 4 for c in cards)
             for c in cards:
                 if c.rank == 8:  # Ace
                     if is_trump:
-                        tricks += 0.75  # ace of trump less valuable as whister
+                        tricks += 0.85  # ace of trump: near-guaranteed trick as whister
+                    elif len(cards) >= 3 and has_ten:
+                        tricks += 0.95  # A+10 with length: 10 promotes after ace
                     elif len(cards) >= 2:
                         tricks += 0.90  # guarded ace — very reliable
                     else:
-                        tricks += 0.70  # singleton ace — declarer can duck/plan around it
+                        tricks += 0.75  # singleton ace — more reliable than 0.70
                 elif c.rank == 7:  # King
                     if is_trump:
                         tricks += 0.20 if len(cards) >= 2 else 0.05
@@ -2488,17 +2766,20 @@ class PlayerCarol(WeightedRandomPlayer):
         if scattered_jacks >= 3:
             tricks -= 0.15
 
-        # Bonus for A-K in same non-trump side suit: ace cashes guaranteed,
+        # Bonus for A-K in same suit: ace cashes guaranteed,
         # king promoted next trick. ~1.5 reliable tricks from one suit.
         # G3 iter13: Carol had AK spades but passed whist — missed income.
+        # G16 iter8: AK in declarer's trump is very strong defensive holding
+        # (controls trump suit) — bonus applies to trump too (iter30 NEW).
         for suit, cards in groups.items():
             is_trump = (suit == declarer_trump) if declarer_trump else False
-            if is_trump:
-                continue
             has_ace = any(c.rank == 8 for c in cards)
             has_king = any(c.rank == 7 for c in cards)
             if has_ace and has_king:
-                tricks += 0.20  # Extra bonus on top of individual A/K values
+                if is_trump:
+                    tricks += 0.15  # AK in trump: strong defensive control
+                else:
+                    tricks += 0.20  # Extra bonus on top of individual A/K values
 
         # Long non-trump suit penalty: 5+ cards in one non-trump suit is dead
         # weight — declarer ruffs them easily. Only the top 1-2 cards matter.
@@ -2600,10 +2881,10 @@ class PlayerCarol(WeightedRandomPlayer):
                     if est_tricks >= 3.0:
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — 2 aces flat but strong est always bid (len={max_suit_len}, tricks={est_tricks:.1f})"}
-                    if self.rng.random() < 0.60:
+                    if self.rng.random() < 0.68:
                         return {"bid": game_bids[0],
-                                "intent": f"game 2 — 2 aces but flat shape 60% (len={max_suit_len}, tricks={est_tricks:.1f})"}
-                    intent = f"pass — 2 aces but flat shape rolled >60% (len={max_suit_len}, tricks={est_tricks:.1f})"
+                                "intent": f"game 2 — 2 aces but flat shape 68% (len={max_suit_len}, tricks={est_tricks:.1f})"}
+                    intent = f"pass — 2 aces but flat shape rolled >68% (len={max_suit_len}, tricks={est_tricks:.1f})"
                     pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
                     if pass_bid:
                         return {"bid": pass_bid, "intent": intent}
@@ -2636,14 +2917,22 @@ class PlayerCarol(WeightedRandomPlayer):
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — ace + 4-card suit + void, no K in trump 50% (tricks={est_tricks:.1f}, suits={num_suits})"}
                 # Marginal hands (2.0-3.0 tricks): require 1+ ace.
-                # G9 iter14: [[A,D,8,7],[K,D,10],[9,7],[9]] — 1A + scattered
-                # queens, est ~2.05, lost -40. Queens without K in trump are
-                # unreliable. Tighten: 55% for 4+ trump with strong est (2.5+),
-                # 40% for weaker shapes or lower est.
+                # G15 iter3: [[D,J,8,7],[A,10],[K,J],[10,7]] — 1A + Q-J-8-7
+                # trump (no K/A in trump), est ~2.35, 50% rate fired → lost -120.
+                # Queen-high trump without K/A is unreliable. Require top card
+                # in trump for higher rate; without it, reduce to 35%.
                 if est_tricks >= 2.0 and aces >= 1:
                     groups_m = self._suit_groups(hand) if hand else {}
                     max_len = max((len(cards) for cards in groups_m.values()), default=0)
-                    m_rate = 0.65 if (max_len >= 4 and est_tricks >= 2.5) else 0.50
+                    best_s_m = self._best_trump(hand)
+                    best_cards_m = groups_m.get(best_s_m, [])
+                    has_top_m = any(c.rank >= 7 for c in best_cards_m)  # K or A in trump
+                    if max_len >= 4 and est_tricks >= 2.5 and has_top_m:
+                        m_rate = 0.65
+                    elif has_top_m:
+                        m_rate = 0.50
+                    else:
+                        m_rate = 0.35  # No top card in trump — risky
                     if self.rng.random() < m_rate:
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — marginal (tricks={est_tricks:.1f}, aces={aces}, longest={max_len}, rate={int(m_rate*100)}%)"}
@@ -2652,10 +2941,10 @@ class PlayerCarol(WeightedRandomPlayer):
                 # Bumped from 20% — high-card density hands with talon
                 # frequently reach 6 tricks.
                 elif aces >= 1 and high >= 4:
-                    if self.rng.random() < 0.30:
+                    if self.rng.random() < 0.38:
                         return {"bid": game_bids[0],
                                 "intent": f"game 2 — 1 ace + dense high cards (tricks={est_tricks:.1f}, high={high})"}
-                    intent = f"pass — 1 ace dense but rolled >30% (tricks={est_tricks:.1f}, high={high})"
+                    intent = f"pass — 1 ace dense but rolled >38% (tricks={est_tricks:.1f}, high={high})"
                 # 0-ace speculative bids removed — they are net negative
                 else:
                     intent = f"pass — weak hand (tricks={est_tricks:.1f}, aces={aces}, high={high})"
@@ -2664,7 +2953,10 @@ class PlayerCarol(WeightedRandomPlayer):
                 if est_tricks >= 4.0 or aces >= 3:
                     return {"bid": game_bids[0],
                             "intent": f"game 3 — strong hand (tricks={est_tricks:.1f}, aces={aces})"}
-                if est_tricks >= 3.0 and aces >= 1 and self.rng.random() < 0.25:
+                # G19 iter4: bidding war at game 3 cost -72 despite strong hand.
+                # Reduced from 25% to 20% — high-level contracts have asymmetric
+                # risk (losses are 2-3x larger than wins at game 3+).
+                if est_tricks >= 3.0 and aces >= 1 and self.rng.random() < 0.20:
                     return {"bid": game_bids[0],
                             "intent": f"game 3 — calculated gamble (tricks={est_tricks:.1f}, aces={aces})"}
                 intent = f"pass — too weak for game 3 (tricks={est_tricks:.1f}, aces={aces})"
@@ -2772,28 +3064,186 @@ class PlayerCarol(WeightedRandomPlayer):
 
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
+        winner_bid = getattr(self, '_winner_bid', None)
+        if winner_bid:
+            result = self._evaluate_12_card_contracts(hand_card_ids, talon_card_ids, winner_bid)
+            self._pre_chosen_contract = result["contract"]
+            return result["discard"]
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
         return decision["discard"]
 
     # ------------------------------------------------------------------
-    # Contract — ALWAYS suit at minimum level, NEVER sans/betl
+    # 12-card evaluation — unified discard + contract selection
+    # ------------------------------------------------------------------
+
+    def _hand_strength_for_suit(self, hand, trump_suit):
+        """Estimate tricks with a specific trump suit (pragmatic coefficients)."""
+        groups = self._suit_groups(hand)
+        tricks = 0.0
+        trump_cards = groups.get(trump_suit, [])
+
+        for c in trump_cards:
+            if c.rank == 8:
+                tricks += 1.0
+            elif c.rank == 7:
+                tricks += 0.7 if len(trump_cards) >= 3 else 0.4
+            elif c.rank >= 5 and len(trump_cards) >= 4:
+                tricks += 0.4
+            elif len(trump_cards) >= 5:
+                tricks += 0.3
+
+        if len(trump_cards) >= 5:
+            tricks += (len(trump_cards) - 4) * 0.6
+        elif len(trump_cards) >= 4:
+            tricks += 0.3
+
+        for suit, cards in groups.items():
+            if suit == trump_suit:
+                continue
+            for c in cards:
+                if c.rank == 8:
+                    tricks += 0.9
+                elif c.rank == 7 and len(cards) >= 2:
+                    tricks += 0.35
+
+        num_suits = len(groups)
+        if num_suits <= 2 and len(trump_cards) >= 4:
+            tricks += 1.2
+        elif num_suits <= 3 and len(trump_cards) >= 3:
+            tricks += 0.4
+
+        return tricks
+
+    def _score_hand_for_contract(self, hand, contract_type, trump_suit=None):
+        """Score a 10-card hand for a specific contract."""
+        if contract_type == "betl":
+            a = betl_hand_analysis(hand)
+            # CRITICAL: aces are guaranteed trick-winners in betl = instant loss.
+            if a["has_ace"]:
+                return -200
+            # Kings are nearly as bad — they win tricks in betl most of the time.
+            # G15 iter2: 12-card eval discarded ace but king remained, -120.
+            king_count = sum(1 for c in hand if c.rank == 7)
+            if king_count >= 1:
+                return -100
+            # 3+ high cards (Q/K/A) make betl very risky
+            if a["high_card_count"] >= 3:
+                return -150
+            # Pragmatic betl: zero danger good, low cards + void good
+            score = 100 - a["danger_count"] * 45
+            score += a["safe_suits"] * 5
+            score += a["void_count"] * 8
+            score -= a["max_rank"] * 3
+            if a["max_rank"] <= 5 and a["void_count"] >= 1:
+                score += 15
+            return score
+        elif contract_type == "sans":
+            # Sans: only for monster hands (3+ aces + many high cards)
+            aces = sum(1 for c in hand if c.rank == 8)
+            high = sum(1 for c in hand if c.rank >= 6)
+            if aces >= 3 and high >= 6:
+                return 150  # Very strong sans hand
+            return -200  # Not strong enough
+        else:
+            strength = self._hand_strength_for_suit(hand, trump_suit)
+            groups = self._suit_groups(hand)
+            trump_len = len(groups.get(trump_suit, []))
+            cost_penalty = (_SUIT_BID_VALUE.get(trump_suit, 2) - 2) * 2
+            # Boosted multiplier (18 vs 15) and trump length bonus (5 vs 3 for 5+)
+            # G15 iter2: 6-card AKQ suit scored lower than betl due to low multiplier
+            trump_bonus = 5 if trump_len >= 5 else 3
+            return strength * 18 + trump_len * trump_bonus - cost_penalty
+
+    def _evaluate_12_card_contracts(self, hand_card_ids, talon_card_ids, winner_bid):
+        """Evaluate all 66 discard combos × all legal contracts."""
+        from itertools import combinations
+
+        all_ids = hand_card_ids + talon_card_ids
+        min_bid = winner_bid.effective_value if winner_bid else 0
+
+        # Pre-check: skip betl eval entirely if pool has ANY ace OR 3+ high cards.
+        # G3 iter6: Carol had 1 ace in pool, eval discarded ace to play betl,
+        # both opponents called → -120. Discarding an ace to play betl is almost
+        # always losing because opponents saw your strong pre-talon hand.
+        # G15 iter2: 6-card AKQ suit, eval discarded A but K remained → -120.
+        pool_aces = sum(1 for cid in all_ids if cid.startswith("A_"))
+        pool_kings = sum(1 for cid in all_ids if cid.startswith("K_"))
+        pool_high = pool_aces + pool_kings
+        skip_betl = pool_aces >= 1 or pool_high >= 3
+
+        best_score = -999
+        best_discard = None
+        best_contract = None
+
+        for pair in combinations(range(len(all_ids)), 2):
+            discard = [all_ids[i] for i in pair]
+            remaining_ids = [cid for cid in all_ids if cid not in discard]
+            hand = _ids_to_cards(remaining_ids)
+
+            if not skip_betl:
+                betl_sc = self._score_hand_for_contract(hand, "betl")
+                if betl_sc > best_score:
+                    best_score = betl_sc
+                    best_discard = discard
+                    best_contract = ("betl", None, 6)
+
+            # Sans for monster hands (3+ aces + 6+ high cards)
+            sans_sc = self._score_hand_for_contract(hand, "sans")
+            if sans_sc > best_score:
+                best_score = sans_sc
+                best_discard = discard
+                best_contract = ("sans", None, 7)
+
+            for suit, suit_level in _SUIT_BID_VALUE.items():
+                if suit_level < min_bid:
+                    continue
+                level = max(suit_level, min_bid)
+                sc = self._score_hand_for_contract(hand, "suit", trump_suit=suit)
+                if sc > best_score:
+                    best_score = sc
+                    best_discard = discard
+                    best_contract = ("suit", SUIT_NAMES[suit], level)
+
+        return {"discard": best_discard, "contract": best_contract}
+
+    # ------------------------------------------------------------------
+    # Contract — use pre-evaluated choice or fall back to heuristic
     # ------------------------------------------------------------------
 
     def bid_decision(self, hand, legal_levels, winner_bid):
         """Pick contract. Prefer suit, but allow betl when intent is set."""
+        # Use pre-evaluated contract from 12-card analysis if available
+        pre = getattr(self, '_pre_chosen_contract', None)
+        if pre:
+            self._pre_chosen_contract = None
+            ctype, trump, level = pre
+            if ctype == "suit" and trump:
+                self._trump_suit = trump
+                self._trump_suit_val = {v: k for k, v in SUIT_NAMES.items()}.get(trump)
+            return {"contract_type": ctype, "trump": trump, "level": level,
+                    "intent": f"{ctype} — 12-card evaluation"}
+
         # In-hand betl: if we bid in_hand with betl intent, choose betl
         if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
                     "intent": "betl — in-hand betl intent"}
-        # Post-exchange betl (pragmatic): zero danger + low-card heuristic with void
+        # Sans for monster hands (fallback when 12-card eval not used)
+        if 7 in legal_levels and hand:
+            aces = self._count_aces(hand)
+            high = self._count_high(hand)
+            if aces >= 3 and high >= 6:
+                return {"contract_type": "sans", "trump": None, "level": 7,
+                        "intent": f"sans — monster hand (aces={aces}, high={high})"}
+        # Post-exchange betl (pragmatic): zero danger + no kings/aces
         if 6 in legal_levels:
             a = betl_hand_analysis(hand)
-            # Zero danger — always take it
-            if a["danger_count"] == 0:
+            has_king = any(c.rank == 7 for c in hand) if hand else False
+            # Zero danger and no kings — always take it
+            if a["danger_count"] == 0 and not has_king and not a["has_ace"]:
                 return {"contract_type": "betl", "trump": None, "level": 6,
                         "intent": f"betl — zero danger post-exchange (safe_suits={a['safe_suits']})"}
-            # All low cards: max rank ≤ Jack (5), no aces + at least 1 void for escape
-            if not a["has_ace"] and a["max_rank"] <= 5 and a["void_count"] >= 1:
+            # All low cards: max rank ≤ Jack (5), no aces/kings + at least 1 void
+            if not a["has_ace"] and not has_king and a["max_rank"] <= 5 and a["void_count"] >= 1:
                 return {"contract_type": "betl", "trump": None, "level": 6,
                         "intent": f"betl — low cards + void (max_rank={a['max_rank']}, voids={a['void_count']})"}
 
@@ -2907,34 +3357,57 @@ class PlayerCarol(WeightedRandomPlayer):
                             "intent": f"pass — hard gate: {scattered_j} scattered jacks without aces"}
 
             # 2+ aces: whist when estimated tricks support it.
-            # G6+G8 iter22: both lost -36 with 2A + scattered jacks. Reduce
-            # 2-ace rates: est 2.0-2.5 at 80%/50% (was 85/55).
-            # Below 2.0: 70%/50% (was 80/60). Losses (-36 each) prove 2-ace
-            # hands with inflated est from jacks are unreliable.
+            # Zero 2-ace whist losses across iters 8-9 proves room for bumps.
             if aces >= 2:
+                # Check for AK combo and high card quality
+                has_ak_combo_2a = False
+                high_count_2a = self._count_high(hand) if hand else 0
+                if hand:
+                    groups_2a = self._suit_groups(hand)
+                    for suit, cards in groups_2a.items():
+                        if declarer_trump is not None and suit == declarer_trump:
+                            continue
+                        has_a = any(c.rank == 8 for c in cards)
+                        has_k = any(c.rank == 7 for c in cards)
+                        if has_a and has_k:
+                            has_ak_combo_2a = True
+                            break
+                # Junk check: 2 aces but only aces are high (high_count <= 4,
+                # no AK combo). Remaining 8 cards are junk.
+                is_junk_2a = (high_count_2a <= 4 and not has_ak_combo_2a)
                 if est_tricks >= 2.5:
-                    return {"action": "follow",
-                            "intent": f"follow — {aces} aces, strong est ({est_tricks:.1f} tricks)"}
+                    if is_junk_2a:
+                        rate = 0.82
+                    else:
+                        rate = 0.99
+                    if self.rng.random() < rate:
+                        return {"action": "follow",
+                                "intent": f"follow — {aces} aces, {int(rate*100)}% rate ({est_tricks:.1f} tricks)"}
+                    return {"action": "pass",
+                            "intent": f"pass — {aces} aces est >= 2.5 rolled >{int(rate*100)}% ({est_tricks:.1f} tricks)"}
                 if est_tricks >= 2.0:
-                    rate = 0.50 if is_high_level else 0.80
+                    rate = 0.76 if is_high_level else 0.97
+                    if is_junk_2a:
+                        rate = min(rate, 0.76)
                     if self.rng.random() < rate:
                         return {"action": "follow",
                                 "intent": f"follow — {aces} aces, {int(rate*100)}% rate ({est_tricks:.1f} tricks)"}
                     return {"action": "pass",
                             "intent": f"pass — {aces} aces est 2.0-2.5 rolled >{int(rate*100)}% ({est_tricks:.1f} tricks)"}
                 if is_high_level:
-                    rate = 0.50
+                    rate = 0.76
                 else:
-                    rate = 0.70
+                    rate = 0.92
+                if is_junk_2a:
+                    rate = min(rate, 0.72)
                 if self.rng.random() < rate:
                     return {"action": "follow",
                             "intent": f"follow — {aces} aces, {int(rate*100)}% rate ({est_tricks:.1f} tricks)"}
                 return {"action": "pass",
                         "intent": f"pass — {aces} aces but weak est, rolled >{int(rate*100)}% ({est_tricks:.1f} tricks)"}
 
-            # 1 ace: tiered by est_tricks. Check for A-K combo in side suit:
-            # guaranteed ~1.5 tricks from one suit = strong anchor for whisting.
-            # G3 iter13: Carol had AK spades (1 ace) but passed — missed +20 income.
+            # 1 ace: tiered by est_tricks. Zero 1-ace whist losses across iters 5-10.
+            # Bumped rates: est>=1.0 55→62%, est<1.0 30→36%.
             if aces == 1:
                 # Check for A-K combo in same non-trump suit
                 has_ak_combo = False
@@ -2957,37 +3430,37 @@ class PlayerCarol(WeightedRandomPlayer):
                                 break
 
                 if is_high_level:
-                    rate = 0.20 if est_tricks >= 1.5 else 0.08
+                    rate = 0.52 if est_tricks >= 1.5 else 0.32
                 else:
                     if est_tricks >= 2.0:
-                        rate = 0.85  # Strong 1-ace hand (was 0.80)
+                        rate = 0.99  # Strong 1-ace hand
                     elif est_tricks >= 1.5:
-                        rate = 0.60  # Decent support (was 0.55)
+                        rate = 0.92  # Decent support (was 0.88)
                     elif est_tricks >= 1.0:
-                        rate = 0.22  # Marginal (was 0.20)
-                        # G7 iter20: 1A + 2 unsup kings, est ~1.3, called at 25%,
-                        # lost -80. Losses are asymmetric (-80) vs gains (+8-16).
+                        rate = 0.62  # Marginal (was 0.55) — zero losses proves room
                     else:
-                        rate = 0.08  # Weak 1-ace hand
+                        rate = 0.36  # Weak 1-ace hand (was 0.30)
                     # A-K combo in side suit bumps rate: reliable trick anchor
                     if has_ak_combo:
                         rate = min(rate + 0.15, 1.0)
                     # Void-suit bonus: ruffing potential pushes rate up
                     if has_void:
-                        rate = min(rate + 0.10, 0.85)
+                        rate = min(rate + 0.10, 0.92)
                 if self.rng.random() < rate:
                     return {"action": "follow",
                             "intent": f"follow — 1 ace, {int(rate*100)}% rate ({est_tricks:.1f} tricks)"}
                 return {"action": "pass",
                         "intent": f"pass — 1 ace but rolled >{int(rate*100)}% ({est_tricks:.1f} tricks)"}
 
-            # 0 aces: tightened from 10%/3% → 8%/3%.
-            # 0-ace whists are almost always losing.
-            if not is_high_level:
-                rate = 0.08 if est_tricks >= 1.0 else 0.03
-                if self.rng.random() < rate:
-                    return {"action": "follow",
-                            "intent": f"follow — 0 aces, {int(rate*100)}% speculative ({est_tricks:.1f} tricks)"}
+            # 0 aces: bumped 35%/22% → 42%/28%. Zero 0-ace whist losses
+            # across iters 5-10. More speculative income.
+            if is_high_level:
+                rate = 0.22 if est_tricks >= 1.0 else 0.0
+            else:
+                rate = 0.42 if est_tricks >= 1.0 else 0.28
+            if rate > 0 and self.rng.random() < rate:
+                return {"action": "follow",
+                        "intent": f"follow — 0 aces, {int(rate*100)}% speculative ({est_tricks:.1f} tricks)"}
             return {"action": "pass",
                     "intent": f"pass — 0 aces ({est_tricks:.1f} tricks)"}
 
@@ -3129,12 +3602,15 @@ class PlayerCarol(WeightedRandomPlayer):
         return max(legal_cards, key=lambda c: c.rank)
 
     def _whister_lead(self, legal_cards):
-        """Whister leading: lead aces from A-K suits first, then shortest suit."""
+        """Whister leading: lead aces from A-K suits, then create voids.
+
+        Iter31: improved void creation — lead from shortest non-ace suit
+        to void it quickly for ruffing potential later.
+        """
         groups = self._suit_groups(legal_cards)
 
         # Lead aces first — guaranteed trick winners
         # Prefer aces from A-K combo suits: cash the ace, king promoted next trick.
-        # G8 iter13: 2 aces lost -80 — need to extract max value from ace leads.
         aces = [c for c in legal_cards if c.rank == 8]
         if aces:
             def ace_priority(c):
@@ -3152,7 +3628,15 @@ class PlayerCarol(WeightedRandomPlayer):
             kings.sort(key=lambda c: len(groups.get(c.suit, [])), reverse=True)
             return kings[0]
 
-        # Lead highest from shortest suit to try to void it
+        # Lead from shortest suit (without aces) to create voids for ruffing.
+        # Prefer suits with 1-2 cards — voiding these creates ruffing lanes.
+        non_ace_suits = {s: cards for s, cards in groups.items()
+                         if not any(c.rank == 8 for c in cards)}
+        if non_ace_suits:
+            shortest = min(non_ace_suits.keys(), key=lambda s: len(non_ace_suits[s]))
+            return non_ace_suits[shortest][0]  # lead highest from shortest
+
+        # Fallback: lead highest from shortest suit
         shortest_suit = min(groups.keys(), key=lambda s: len(groups[s]))
         return groups[shortest_suit][0]
 
@@ -3570,14 +4054,14 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
     def emit(msg):
         log.append(msg)
 
-    # Create game and players
-    game = Game(id="test-game")
-    for name in ["Alice", "Bob", "Carol"]:
-        p = Player(id=0, name=name, player_type=PlayerType.HUMAN)
-        game.add_player(p)
+    # Create game via GameSession — use names from strategy objects
+    player_names = [strategies[pid].name for pid in sorted(strategies.keys())]
+    if len(player_names) != 3:
+        player_names = ["Alice", "Bob", "Carol"]
 
-    engine = GameEngine(game)
-    engine.start_game()
+    session = GameSession(player_names)
+    engine = session.engine
+    game = engine.game
 
     rnd = game.current_round
     emit(f"=== Preferans Single Game ===")
@@ -3599,317 +4083,187 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
     emit(f"")
 
     # ------------------------------------------------------------------
-    # Build position → player_id mapping
+    # AUCTION (direct engine calls)
     # ------------------------------------------------------------------
-    pos_to_id = {p.position: p.id for p in game.players}
-
-    # ------------------------------------------------------------------
-    # AUCTION + EXCHANGING + WHISTING  (driven by state machine)
-    # ------------------------------------------------------------------
-    sm_state_id = 1  # SM always starts at state 1
-
     emit("--- Auction ---")
 
-    # Track SM-level contract info for engine calls
-    sm_contract_type = None   # "suit", "betl", "sans"
-    sm_contract_trump = None  # suit name or None
-    sm_contract_level = None  # int or None
-    sm_is_in_hand = False
-    sm_declarer_pos = None    # position of declarer (from SM context)
-    sm_exchange_done = False
-    sm_whist_emitted = False
-    sm_auction_winner_emitted = False
+    max_steps = 30
+    while rnd.phase == RoundPhase.AUCTION and max_steps > 0:
+        max_steps -= 1
+        auction = rnd.auction
+        if auction.phase.value == 'complete':
+            break
+        bidder_id = auction.current_bidder_id
+        if bidder_id is None:
+            break
 
-    max_sm_steps = 80
-    while sm_state_id not in (0, -1) and max_sm_steps > 0:
-        max_sm_steps -= 1
-        state = SM[sm_state_id]
-        phase = state["phase"]
-        player_pos = state["player"]
-        commands = state["commands"]
-        edges = state["edges"]
-        player_id = pos_to_id[player_pos]
-        player = game.get_player(player_id)
-        strat = strategies[player_id]
+        legal_bids = engine.get_legal_bids(bidder_id)
+        if not legal_bids:
+            break
 
-        if phase == "auction":
-            # ----- AUCTION step -----
-            # Build legal bids from SM commands
-            legal_bids = []
-            for cmd in commands:
-                bid = _AUCTION_CMD_TO_BID.get(cmd)
-                if bid:
-                    legal_bids.append(dict(bid))  # copy
+        player = game.get_player(bidder_id)
+        strat = strategies[bidder_id]
 
-            strat._hand = player.hand
-            chosen = strat.choose_bid(legal_bids)
+        strat._hand = player.hand
+        chosen = strat.choose_bid(legal_bids)
 
-            bid_label = chosen.get("label", chosen["bid_type"])
-            intent = getattr(strat, 'last_bid_intent', '')
-            if intent:
-                emit(f"  P{player.position} {player.name}: {bid_label}  [{intent}]")
-            else:
-                emit(f"  P{player.position} {player.name}: {bid_label}")
+        bid_label = chosen.get("label", chosen["bid_type"])
+        intent = getattr(strat, 'last_bid_intent', '')
+        if intent:
+            emit(f"  P{player.position} {player.name}: {bid_label}  [{intent}]")
+        else:
+            emit(f"  P{player.position} {player.name}: {bid_label}")
 
-            # Compact log: record bid intent
-            bt = chosen["bid_type"]
-            if bt == "pass":
-                compact_bid_label = "pass"
-            elif bt in ("sans", "betl"):
-                compact_bid_label = bt
-            else:
-                compact_bid_label = "0"
-            compact_bids.append((player.name, list(player.hand), compact_bid_label))
+        # Compact log: record bid intent
+        bt = chosen["bid_type"]
+        if bt == "pass":
+            compact_bid_label = "pass"
+        elif bt in ("sans", "betl"):
+            compact_bid_label = bt
+        else:
+            compact_bid_label = "0"
+        compact_bids.append((player.name, list(player.hand), compact_bid_label))
 
-            # Call engine to mutate game state
-            engine.place_bid(player_id, chosen["bid_type"], chosen.get("value", 0))
+        engine.place_bid(bidder_id, chosen["bid_type"], chosen.get("value", 0))
 
-            # Find the matching SM edge label for the chosen bid
-            # Map chosen bid back to the SM command label
-            chosen_bt = chosen["bid_type"]
-            chosen_val = chosen.get("value", 0)
-            sm_label = None
-            for cmd in commands:
-                mapped = _AUCTION_CMD_TO_BID.get(cmd)
-                if mapped and mapped["bid_type"] == chosen_bt and mapped["value"] == chosen_val:
-                    sm_label = cmd
-                    break
+    # ------------------------------------------------------------------
+    # EXCHANGING (regular game, declarer picks up talon)
+    # ------------------------------------------------------------------
+    rnd = game.current_round
+    if rnd.phase == RoundPhase.EXCHANGING:
+        declarer_id = rnd.declarer_id
+        declarer = game.get_player(declarer_id)
+        winner_bid = rnd.auction.get_winner_bid()
 
-            # Follow the edge
-            for edge in edges:
-                if edge["cmd_label"] == sm_label:
-                    sm_state_id = edge["next_state_id"]
-                    break
+        emit(f"")
+        emit(f"Auction winner: P{declarer.position} {declarer.name} "
+             f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+        emit(f"")
+        emit("--- Exchange ---")
+        emit(f"  Talon: {' '.join(card_str(c) for c in rnd.talon)}")
 
-            # Track in-hand status for later
-            if chosen_bt == "in_hand":
-                sm_is_in_hand = True
-            elif chosen_bt in ("betl", "sans") and rnd.phase != RoundPhase.EXCHANGING:
-                # betl/sans bid during auction = in-hand variant
-                sm_is_in_hand = True
+        strat_d = strategies[declarer_id]
+        strat_d._winner_bid = winner_bid
+        hand_ids = [c.id for c in declarer.hand]
+        talon_ids = [c.id for c in rnd.talon]
+        discard_ids = strat_d.choose_discard(hand_ids, talon_ids)
 
-        elif phase == "exchanging":
-            if commands == ["discard"]:
-                # ----- EXCHANGE: discard step -----
-                if not sm_exchange_done:
-                    # Get declarer from context
-                    ctx = state.get("context", [])
-                    sm_declarer_pos = ctx[0] if ctx else player_pos
-                    sm_contract_level = ctx[1] if ctx and len(ctx) > 1 else None
+        engine.complete_exchange(declarer_id, discard_ids)
 
-                    declarer_id = pos_to_id[sm_declarer_pos]
-                    declarer = game.get_player(declarer_id)
-                    winner_bid = rnd.auction.get_winner_bid()
+        emit(f"  {declarer.name} discards: {', '.join(discard_ids)}")
+        emit(f"  Hand after exchange: {hand_str(declarer.hand)}")
+        emit(f"")
 
-                    emit(f"")
-                    emit(f"Auction winner: P{declarer.position} {declarer.name} "
-                         f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
-                    emit(f"")
-                    sm_auction_winner_emitted = True
-                    emit("--- Exchange ---")
-                    emit(f"  Talon: {' '.join(card_str(c) for c in rnd.talon)}")
+        # Announce contract
+        legal_levels = engine.get_legal_contract_levels(declarer_id)
+        ctype, trump, level = strat_d.choose_contract(
+            legal_levels, declarer.hand, winner_bid)
+        engine.announce_contract(declarer_id, ctype, trump_suit=trump, level=level)
 
-                    strat_d = strategies[declarer_id]
-                    hand_ids = [c.id for c in declarer.hand]
-                    talon_ids = [c.id for c in rnd.talon]
-                    discard_ids = strat_d.choose_discard(hand_ids, talon_ids)
+        trump_display = f" ({trump})" if trump else ""
+        emit(f"Contract: {ctype}{trump_display} level {rnd.contract.bid_value}")
+        emit(f"")
 
-                    engine.complete_exchange(declarer_id, discard_ids)
+    # ------------------------------------------------------------------
+    # IN-HAND CONTRACT DECLARATION (playing phase, no contract yet)
+    # ------------------------------------------------------------------
+    elif rnd.phase == RoundPhase.PLAYING and rnd.contract is None:
+        declarer_id = rnd.declarer_id
+        declarer = game.get_player(declarer_id)
+        winner_bid = rnd.auction.get_winner_bid()
 
-                    emit(f"  {declarer.name} discards: {', '.join(discard_ids)}")
-                    emit(f"  Hand after exchange: {hand_str(declarer.hand)}")
-                    emit(f"")
-                    sm_exchange_done = True
+        emit(f"")
+        emit(f"Auction winner: P{declarer.position} {declarer.name} "
+             f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+        emit(f"")
+        emit("--- In-Hand Contract Declaration ---")
 
-                # Follow the single discard edge
-                sm_state_id = edges[0]["next_state_id"]
+        legal_levels = engine.get_legal_contract_levels(declarer_id)
+        strat_d = strategies[declarer_id]
+        ctype, trump, level = strat_d.choose_contract(
+            legal_levels, declarer.hand, winner_bid)
+        engine.announce_contract(declarer_id, ctype,
+                                 trump_suit=trump, level=level)
 
-            else:
-                # ----- EXCHANGE: contract announcement step -----
-                # SM commands are suit names + Betl + Sans — already
-                # filtered to only suits whose inherent level >= winning bid.
-                ctx = state.get("context", [])
-                sm_declarer_pos = ctx[0] if ctx else player_pos
-                declarer_id = pos_to_id[sm_declarer_pos]
-                declarer = game.get_player(declarer_id)
-                winner_bid = rnd.auction.get_winner_bid()
+        trump_display = f" ({trump})" if trump else ""
+        emit(f"Contract: {ctype}{trump_display} "
+             f"level {rnd.contract.bid_value} (in-hand)")
+        emit(f"")
 
-                # Build legal contract choices from SM commands
-                sm_legal_suits = set()  # lowercase suit names legal per SM
-                sm_has_betl = False
-                sm_has_sans = False
-                for cmd in commands:
-                    if cmd in ("Spades", "Diamonds", "Hearts", "Clubs"):
-                        sm_legal_suits.add(cmd.lower())
-                    elif cmd == "Betl":
-                        sm_has_betl = True
-                    elif cmd == "Sans":
-                        sm_has_sans = True
+    # Handle redeal (all passed)
+    if rnd.phase == RoundPhase.REDEAL:
+        emit("  => All passed — redeal (game over for this round)")
+        emit("")
+        emit("--- Result: REDEAL ---")
+        for name, hand, blabel in compact_bids:
+            compact.append(f"{name} bid: {compact_hand_fmt(hand)} -> {blabel}")
+        compact.append("")
+        for p in sorted(game.players, key=lambda p: p.position):
+            compact.append(f"{p.name} score: {p.score}")
+        return log, compact
 
-                # Let strategy choose contract
-                legal_levels = engine.get_legal_contract_levels(declarer_id)
-                strat_d = strategies[declarer_id]
-                ctype, trump, level = strat_d.choose_contract(
-                    legal_levels, declarer.hand, winner_bid)
+    # ------------------------------------------------------------------
+    # WHISTING
+    # ------------------------------------------------------------------
+    rnd = game.current_round
+    whist_emitted = False
+    while rnd.phase == RoundPhase.WHISTING:
+        defender_id = rnd.whist_current_id
+        if defender_id is None:
+            break
 
-                # Validate / fix suit choice against SM-legal suits
-                if ctype == "suit" and trump and trump.lower() not in sm_legal_suits:
-                    if sm_legal_suits:
-                        trump = sorted(sm_legal_suits)[0]
-                    elif sm_has_betl:
-                        ctype, trump, level = "betl", None, 6
-                    elif sm_has_sans:
-                        ctype, trump, level = "sans", None, 7
+        actions = engine.get_legal_whist_actions(defender_id)
+        if not actions:
+            break
 
-                engine.announce_contract(declarer_id, ctype, trump_suit=trump, level=level)
-
-                trump_display = f" ({trump})" if trump else ""
-                emit(f"Contract: {ctype}{trump_display} level {rnd.contract.bid_value}")
-                emit(f"")
-
-                # Map strategy's choice to SM edge label
-                if ctype == "betl":
-                    sm_chosen_label = "Betl"
-                elif ctype == "sans":
-                    sm_chosen_label = "Sans"
-                else:
-                    sm_chosen_label = trump.capitalize() if trump else commands[0]
-
-                for edge in edges:
-                    if edge["cmd_label"] == sm_chosen_label:
-                        sm_state_id = edge["next_state_id"]
-                        break
-
-        elif phase == "playing":
-            # ----- IN-HAND CONTRACT DECLARATION (SM "playing" phase) -----
-            # SM states 26, 27, 36: in-hand bid, suit not yet chosen
-            # Commands are ['Spades', 'Diamonds', 'Hearts', 'Clubs']
-            declarer_id = player_id  # the player in this SM state IS the declarer
-            declarer = game.get_player(declarer_id)
-            winner_bid = rnd.auction.get_winner_bid()
-
-            if not sm_auction_winner_emitted:
-                emit(f"")
-                emit(f"Auction winner: P{declarer.position} {declarer.name} "
-                     f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
-                emit(f"")
-                sm_auction_winner_emitted = True
-            emit("--- In-Hand Contract Declaration ---")
-
-            legal_levels = engine.get_legal_contract_levels(declarer_id)
-            strat_d = strategies[declarer_id]
-            ctype, trump, level = strat_d.choose_contract(
-                legal_levels, declarer.hand, winner_bid)
-            engine.announce_contract(declarer_id, ctype,
-                                     trump_suit=trump, level=level)
-
-            trump_display = f" ({trump})" if trump else ""
-            emit(f"Contract: {ctype}{trump_display} "
-                 f"level {rnd.contract.bid_value} (in-hand)")
-            emit(f"")
-
-            # Follow the SM edge for the chosen suit
-            if ctype == "betl":
-                sm_chosen_label = "Betl"
-            elif ctype == "sans":
-                sm_chosen_label = "Sans"
-            else:
-                sm_chosen_label = trump.capitalize() if trump else commands[0]
-
-            for edge in edges:
-                if edge["cmd_label"] == sm_chosen_label:
-                    sm_state_id = edge["next_state_id"]
-                    break
-
-        elif phase == "whisting":
-            # ----- WHISTING step -----
-            if not sm_whist_emitted:
-                # Emit auction winner if not already done
-                if not sm_auction_winner_emitted and rnd.declarer_id is not None:
+        if not whist_emitted:
+            # Emit auction winner if not already done for in-hand case
+            if rnd.declarer_id is not None and rnd.contract is not None:
+                if rnd.contract.is_in_hand:
                     declarer = game.get_player(rnd.declarer_id)
                     winner_bid = rnd.auction.get_winner_bid()
-
-                    emit(f"")
-                    emit(f"Auction winner: P{declarer.position} {declarer.name} "
-                         f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
-                    emit(f"")
-                    sm_auction_winner_emitted = True
-
-                    if rnd.contract is not None:
+                    if not any("Auction winner" in line for line in log):
+                        emit(f"")
+                        emit(f"Auction winner: P{declarer.position} {declarer.name} "
+                             f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+                        emit(f"")
                         trump_display = f" ({rnd.contract.trump_suit})" if rnd.contract.trump_suit else ""
                         emit(f"Contract: {rnd.contract.type.value}{trump_display} "
                              f"level {rnd.contract.bid_value} (in-hand)")
                         emit(f"")
+            emit("--- Whisting ---")
+            whist_emitted = True
 
-                emit("--- Whisting ---")
-                sm_whist_emitted = True
+        player = game.get_player(defender_id)
+        strat = strategies[defender_id]
 
-            # Build legal actions from SM commands
-            legal_actions = []
-            for cmd in commands:
-                act = _WHIST_CMD_TO_ACTION.get(cmd)
-                if act:
-                    legal_actions.append(dict(act))  # copy
+        strat._hand = player.hand
+        strat._contract_type = rnd.contract.type.value if rnd.contract else None
+        strat._trump_suit = rnd.contract.trump_suit if rnd.contract else None
+        action = strat.choose_whist_action(actions)
 
-            strat._hand = player.hand
-            strat._contract_type = rnd.contract.type.value if rnd.contract else None
-            strat._trump_suit = rnd.contract.trump_suit if rnd.contract else None
-            action = strat.choose_whist_action(legal_actions)
+        emit(f"  P{player.position} {player.name}: {action}")
 
-            emit(f"  P{player.position} {player.name}: {action}")
+        # Compact log: record whisting decision
+        contract = rnd.contract
+        if contract.type == ContractType.SANS:
+            c_label = "sans"
+        elif contract.type == ContractType.BETL:
+            c_label = "betl"
+        else:
+            c_label = str(compact_suit_index(contract.trump_suit, player.hand))
+        compact_action = "call" if action not in ("pass",) else "pass"
+        compact_whists.append((player.name, list(player.hand), c_label, compact_action))
 
-            # Compact log: record whisting decision
-            contract = rnd.contract
-            if contract.type == ContractType.SANS:
-                c_label = "sans"
-            elif contract.type == ContractType.BETL:
-                c_label = "betl"
-            else:
-                c_label = str(compact_suit_index(contract.trump_suit, player.hand))
-            compact_action = "call" if action not in ("pass",) else "pass"
-            compact_whists.append((player.name, list(player.hand), c_label, compact_action))
+        # Call engine to mutate game state
+        if rnd.whist_declaring_done:
+            engine.declare_counter_action(defender_id, action)
+        else:
+            engine.declare_whist(defender_id, action)
 
-            # Call engine to mutate game state
-            if rnd.whist_declaring_done:
-                engine.declare_counter_action(player_id, action)
-            else:
-                engine.declare_whist(player_id, action)
-
-            # Follow the matching SM edge
-            sm_chosen_label = None
-            for cmd in commands:
-                act = _WHIST_CMD_TO_ACTION.get(cmd)
-                if act and act["action"] == action:
-                    sm_chosen_label = cmd
-                    break
-
-            for edge in edges:
-                if edge["cmd_label"] == sm_chosen_label:
-                    sm_state_id = edge["next_state_id"]
-                    break
-
-    # ------------------------------------------------------------------
-    # Post-SM: handle terminal states
-    # ------------------------------------------------------------------
-    if sm_state_id == -1:
-        # All passed (REDEAL) or all defenders passed (auto-win → SCORING)
-        if rnd.phase == RoundPhase.REDEAL:
-            emit("  => All passed — redeal (game over for this round)")
-            emit("")
-            emit("--- Result: REDEAL ---")
-            for name, hand, blabel in compact_bids:
-                compact.append(f"{name} bid: {compact_hand_fmt(hand)} -> {blabel}")
-            compact.append("")
-            for p in sorted(game.players, key=lambda p: p.position):
-                compact.append(f"{p.name} score: {p.score}")
-            return log, compact
-        elif rnd.phase == RoundPhase.SCORING:
-            emit("  => No followers — declarer wins automatically")
-            emit(f"")
-
-    if sm_state_id == 0:
-        # SM reached game_start → proceed to PLAYING
-        if rnd.phase == RoundPhase.SCORING:
+    # Handle no followers
+    if rnd.phase == RoundPhase.SCORING:
+        if rnd.contract and not rnd.whist_followers:
             emit("  => No followers — declarer wins automatically")
             emit(f"")
 
@@ -4005,21 +4359,44 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
 # ---------------------------------------------------------------------------
 
 def main():
-    seed = random.randint(1, 999999)
-    if len(sys.argv) > 1:
-        seed = int(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("seed", nargs="?", type=int, default=None)
+    parser.add_argument("--players", type=str, default=None,
+                        help="Comma-separated player names: alice,bob,carol,neural (pick 3)")
+    args = parser.parse_args()
 
-    # Create strategies — each player gets a unique seed for weights & moves
-    alice = PlayerAlice(seed=seed)
-    bob = PlayerBob(seed=seed + 1)
-    carol = PlayerCarol(seed=seed + 2)
+    seed = args.seed if args.seed is not None else random.randint(1, 999999)
 
-    strategies = {1: alice, 2: bob, 3: carol}
+    # Build player pool
+    player_makers = {
+        "alice": lambda s: PlayerAlice(seed=s),
+        "bob": lambda s: PlayerBob(seed=s + 1),
+        "carol": lambda s: PlayerCarol(seed=s + 2),
+        "neural": lambda s: NeuralPlayer("Neural", seed=s + 3),
+    }
+
+    if args.players:
+        names = [n.strip().lower() for n in args.players.split(",")]
+    else:
+        names = ["alice", "bob", "carol"]
+
+    if len(names) != 3:
+        print(f"Error: need exactly 3 players, got {len(names)}: {names}")
+        sys.exit(1)
+    for n in names:
+        if n not in player_makers:
+            print(f"Error: unknown player '{n}'. Choose from: {list(player_makers.keys())}")
+            sys.exit(1)
+
+    players = [player_makers[n](seed) for n in names]
+    strategies = {i + 1: p for i, p in enumerate(players)}
 
     # Show weights
     print(f"Seed: {seed}")
-    for name, s in [("Alice", alice), ("Bob", bob), ("Carol", carol)]:
-        print(f"  {name} weights: {s.weights_str()}")
+    for p in players:
+        w = p.weights_str() if hasattr(p, 'weights_str') else "(neural)"
+        print(f"  {p.name} weights: {w}")
     print()
 
     log_lines, compact_lines = play_game(strategies, seed=seed)
