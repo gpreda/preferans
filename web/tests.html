@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preferans — Simulations</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar label { color: #aaa; font-size: 0.875rem; }
+
+    select, input[type="text"] {
+      background: #2a2a45;
+      border: 1px solid #444;
+      color: #e0e0e0;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.875rem;
+    }
+
+    select:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: #7b8cde;
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #4a6fa5; color: #fff; }
+    .btn-danger  { background: #c0392b; color: #fff; }
+    .btn-save    { background: #27ae60; color: #fff; }
+    .btn-cancel  { background: #555; color: #fff; }
+
+    .status {
+      font-size: 0.8rem;
+      color: #888;
+      margin-left: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead th {
+      background: #252540;
+      color: #aaa;
+      text-align: left;
+      padding: 10px 12px;
+      font-weight: 500;
+      border-bottom: 1px solid #333;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr { border-bottom: 1px solid #2a2a40; }
+    tbody tr:hover { background: #22224a; }
+
+    tbody tr.row-commands { background: #1e2a1e; }
+    tbody tr.row-commands:hover { background: #243024; }
+
+    td {
+      padding: 8px 12px;
+      vertical-align: top;
+      color: #ddd;
+    }
+
+    td.col-id    { color: #666; width: 60px; }
+    td.col-game  { color: #7b8cde; font-weight: 500; width: 100px; }
+    td.col-type  { width: 90px; }
+    td.col-type .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .badge-commands  { background: #2d5a2d; color: #7ecb7e; }
+    .badge-player    { background: #2d3a5a; color: #7aaede; }
+    .badge-executed  { background: #3a2d2d; color: #de8a7a; }
+
+    td.col-content { max-width: 600px; word-break: break-word; }
+
+    .content-view { display: flex; align-items: flex-start; gap: 8px; }
+    .content-text { flex: 1; }
+    .content-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .edit-area {
+      width: 100%;
+      background: #1a1a2e;
+      border: 1px solid #7b8cde;
+      color: #e0e0e0;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 0.875rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 40px;
+    }
+
+    .edit-controls { display: flex; gap: 6px; margin-top: 6px; }
+
+    td.col-verified { width: 80px; text-align: center; }
+
+    .btn-verified {
+      padding: 4px 10px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      background: #2a2a45;
+      color: #666;
+    }
+    .btn-verified.is-verified {
+      background: #1a3a1a;
+      border-color: #27ae60;
+      color: #27ae60;
+    }
+    .btn-verified:hover { opacity: 0.85; }
+
+    td.col-actions { width: 60px; text-align: right; }
+
+    .loading { color: #888; padding: 20px; text-align: center; }
+    .error   { color: #e74c3c; padding: 20px; text-align: center; }
+    .empty   { color: #666; padding: 20px; text-align: center; }
+
+    .table-wrap {
+      overflow-x: auto;
+      max-height: calc(100vh - 160px);
+      border: 1px solid #333;
+      border-radius: 8px;
+    }
+
+    tr.step-sep td {
+      padding: 0;
+      height: 2px;
+      background: #3a3a5a;
+      border: none;
+    }
+
+    tr.player-p1, tr.player-p1.row-commands { background: rgba(100, 140, 220, 0.09); }
+    tr.player-p1:hover, tr.player-p1.row-commands:hover { background: rgba(100, 140, 220, 0.18); }
+
+    tr.player-p2, tr.player-p2.row-commands { background: rgba(80, 200, 110, 0.09); }
+    tr.player-p2:hover, tr.player-p2.row-commands:hover { background: rgba(80, 200, 110, 0.18); }
+
+    tr.player-p3, tr.player-p3.row-commands { background: rgba(220, 150, 60, 0.09); }
+    tr.player-p3:hover, tr.player-p3.row-commands:hover { background: rgba(220, 150, 60, 0.18); }
+  </style>
+</head>
+<body>
+  <h1>Simulation Steps</h1>
+
+  <div class="toolbar">
+    <label>Game:</label>
+    <select id="gameFilter">
+      <option value="">All games</option>
+    </select>
+    <span class="status" id="statusBar">Loading…</span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="stepsTable">
+      <thead>
+        <tr>
+          <th class="col-id">ID</th>
+          <th class="col-game">Game</th>
+          <th class="col-type">Type</th>
+          <th class="col-content">Content</th>
+          <th class="col-verified">Verified</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="stepsBody">
+        <tr><td colspan="6" class="loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const API = '/api/sim';
+    let allSteps = [];
+    let editingId = null;
+
+    // ── fetch & render ──────────────────────────────────────────────────────
+
+    async function load(gameId = '') {
+      setStatus('Loading…');
+      try {
+        const url = gameId ? `${API}/steps?game_id=${encodeURIComponent(gameId)}` : `${API}/steps`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.error) {
+          showError(data.error);
+          return;
+        }
+
+        // Populate game filter on first load
+        if (document.getElementById('gameFilter').options.length === 1 && data.game_ids) {
+          const sel = document.getElementById('gameFilter');
+          data.game_ids.forEach(gid => {
+            const opt = document.createElement('option');
+            opt.value = gid;
+            opt.textContent = gid;
+            sel.appendChild(opt);
+          });
+        }
+
+        allSteps = data.steps || [];
+        renderTable(allSteps);
+        setStatus(`${allSteps.length} rows`);
+      } catch (e) {
+        showError('Failed to load: ' + e.message);
+      }
+    }
+
+    function renderTable(steps) {
+      const tbody = document.getElementById('stepsBody');
+      if (!steps.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No data. Run simulate_log.py to generate simulations.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      let currentPlayerClass = '';
+      steps.forEach(step => {
+        if (step.type === 'player') {
+          currentPlayerClass = 'player-' + step.content.toLowerCase();
+          const sep = document.createElement('tr');
+          sep.className = 'step-sep';
+          sep.innerHTML = '<td colspan="6"></td>';
+          tbody.appendChild(sep);
+        }
+        const tr = document.createElement('tr');
+        if (step.type === 'commands') tr.classList.add('row-commands');
+        if (currentPlayerClass) tr.classList.add(currentPlayerClass);
+        tr.id = `row-${step.id}`;
+        tr.innerHTML = buildRow(step);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function buildRow(step) {
+      const badgeClass = `badge-${step.type}`;
+      const isEditable = step.type === 'commands' || step.type === 'player';
+      const escaped = escHtml(step.content);
+      const verifiedClass = step.verified ? 'is-verified' : '';
+      const verifiedLabel = step.verified ? '✓ yes' : 'no';
+      return `
+        <td class="col-id">${step.id}</td>
+        <td class="col-game">${escHtml(step.game_id)}</td>
+        <td class="col-type"><span class="badge ${badgeClass}">${escHtml(step.type)}</span></td>
+        <td class="col-content" id="content-${step.id}">
+          <div class="content-view">
+            <span class="content-text" id="text-${step.id}">${escaped}</span>
+            ${isEditable ? `<div class="content-actions"><button class="btn btn-primary" onclick="startEdit(${step.id})">Edit</button></div>` : ''}
+          </div>
+        </td>
+        <td class="col-verified">
+          <button class="btn-verified ${verifiedClass}" id="ver-${step.id}" onclick="toggleVerified(${step.id})">${verifiedLabel}</button>
+        </td>
+        <td class="col-actions">
+          <button class="btn btn-danger" onclick="deleteRow(${step.id})">Del</button>
+        </td>
+      `;
+    }
+
+    // ── verified toggle ──────────────────────────────────────────────────────
+
+    async function toggleVerified(id) {
+      const step = allSteps.find(s => s.id === id);
+      if (!step) return;
+      const newVal = !step.verified;
+      try {
+        const res = await fetch(`${API}/steps/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ verified: newVal }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setStatus('Verify toggle failed: ' + (data.error || res.status));
+          return;
+        }
+        step.verified = newVal;
+        const btn = document.getElementById(`ver-${id}`);
+        if (btn) {
+          btn.classList.toggle('is-verified', newVal);
+          btn.textContent = newVal ? '✓ yes' : 'no';
+        }
+      } catch (e) {
+        setStatus('Verify error: ' + e.message);
+      }
+    }
+
+    // ── inline edit ─────────────────────────────────────────────────────────
+
+    function startEdit(id) {
+      if (editingId !== null) cancelEdit(editingId);
+      editingId = id;
+
+      const step = allSteps.find(s => s.id === id);
+      if (!step) return;
+
+      const cell = document.getElementById(`content-${id}`);
+      cell.innerHTML = `
+        <textarea class="edit-area" id="edit-${id}">${escHtml(step.content)}</textarea>
+        <div class="edit-controls">
+          <button class="btn btn-save" onclick="saveEdit(${id})">Save</button>
+          <button class="btn btn-cancel" onclick="cancelEdit(${id})">Cancel</button>
+        </div>
+      `;
+      const ta = document.getElementById(`edit-${id}`);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    }
+
+    function cancelEdit(id) {
+      editingId = null;
+      const step = allSteps.find(s => s.id === id);
+      if (!step) return;
+      const cell = document.getElementById(`content-${id}`);
+      const escaped = escHtml(step.content);
+      cell.innerHTML = `
+        <div class="content-view">
+          <span class="content-text" id="text-${id}">${escaped}</span>
+          <div class="content-actions"><button class="btn btn-primary" onclick="startEdit(${id})">Edit</button></div>
+        </div>
+      `;
+    }
+
+    async function saveEdit(id) {
+      const ta = document.getElementById(`edit-${id}`);
+      if (!ta) return;
+      const newContent = ta.value;
+
+      setStatus('Saving…');
+      try {
+        const res = await fetch(`${API}/steps/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newContent }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setStatus('Save failed: ' + (data.error || res.status));
+          return;
+        }
+
+        // Update local data
+        const step = allSteps.find(s => s.id === id);
+        if (step) step.content = newContent;
+        editingId = null;
+
+        const cell = document.getElementById(`content-${id}`);
+        const escaped = escHtml(newContent);
+        cell.innerHTML = `
+          <div class="content-view">
+            <span class="content-text" id="text-${id}">${escaped}</span>
+            <div class="content-actions"><button class="btn btn-primary" onclick="startEdit(${id})">Edit</button></div>
+          </div>
+        `;
+        setStatus(`${allSteps.length} rows — saved`);
+      } catch (e) {
+        setStatus('Save error: ' + e.message);
+      }
+    }
+
+    // ── delete ───────────────────────────────────────────────────────────────
+
+    async function deleteRow(id) {
+      if (!confirm(`Delete row #${id}?`)) return;
+      setStatus('Deleting…');
+      try {
+        const res = await fetch(`${API}/steps/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setStatus('Delete failed: ' + (data.error || res.status));
+          return;
+        }
+        allSteps = allSteps.filter(s => s.id !== id);
+        const tr = document.getElementById(`row-${id}`);
+        if (tr) tr.remove();
+        setStatus(`${allSteps.length} rows`);
+      } catch (e) {
+        setStatus('Delete error: ' + e.message);
+      }
+    }
+
+    // ── utils ────────────────────────────────────────────────────────────────
+
+    function setStatus(msg) {
+      document.getElementById('statusBar').textContent = msg;
+    }
+
+    function showError(msg) {
+      document.getElementById('stepsBody').innerHTML =
+        `<tr><td colspan="6" class="error">${escHtml(msg)}</td></tr>`;
+      setStatus('Error');
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── init ─────────────────────────────────────────────────────────────────
+
+    document.getElementById('gameFilter').addEventListener('change', e => {
+      load(e.target.value);
+    });
+
+    load();
+  </script>
+</body>
+</html>

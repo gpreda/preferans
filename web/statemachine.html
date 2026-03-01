@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bidding State Machine</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    body { touch-action: none; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      background: #252540;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: #fff; }
+    .legend { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: #aaa; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .sep { width: 1px; height: 20px; background: #444; }
+    #status { color: #666; font-size: 0.8rem; }
+    .btn {
+      padding: 5px 13px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: #4a6fa5;
+      color: #fff;
+      margin-left: auto;
+    }
+    .btn:hover { opacity: 0.85; }
+    #canvas-wrap {
+      flex: 1;
+      overflow: hidden;
+      cursor: grab;
+      user-select: none;
+    }
+    #canvas-wrap.panning  { cursor: grabbing; }
+    #canvas-wrap.moving   { cursor: move; }
+    #graph { width: 100%; height: 100%; display: block; }
+    .node-g { cursor: move; }
+    .node-g:hover rect { filter: brightness(1.2); }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>Bidding State Machine</h1>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#1e2a3a;border:1.5px solid #4a8cde"></div>P1
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#1e3a25;border:1.5px solid #4abe6c"></div>P2
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#3a2a1e;border:1.5px solid #de8c4a"></div>P3
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#3a1a1a;border:1.5px solid #c0392b"></div>END
+      </div>
+      <div class="sep"></div>
+      <div class="legend-item">
+        <svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#555" stroke-width="1.5" marker-end="url(#arrowFwd-lg)"/>
+          <defs><marker id="arrowFwd-lg" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L6,2.5 L0,5 Z" fill="#555"/></marker></defs>
+        </svg>forward
+      </div>
+      <div class="legend-item">
+        <svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#7a5510" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowBwd-lg)"/>
+          <defs><marker id="arrowBwd-lg" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><path d="M0,0 L6,2.5 L0,5 Z" fill="#7a5510"/></marker></defs>
+        </svg>back
+      </div>
+    </div>
+    <span id="status">Loading…</span>
+    <button class="btn" onclick="fitView()">Fit</button>
+  </div>
+  <div id="canvas-wrap">
+    <svg id="graph">
+      <defs>
+        <marker id="arrowFwd" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#666"/>
+        </marker>
+        <marker id="arrowBwd" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#7a5510"/>
+        </marker>
+      </defs>
+      <g id="root">
+        <g id="edge-layer"></g>
+        <g id="node-layer"></g>
+      </g>
+    </svg>
+  </div>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+const COLORS = {
+  1: { stroke: '#4a8cde', fill: '#1e2a3a', text: '#7ab4f0' },
+  2: { stroke: '#4abe6c', fill: '#1e3a25', text: '#7adf9a' },
+  3: { stroke: '#de8c4a', fill: '#3a2a1e', text: '#f0b47a' },
+};
+const END_C       = { stroke: '#c0392b', fill: '#3a1a1a', text: '#e74c3c' };
+const NODE_W      = 170;
+const LINE_H      = 16;
+const HEADER_H    = 28;
+const NODE_PAD    = 8;
+const H_GAP       = 70;
+const V_GAP       = 80;
+const BACK_MARGIN = 80;
+
+function nodeH(s) { return HEADER_H + (s?.commands?.length ?? 0) * LINE_H + NODE_PAD; }
+function el(tag)  { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+// ── Module-level graph state (set by render, used by drawEdges + drag) ────────
+let stateMap   = new Map();   // id → state
+let pos        = new Map();   // id → {x, y}
+let depthMap   = new Map();   // id → depth
+let mergedEdges = [];         // [{src, dst, labels, isBack}]
+let nodeEls    = new Map();   // id → SVGGElement
+let backX      = 0;
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const res = await fetch('/api/statemachine');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const states = await res.json();
+    if (states.error) throw new Error(states.error);
+    render(states);
+    setStatus(`${states.length} states — drag nodes to rearrange`);
+  } catch(e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+// ── Render (initial layout + build DOM) ───────────────────────────────────────
+function render(states) {
+  stateMap = new Map(states.map(s => [s.state_id, s]));
+  stateMap.set(0, { state_id: 0, player: null, commands: [], edges: [] });
+
+  // BFS depth
+  depthMap = new Map([[1, 0]]);
+  const q = [1];
+  for (let i = 0; i < q.length; i++) {
+    for (const e of (stateMap.get(q[i])?.edges ?? [])) {
+      if (!depthMap.has(e.next_state_id)) {
+        depthMap.set(e.next_state_id, depthMap.get(q[i]) + 1);
+        q.push(e.next_state_id);
+      }
+    }
+  }
+  depthMap.set(0, Math.max(...depthMap.values()) + 1);
+
+  // Layers
+  const layers = [];
+  for (const [id, d] of depthMap) {
+    while (layers.length <= d) layers.push([]);
+    layers[d].push(id);
+  }
+  layers.forEach(l => l.sort((a, b) => a - b));
+
+  // Cumulative Y
+  const layerY = [0];
+  for (let d = 0; d < layers.length - 1; d++) {
+    const maxH = Math.max(...layers[d].map(id => nodeH(stateMap.get(id))));
+    layerY.push(layerY[d] + maxH + V_GAP);
+  }
+
+  // Initial positions
+  pos = new Map();
+  layers.forEach((layer, d) => {
+    const total = layer.length * NODE_W + (layer.length - 1) * H_GAP;
+    layer.forEach((id, i) => pos.set(id, {
+      x: i * (NODE_W + H_GAP) - total / 2,
+      y: layerY[d],
+    }));
+  });
+
+  // Back-edge routing X
+  backX = Math.max(...[...pos.values()].map(p => p.x + NODE_W)) + BACK_MARGIN;
+
+  // Merge parallel edges
+  const edgeMap = new Map();
+  for (const s of stateMap.values()) {
+    for (const e of (s.edges ?? [])) {
+      const key = `${s.state_id}:${e.next_state_id}`;
+      if (!edgeMap.has(key)) edgeMap.set(key, { src: s.state_id, dst: e.next_state_id, labels: [] });
+      edgeMap.get(key).labels.push(e.cmd_label);
+    }
+  }
+  mergedEdges = [...edgeMap.values()].map(ed => ({
+    ...ed,
+    isBack: (depthMap.get(ed.dst) ?? 0) <= (depthMap.get(ed.src) ?? 0),
+  }));
+
+  // Build node DOM elements
+  nodeEls = new Map();
+  const nodeLayer = document.getElementById('node-layer');
+  nodeLayer.innerHTML = '';
+
+  for (const [id, s] of stateMap) {
+    const p = pos.get(id);
+    if (!p) continue;
+    const h = nodeH(s);
+    const c = id === 0 ? END_C : (COLORS[s.player] ?? END_C);
+
+    const g = el('g');
+    g.setAttribute('class', 'node-g');
+    g.setAttribute('transform', `translate(${p.x},${p.y})`);
+    g.dataset.id = id;
+
+    const rect = el('rect');
+    rect.setAttribute('width', NODE_W);
+    rect.setAttribute('height', h);
+    rect.setAttribute('rx', '6');
+    rect.setAttribute('fill', c.fill);
+    rect.setAttribute('stroke', c.stroke);
+    rect.setAttribute('stroke-width', '1.5');
+    g.appendChild(rect);
+
+    const sep = el('line');
+    sep.setAttribute('x1', '1');   sep.setAttribute('y1', HEADER_H);
+    sep.setAttribute('x2', NODE_W - 1); sep.setAttribute('y2', HEADER_H);
+    sep.setAttribute('stroke', c.stroke);
+    sep.setAttribute('stroke-width', '1');
+    sep.setAttribute('opacity', '0.3');
+    g.appendChild(sep);
+
+    const title = el('text');
+    title.setAttribute('x', NODE_W / 2);
+    title.setAttribute('y', HEADER_H / 2 + 1);
+    title.setAttribute('text-anchor', 'middle');
+    title.setAttribute('dominant-baseline', 'middle');
+    title.setAttribute('font-size', '11');
+    title.setAttribute('font-weight', '600');
+    title.setAttribute('fill', c.text);
+    title.setAttribute('font-family', 'inherit');
+    title.textContent = id === 0 ? '⊗  END' : `S${id}  ·  P${s.player}`;
+    g.appendChild(title);
+
+    (s.commands ?? []).forEach((cmd, ci) => {
+      const t = el('text');
+      t.setAttribute('x', '10');
+      t.setAttribute('y', HEADER_H + NODE_PAD / 2 + (ci + 0.5) * LINE_H + 2);
+      t.setAttribute('font-size', '10');
+      t.setAttribute('fill', '#bbb');
+      t.setAttribute('font-family', "'SF Mono','Consolas',monospace");
+      t.textContent = cmd;
+      g.appendChild(t);
+    });
+
+    // Node drag
+    g.addEventListener('mousedown', onNodeMouseDown);
+
+    nodeLayer.appendChild(g);
+    nodeEls.set(id, g);
+  }
+
+  drawEdges();
+  requestAnimationFrame(fitView);
+}
+
+// ── Edge drawing (called every time a node moves) ─────────────────────────────
+function drawEdges() {
+  const layer = document.getElementById('edge-layer');
+  layer.innerHTML = '';
+
+  for (const { src, dst, labels, isBack } of mergedEdges) {
+    const sp = pos.get(src), dp = pos.get(dst);
+    if (!sp || !dp) continue;
+
+    const srcH = nodeH(stateMap.get(src));
+    const dstH = nodeH(stateMap.get(dst));
+
+    let pathD, labelX, labelY, labelAnchor = 'middle';
+
+    if (!isBack) {
+      const x1 = sp.x + NODE_W / 2, y1 = sp.y + srcH;
+      const x2 = dp.x + NODE_W / 2, y2 = dp.y;
+      const cy = (y1 + y2) / 2;
+      pathD      = `M ${x1},${y1} C ${x1},${cy} ${x2},${cy} ${x2},${y2}`;
+      labelX     = (x1 + x2) / 2;
+      labelY     = cy;
+    } else {
+      const x1 = sp.x + NODE_W, y1 = sp.y + srcH / 2;
+      const x2 = dp.x + NODE_W, y2 = dp.y + dstH / 2;
+      pathD      = `M ${x1},${y1} C ${backX},${y1} ${backX},${y2} ${x2},${y2}`;
+      labelX     = backX + 5;
+      labelY     = (y1 + y2) / 2;
+      labelAnchor = 'start';
+    }
+
+    const path = el('path');
+    path.setAttribute('d', pathD);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', isBack ? '#7a5510' : '#555');
+    path.setAttribute('stroke-width', '1.5');
+    if (isBack) path.setAttribute('stroke-dasharray', '4,3');
+    path.setAttribute('marker-end', `url(#${isBack ? 'arrowBwd' : 'arrowFwd'})`);
+    layer.appendChild(path);
+
+    const label = labels.join(' / ');
+    const approxW = label.length * 5.5 + 6;
+    const lbg = el('rect');
+    lbg.setAttribute('x', labelAnchor === 'middle' ? labelX - approxW / 2 : labelX - 2);
+    lbg.setAttribute('y', labelY - 8);
+    lbg.setAttribute('width', approxW);
+    lbg.setAttribute('height', 13);
+    lbg.setAttribute('rx', '2');
+    lbg.setAttribute('fill', '#1a1a2e');
+    lbg.setAttribute('opacity', '0.75');
+    layer.appendChild(lbg);
+
+    const lbl = el('text');
+    lbl.setAttribute('x', labelX);
+    lbl.setAttribute('y', labelY);
+    lbl.setAttribute('text-anchor', labelAnchor);
+    lbl.setAttribute('dominant-baseline', 'middle');
+    lbl.setAttribute('font-size', '9');
+    lbl.setAttribute('fill', isBack ? '#a07830' : '#888');
+    lbl.setAttribute('font-family', 'inherit');
+    lbl.textContent = label;
+    layer.appendChild(lbl);
+  }
+}
+
+// ── Node drag ─────────────────────────────────────────────────────────────────
+let draggingNode = null;  // id of node being dragged
+let nodeDragLast = null;  // {clientX, clientY}
+
+function onNodeMouseDown(e) {
+  if (e.button !== 0) return;
+  e.stopPropagation();  // prevent canvas pan
+  draggingNode = parseInt(this.dataset.id);
+  nodeDragLast = { x: e.clientX, y: e.clientY };
+  wrap.classList.add('moving');
+}
+
+// ── Canvas pan ────────────────────────────────────────────────────────────────
+let tx = 0, ty = 0, sc = 1;
+let panning = false, panSX, panSY, txS, tyS;
+
+const wrap = document.getElementById('canvas-wrap');
+
+wrap.addEventListener('mousedown', e => {
+  if (e.button !== 0 || draggingNode !== null) return;
+  panning = true;
+  panSX = e.clientX; panSY = e.clientY; txS = tx; tyS = ty;
+  wrap.classList.add('panning');
+});
+
+// ── Shared mousemove ──────────────────────────────────────────────────────────
+window.addEventListener('mousemove', e => {
+  if (draggingNode !== null) {
+    // Translate screen delta → SVG delta (account for current zoom)
+    const dx = (e.clientX - nodeDragLast.x) / sc;
+    const dy = (e.clientY - nodeDragLast.y) / sc;
+    nodeDragLast = { x: e.clientX, y: e.clientY };
+
+    const p = pos.get(draggingNode);
+    if (p) {
+      p.x += dx;
+      p.y += dy;
+      const gEl = nodeEls.get(draggingNode);
+      if (gEl) gEl.setAttribute('transform', `translate(${p.x},${p.y})`);
+      drawEdges();
+    }
+  } else if (panning) {
+    tx = txS + (e.clientX - panSX);
+    ty = tyS + (e.clientY - panSY);
+    applyT();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  draggingNode = null;
+  nodeDragLast = null;
+  panning = false;
+  wrap.classList.remove('panning');
+  wrap.classList.remove('moving');
+});
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  const r = wrap.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  tx = mx + (tx - mx) * f;
+  ty = my + (ty - my) * f;
+  sc *= f;
+  applyT();
+}, { passive: false });
+
+function applyT() {
+  document.getElementById('root').setAttribute('transform', `translate(${tx},${ty}) scale(${sc})`);
+}
+
+function fitView() {
+  const svg = document.getElementById('graph');
+  const g   = document.getElementById('root');
+  g.setAttribute('transform', '');
+  const bb = g.getBBox();
+  if (!bb.width || !bb.height) return;
+  const W = svg.clientWidth  || 900;
+  const H = svg.clientHeight || 600;
+  const pad = 48;
+  sc = Math.min((W - pad * 2) / bb.width, (H - pad * 2) / bb.height);
+  tx = (W - bb.width  * sc) / 2 - bb.x * sc;
+  ty = (H - bb.height * sc) / 2 - bb.y * sc;
+  applyT();
+}
+
+// ── Touch pan & pinch-zoom ──────────────────────────────────────────────────
+let touchState = null;  // { type: 'pan'|'pinch', ... }
+
+function touchDist(t) {
+  const dx = t[1].clientX - t[0].clientX;
+  const dy = t[1].clientY - t[0].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function touchMid(t) {
+  return {
+    x: (t[0].clientX + t[1].clientX) / 2,
+    y: (t[0].clientY + t[1].clientY) / 2,
+  };
+}
+
+wrap.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches;
+  if (t.length === 2) {
+    touchState = { type: 'pinch', dist: touchDist(t), mid: touchMid(t), txS: tx, tyS: ty, scS: sc };
+  } else if (t.length === 1) {
+    touchState = { type: 'pan', x: t[0].clientX, y: t[0].clientY, txS: tx, tyS: ty };
+  }
+}, { passive: false });
+
+wrap.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches;
+  if (!touchState) return;
+
+  if (touchState.type === 'pinch' && t.length === 2) {
+    const newDist = touchDist(t);
+    const newMid = touchMid(t);
+    const f = newDist / touchState.dist;
+    const newSc = touchState.scS * f;
+    const r = wrap.getBoundingClientRect();
+    const mx = touchState.mid.x - r.left;
+    const my = touchState.mid.y - r.top;
+    sc = newSc;
+    tx = newMid.x - r.left + (touchState.txS - mx) * f;
+    ty = newMid.y - r.top  + (touchState.tyS - my) * f;
+    applyT();
+  } else if (touchState.type === 'pan' && t.length === 1) {
+    tx = touchState.txS + (t[0].clientX - touchState.x);
+    ty = touchState.tyS + (t[0].clientY - touchState.y);
+    applyT();
+  }
+}, { passive: false });
+
+wrap.addEventListener('touchend', e => {
+  e.preventDefault();
+  const t = e.touches;
+  if (t.length === 1) {
+    touchState = { type: 'pan', x: t[0].clientX, y: t[0].clientY, txS: tx, tyS: ty };
+  } else {
+    touchState = null;
+  }
+}, { passive: false });
+
+function setStatus(m) { document.getElementById('status').textContent = m; }
+
+load();
+</script>
+</body>
+</html>

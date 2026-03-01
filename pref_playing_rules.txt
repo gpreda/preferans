@@ -1,0 +1,469 @@
+PREFERANS - COMPLETE PLAYING RULES
+====================================
+Consolidated from Serbian sources: preferansklub.com, preferans.neocities.org,
+preferans.org. Translated and structured in English.
+
+
+========================================================================
+1. OVERVIEW
+========================================================================
+
+Preferans (also spelled Preference) is a Central/Eastern European trick-taking
+card game, similar to Bridge. Strategy and tactics often have a greater effect
+on the final result than the quality of the cards dealt. It is played by three
+players using a 32-card deck, with a bidding (auction) phase followed by trick
+play. Two players partner against the third (the declarer) each round.
+
+
+========================================================================
+2. PLAYERS
+========================================================================
+
+- Standard game: 3 players.
+- With 4 players: one player sits out each round in rotation (the dealer
+  does not play that round).
+- Seating order is counter-clockwise.
+
+
+========================================================================
+3. THE DECK
+========================================================================
+
+- 32 cards: four suits (Spades, Diamonds, Hearts, Clubs), each containing
+  7, 8, 9, 10, Jack (J), Queen (Q), King (K), Ace (A).
+- Card ranking (low to high): 7, 8, 9, 10, J, Q, K, A.
+- Ace is the highest card.
+- Suit ranking (low to high): Spades, Diamonds, Hearts, Clubs.
+
+
+========================================================================
+4. DETERMINING SEATING AND DEALER
+========================================================================
+
+- Before the match begins, each player draws a card.
+- The player who draws the lowest card deals first.
+- Seating order proceeds counter-clockwise from lowest to highest drawn card.
+- In a 4-player game, the dealer sits out the first round.
+
+
+========================================================================
+5. SHUFFLING AND CUTTING
+========================================================================
+
+- Thorough shuffling is important because cards from the previous hand tend
+  to be grouped by suit.
+- The player to the dealer's LEFT cuts the deck. Cutting is optional but
+  strongly recommended.
+
+
+========================================================================
+6. DEALING
+========================================================================
+
+- Dealing proceeds to the RIGHT (counter-clockwise).
+- Deal pattern: 5 cards to each player, then 2 cards face-down to the
+  center of the table (the TALON/KUP), then 5 more cards to each player.
+- Each player receives 10 cards; 2 cards go to the talon.
+- The player to the dealer's right receives cards first.
+
+
+========================================================================
+7. GAME TYPES AND BID VALUES
+========================================================================
+
+There are 6 game types, each with an associated bid value:
+
+  Bid Value | Game Type          | Description
+  ----------|--------------------|-----------------------------------------
+     2      | Spades (Pik)       | Spades as trump suit
+     3      | Diamonds (Karo)    | Diamonds as trump suit
+     4      | Hearts (Herc)      | Hearts as trump suit
+     5      | Clubs (Tref)       | Clubs as trump suit
+     6      | Betl               | No-trump; declarer must take ZERO tricks
+     7      | Sans (Sanac)       | No-trump; declarer must take 6+ tricks
+
+The four trump games (2-5) and Sans require the declarer to win at least 6
+out of 10 tricks. Betl requires the declarer to win NO tricks at all.
+
+"In hand" variants (igra/prijavljena igra) are bid one level higher:
+
+  Bid Value | In-Hand Game Type
+  ----------|---------------------------
+     3      | In-Hand Spades (Igra Pik)
+     4      | In-Hand Diamonds (Igra Karo)
+     5      | In-Hand Hearts (Igra Herc)
+     6      | In-Hand Clubs (Igra Tref)
+     7      | In-Hand Betl (Igra Betl)
+     8      | In-Hand Sans (Igra Sans)
+
+
+========================================================================
+8. BIDDING (LICITACIJA / AUCTION)
+========================================================================
+
+8.1 BASIC BIDDING
+- The player who received cards first (to dealer's right) bids first.
+- Bidding proceeds counter-clockwise.
+- Players bid by naming a number (2-7) representing the minimum game they
+  are willing to play.
+- A player may say "dalje" (pass) to drop out of the bidding.
+- Bidding continues until two players have passed.
+- The remaining player is the DECLARER (nositelj/nosac igre).
+
+8.2 "MOGU" (I CAN)
+- A player may say "mogu" meaning "I can play that game too" — matching the
+  current bid rather than raising.
+- The previous bidder must then raise or pass.
+
+8.3 WINNING THE AUCTION
+- The auction winner (declarer) reveals the talon to all players.
+- The declarer takes the 2 talon cards into their hand (now holding 12 cards).
+- The declarer then discards 2 cards face-down (opponents do not see them).
+- The declarer announces the game type to be played.
+- The game announced must be at least equal to the winning bid level.
+
+8.4 ALL PASS — REFE
+- If all three players pass without bidding, no game is played.
+- A REFE (penalty marker) is recorded. See Section 13 for refe rules.
+
+8.5 IN-HAND GAMES (PRIJAVLJENA IGRA)
+- A player may declare an "in-hand" game during the auction, meaning they
+  will play WITHOUT using the talon cards.
+- In-hand games are worth one bid level higher than the normal version.
+- Betl and Sans can be declared in-hand.
+- If a player has already declared an in-hand game, another player cannot
+  declare a lower in-hand game.
+- The talon remains face-down and unused for in-hand games.
+- In-hand Spades (Igra Pik) cannot be declared as a second in-hand game
+  if someone has already declared one. In-hand Diamonds cannot be declared
+  as a third in-hand game.
+
+
+========================================================================
+9. FOLLOWING / WHISTING (PRACENJE)
+========================================================================
+
+9.1 DECLARING TO FOLLOW
+- After the declarer announces the game, the other two players decide
+  whether to FOLLOW (pratiti) or NOT FOLLOW (ne pratiti).
+- The player to the declarer's right declares first: "Dodem" (I follow)
+  or "Ne dodem" (I don't follow).
+- Then the third player declares likewise.
+- In Betl: both players automatically follow (mandatory).
+
+9.2 WHIST OBLIGATIONS
+- A player who follows (the "whister" or "pratilac") must try to take
+  tricks to prevent the declarer from making their contract.
+- Both followers play as PARTNERS against the declarer even though their
+  scores are tracked individually.
+- They should cooperate to maximize tricks taken from the declarer, even
+  at the cost of one partner's individual trick count.
+
+9.3 CALLING (ZVANJE)
+- A follower may "call" (pozvati) the non-follower to join.
+- The called player must then participate in play.
+- The caller bears responsibility: they are penalized if the declarer takes
+  more than 6 tricks, and credited for tricks the called player takes.
+
+9.4 FOLLOWING REQUIREMENTS
+- A single follower must take at least 2 tricks to pass.
+- Two followers together must take at least 4 tricks total.
+- A player who called must, together with the called player, take at least
+  4 tricks total.
+
+
+========================================================================
+10. KONTRA (DOUBLING)
+========================================================================
+
+10.1 KONTRA
+- After the following declarations, if a follower is confident they can
+  defeat the declarer, they may declare KONTRA.
+- Kontra requires the followers together to take at least 5 tricks.
+- All scoring points are DOUBLED when kontra is in effect.
+- The player who declared kontra bears full scoring responsibility (the
+  other follower assists but does not score).
+- A player who did not follow automatically joins if kontra is declared.
+- KONTRA IS MANDATORY when the declarer plays Spades (Pik).
+
+10.2 REKONTRA
+- If the declarer is confident they will succeed despite the kontra,
+  they may declare REKONTRA.
+- All points are doubled again (4x base).
+- Note: Rekontra is NOT allowed against in-hand Betl (Igra Betl).
+
+10.3 SUBKONTRA
+- After rekontra, the follower may declare SUBKONTRA (8x base).
+
+10.4 MORTKONTRA
+- After subkontra, the declarer may declare MORTKONTRA (16x base).
+
+10.5 SUMMARY OF MULTIPLIERS
+  Level       | Multiplier
+  ------------|----------
+  Normal      | 1x
+  Kontra      | 2x
+  Rekontra    | 4x
+  Subkontra   | 8x
+  Mortkontra  | 16x
+
+
+========================================================================
+11. CARD PLAY
+========================================================================
+
+11.1 LEAD
+- The player who bid first in the auction leads the first trick.
+- Exception: In Sans, the follower to the LEFT of the declarer always
+  leads, even on the first trick. Play always goes "through" the declarer.
+
+11.2 FOLLOWING SUIT
+- Players MUST follow suit (play a card of the same suit as the lead card)
+  if they have one.
+- This is mandatory in ALL game types.
+
+11.3 TRUMPING
+- In TRUMP GAMES (Spades, Diamonds, Hearts, Clubs): if a player cannot
+  follow suit, they MUST play a trump card if they have one. Trump always
+  beats non-trump cards. If multiple trumps are played, the highest wins.
+- In SANS and BETL: if a player cannot follow suit, they may play ANY card
+  from any suit. There is no trump.
+
+11.4 WINNING A TRICK
+- The highest card of the LED suit wins the trick, UNLESS a trump was
+  played, in which case the highest trump wins.
+- The trick winner leads the next trick.
+
+11.5 TRICK REQUIREMENTS
+- Trump games and Sans: declarer must take at least 6 out of 10 tricks.
+- Betl: declarer must take ZERO tricks.
+- Single follower: must take at least 2 tricks.
+- Two followers together: must take at least 4 tricks combined.
+- Follower who called: must take at least 4 tricks combined with the
+  called player.
+- Kontra: followers must take at least 5 tricks together.
+
+
+========================================================================
+12. REFE (PENALTY MARKERS)
+========================================================================
+
+12.1 WHEN REFE IS RECORDED
+- When all three players pass (no one bids).
+- When Spades is played without kontra being given (kontra is mandatory
+  on Spades; if no kontra, a new refe is written, OR if max refes reached,
+  cards are redealt).
+
+12.2 REFE LIMITS
+- The number of refes is agreed upon before the match (typically 3).
+- Refe is NOT recorded if:
+  - The maximum number of refes has been reached.
+  - Any player is "under the hat" (below zero in bulas / in negative score).
+
+12.3 REFE EFFECT ON SCORING
+- When the declarer has unplayed refes, all scoring points are DOUBLED
+  for that hand.
+- After playing a hand with a refe active, the declarer marks one refe
+  as played (consumed).
+
+
+========================================================================
+13. SCORING
+========================================================================
+
+13.1 OVERVIEW
+The score sheet has three sections per player:
+- BULAS (main column / "middle") — the debt each player must pay off
+- SUPE (left and right columns / "juice") — recorded against opponents
+
+13.2 STARTING BULAS
+- Players agree on a starting bula total before the match (e.g., 200
+  for a standard ~4-hour game, 100 for a ~2-hour game in 3-player).
+- The goal is to reduce your bulas to zero.
+
+13.3 BULA CALCULATION (DECLARER)
+- PASS (prošao): Bulas DECREASE by Game_Value x 2.
+- FAIL (pao): Bulas INCREASE by Game_Value x 2.
+
+  Game base values for bula calculation:
+  Game Type        | Base Value
+  -----------------|----------
+  Spades           | 2
+  Diamonds         | 3
+  Hearts           | 4
+  Clubs            | 5
+  Betl             | 6
+  Sans             | 7
+  In-Hand Spades   | 3
+  In-Hand Diamonds | 4
+  In-Hand Hearts   | 5
+  In-Hand Clubs    | 6
+  In-Hand Betl     | 7
+  In-Hand Sans     | 8
+
+- With kontra/rekontra/subkontra/mortkontra, bulas are further multiplied.
+- With active refe, bulas are doubled.
+
+13.4 SUPE CALCULATION (FOLLOWERS)
+- Supe are calculated based on the number of tricks taken.
+- Formula: Supe = Number_of_Tricks x Game_Value x 2
+- With kontra/rekontra/subkontra/mortkontra, supe are further multiplied.
+- With active refe, supe are doubled.
+
+13.5 BETL SPECIAL SCORING
+- When the declarer FAILS at Betl (takes a trick):
+  - Each follower records 60 supe against the declarer.
+  - For In-Hand Betl failure: 70 supe per follower.
+- When the declarer PASSES at Betl: no supe are recorded for tricks
+  (since the declarer took zero tricks).
+
+13.6 THE HAT / CAP (SESIR / KAPA)
+- The "hat" marks the transition from positive to negative bulas.
+- When a player's bulas go below zero, they are "under the hat" (ispod kape).
+- When any player is under the hat, refes are no longer recorded.
+
+13.7 MATCH END
+- The match ends when the sum of all players' bulas equals zero.
+- If a match must end early, an "otpisivanje" (write-off) is performed:
+  bulas are equally reduced so the sum reaches zero.
+
+13.8 FINAL RESULT CALCULATION
+  Final_Result = -(Sum_of_Your_Supe_Against_Opponents)
+                 + (Sum_of_Opponents_Supe_Against_You)
+                 + (Final_Bulas x 10)
+
+- A NEGATIVE result is good (you won).
+- A POSITIVE result is bad (you lost).
+- Traditionally, players may invert the signs (+ for good, - for bad).
+
+
+========================================================================
+14. CARD PLAY OBLIGATIONS & PARTNERSHIPS
+========================================================================
+
+14.1 FOLLOWERS AS PARTNERS
+- The two followers play as a team against the declarer.
+- They must cooperate to maximize tricks taken from the declarer, even
+  when this disadvantages one follower's individual trick count.
+- A called player or a player joining due to kontra must play to help
+  the active follower, not for personal gain.
+
+14.2 MUST-FOLLOW AND MUST-TRUMP RULES
+In trump games, strict rules apply:
+1. You MUST follow suit if you can.
+2. If you cannot follow suit, you MUST trump if you can.
+3. Only if you have neither the led suit nor trump may you play any card.
+
+In Betl and Sans:
+1. You MUST follow suit if you can.
+2. If you cannot follow suit, you may play ANY card (no trumping obligation).
+
+
+========================================================================
+15. SPECIAL RULES AND COMMON AGREEMENTS
+========================================================================
+
+15.1 SPADES WITHOUT KONTRA
+- Since kontra is mandatory on Spades, if no kontra is given:
+  - If there are unplayed refes: a new refe is recorded instead of playing.
+  - If all refes are used: cards are redealt.
+  - If any player is under the hat: the Spades declarer "drops" without
+    play (takes the penalty automatically).
+
+15.2 SANS LEAD CONVENTIONS
+- If no one bid during the auction and Sans is played, and you are called
+  to play, lead from Clubs.
+- If kontra was given on Sans, lead from Spades.
+
+15.3 LAST HAND RULE
+- If it is the last hand of the match and the declarer fails, the failure
+  may be scored as double or normal (by pre-game agreement).
+
+15.4 COMMON PRE-GAME AGREEMENTS
+Players may agree on optional rules before a match:
+- A player who stops bidding at levels 2-5 must have at least 3 trumps.
+- A player who follows on Spades must have at least two Aces or one
+  trump trick and one Ace.
+- When only one player follows, the follower and declarer may negotiate
+  on the number of tricks (agree on a split without playing it out).
+- "Obvious" bad plays may be penalized as a fail by group consensus.
+
+15.5 REKONTRA RESTRICTION
+- Rekontra is NOT given against In-Hand Betl (Igra Betl / Uver Betl).
+
+
+========================================================================
+16. ETIQUETTE AND CODE OF CONDUCT
+========================================================================
+
+- Never cheat, peek at others' cards, or reveal your own prematurely.
+- Behave courteously before, during, and after play.
+- Acknowledge opponents' good play.
+- Use only standard game vocabulary.
+- Maintain composure ("poker face") — do not react to cards played.
+- Spectators must remain silent and expressionless during play.
+- Accept losses gracefully — blame your own play, not the cards.
+- Do not rush players who are thinking about their decisions.
+- Fellowship and sportsmanship are more important than winning.
+
+
+========================================================================
+17. GLOSSARY OF TERMS (Serbian - English)
+========================================================================
+
+  Serbian Term       | English Translation
+  -------------------|-----------------------------------------------
+  Adut               | Trump
+  Betl               | Betl (no-trick game, no trump)
+  Bula               | Bula (main score / debt points)
+  Dalje              | Pass (in bidding)
+  Dodem / Ne dodem   | I follow / I don't follow
+  Herc               | Hearts
+  Igra (prijavljena) | In-hand game (declared without using talon)
+  Karo               | Diamonds
+  Kapa / Sesir       | Hat / Cap (zero-crossing point in bulas)
+  Kontra             | Double (kontra)
+  Kup / Talon        | Talon (2 face-down cards in center)
+  Licitacija         | Bidding / Auction
+  Mogu               | "I can" (matching a bid)
+  Mortkontra         | Mort-kontra (16x multiplier)
+  Nositelj / Nosac   | Declarer (auction winner)
+  Otpisivanje        | Write-off (early match end adjustment)
+  Pad / Pao          | Fail / Failed
+  Pik                | Spades
+  Pratilac           | Follower / Whister
+  Pratiti             | To follow / To whist
+  Prolaz / Prosao    | Pass (succeed) / Passed
+  Refe / Refa        | Refe (penalty marker for all-pass rounds)
+  Rekontra           | Re-double (rekontra)
+  Sans / Sanac       | Sans (no-trump game, 6+ tricks)
+  Stih               | Trick
+  Subkontra          | Sub-kontra (8x multiplier)
+  Supe               | Supe / Soup / Juice (side score points)
+  Tref               | Clubs
+  Zvati / Pozvati    | To call (invite non-follower to play)
+
+
+========================================================================
+18. QUICK REFERENCE: GAME FLOW
+========================================================================
+
+  1. DEAL:       5-talon(2)-5 cards to each player
+  2. BID:        Auction to determine declarer and game type
+  3. EXCHANGE:   Declarer takes talon, discards 2 cards (skip for in-hand)
+  4. ANNOUNCE:   Declarer announces game type
+  5. FOLLOW:     Other players declare follow / not follow
+  6. KONTRA:     Optional doubling declarations
+  7. PLAY:       10 tricks played; must follow suit, must trump if able
+  8. COUNT:      Tricks counted; pass/fail determined
+  9. SCORE:      Bulas and supe updated
+  10. REPEAT:    Next hand dealt; match continues until bulas sum to 0
+
+
+========================================================================
+Sources:
+  - https://www.preferansklub.com/pravila1.htm (Version 1.2, Oct 2001)
+  - https://preferans.neocities.org/pravila
+  - https://www.preferans.org/files/PRAVILA.html (tournament rules)
+  - https://www.preferansklub.com/kodeks.htm (code of conduct)
+========================================================================

@@ -1,0 +1,140 @@
+Preferans Scoring Rules
+=======================
+
+1. Game Value
+-------------
+The value of the game is determined by the bid level:
+
+  Level 2 (spades)   =  4
+  Level 3 (diamonds) =  6
+  Level 4 (hearts)   =  8
+  Level 5 (clubs)    = 10
+  Level 6 (betl)     = 12
+  Level 7 (sans)     = 14
+
+If the game is played in-hand, the value increases by 2.
+  Example: in-hand level 2 = 6, in-hand sans = 16.
+
+If a counter is declared, the game value is multiplied by 2.
+If a double counter is declared, the game value is multiplied by 4.
+
+
+2. Scoring (all games except betl)
+----------------------------------
+Four roles exist after the whisting phase:
+  - Declarer (leader): the auction winner who plays the contract.
+  - Follower: a defender who declared "follow" or "counter".
+  - Passed: a defender who passed during whisting and was not called.
+  - Called: a defender who passed but was called back by the other defender.
+
+
+2.1 Declarer
+
+The declarer must win 6 or more tricks.
+
+  Pass:  +game_value x 10
+  Fail:  -game_value x 10
+
+If no defender follows, the declarer wins automatically.
+
+
+2.2 Passed
+
+Score: 0 (no gain, no penalty).
+
+
+2.3 Called
+
+Score: 0 (no gain, no penalty).
+The called player's tricks are attributed to the caller (see 2.6).
+
+
+2.4 Single follower
+
+The follower must win 2 or more tricks.
+
+  Pass:  +tricks_won x game_value
+  Fail:  -(game_value x 10) + (tricks_won x game_value)
+
+
+2.5 Both defenders following
+
+If both defenders follow and their combined tricks are 4 or more,
+neither defender is considered failing. Each receives:
+
+  Score: +tricks_won x game_value  (for each defender individually)
+
+If their combined tricks are fewer than 4, each defender is evaluated
+independently using the single-follower rule (2.4).
+
+
+2.6 Calling
+
+When one defender calls the other:
+  - The called player receives score 0.
+  - All tricks won by both the caller and the called player are
+    attributed to the caller.
+  - The caller passes if the combined tricks are 4 or more.
+  - The caller's score follows the single-follower rule (2.4),
+    using the combined trick count.
+
+
+3. Betl Scoring
+---------------
+All defenders must play (no option to pass during whisting).
+
+The declarer must win zero tricks. The game ends as soon as the
+declarer wins a trick (declarer fails).
+
+Followers can never fail.
+
+3.1 Declarer
+
+  Pass (0 tricks won):  +game_value x 10
+  Fail (1+ tricks won): -game_value x 10
+
+3.2 Followers
+
+  Declarer passed: score 0
+  Declarer failed: +game_value x 5
+
+
+4. Counter and Double Counter
+-----------------------------
+When a defender declares a counter (or the declarer responds with
+a double counter), all players must play. The game value is already
+multiplied per section 1.
+
+The counter player is accounted all tricks won by both defenders
+combined. The other follower receives score 0.
+
+If the declarer wins, the counter player fails, and vice versa.
+
+
+4.1 Declarer (with counter)
+
+Scoring follows the same rules as without counter:
+  - Non-betl: see 2.1 (using the multiplied game value).
+  - Betl: see 3.1 (using the multiplied game value).
+
+
+4.2 Counter player (non-betl)
+
+The counter player must win 5 or more tricks (combined with the
+other follower) to pass.
+
+  Pass:  +combined_tricks x game_value
+  Fail:  -(game_value x 10) + (combined_tricks x game_value)
+
+
+4.3 Counter player (betl)
+
+The counter player passes if the declarer fails (wins 1+ tricks).
+
+  Pass:  +game_value x 10
+  Fail:  -game_value x 10
+
+
+4.4 Other follower (with counter)
+
+Score: 0 (all tricks attributed to the counter player).

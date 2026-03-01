@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+venv/
+.DS_Store
+*.env
+.coverage
+.venv/
+node_modules/
+e2e/playwright-report/
+e2e/test-results/
+game_output_*.txt
+game_compact_*.txt
+logs/
+improvements.txt
+evolution_notes.md
+simulations/
+fixes.txt

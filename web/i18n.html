@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Editor - Preferans</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #16213e;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: #e94560;
+        }
+
+        .back-link {
+            color: #4ecca3;
+            text-decoration: none;
+            margin-left: auto;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            background: #16213e;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .toolbar label {
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        select, input[type="text"] {
+            padding: 0.5rem;
+            font-size: 0.9rem;
+            background: #2d4059;
+            color: white;
+            border: 1px solid #4ecca3;
+            border-radius: 4px;
+        }
+
+        input[type="text"] {
+            width: 200px;
+        }
+
+        button {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            background: #4ecca3;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #7fffd4;
+        }
+
+        button.secondary {
+            background: #2d4059;
+            color: white;
+            border: 1px solid #4ecca3;
+        }
+
+        button.secondary:hover {
+            background: #3d5069;
+        }
+
+        button.danger {
+            background: #e94560;
+            color: white;
+        }
+
+        button.danger:hover {
+            background: #ff6b6b;
+        }
+
+        .translations-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #16213e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .translations-table th,
+        .translations-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #2d4059;
+        }
+
+        .translations-table th {
+            background: #0f3d3e;
+            color: #4ecca3;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+
+        .translations-table tr:hover {
+            background: #1f2f4e;
+        }
+
+        .translations-table td.key {
+            font-family: monospace;
+            color: #ffd700;
+            width: 25%;
+        }
+
+        .translations-table td.value {
+            width: 35%;
+        }
+
+        .translations-table td.value input {
+            width: 100%;
+            padding: 0.4rem;
+            background: #2d4059;
+            color: white;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+
+        .translations-table td.value input:focus {
+            border-color: #4ecca3;
+            outline: none;
+        }
+
+        .translations-table td.value input.modified {
+            border-color: #ffd700;
+        }
+
+        .translations-table td.value input.missing {
+            background: #4d2059;
+            border-color: #e94560;
+        }
+
+        .translations-table td.actions {
+            width: 100px;
+            text-align: center;
+        }
+
+        .status-msg {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .status-msg.success {
+            background: rgba(78, 204, 163, 0.2);
+            color: #4ecca3;
+        }
+
+        .status-msg.error {
+            background: rgba(233, 69, 96, 0.2);
+            color: #e94560;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #16213e;
+            padding: 2rem;
+            border-radius: 8px;
+            min-width: 400px;
+        }
+
+        .modal h2 {
+            color: #e94560;
+            margin-bottom: 1rem;
+        }
+
+        .modal .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .modal .form-group label {
+            display: block;
+            margin-bottom: 0.3rem;
+            color: #aaa;
+        }
+
+        .modal .form-group input {
+            width: 100%;
+        }
+
+        .modal .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 1.5rem;
+        }
+
+        .table-container {
+            max-height: calc(100vh - 250px);
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .filter-group .filter-btn {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+        }
+
+        .filter-group .filter-btn.active {
+            background: #e94560;
+            color: white;
+        }
+
+        .add-key-row {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: #0f3d3e;
+        }
+
+        .add-key-row input {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Translation Editor</h1>
+            <a href="/" class="back-link">Back to Game</a>
+        </header>
+
+        <div class="toolbar">
+            <div class="filter-group">
+                <label>Filter:</label>
+                <input type="text" id="filter-input" placeholder="Search keys...">
+            </div>
+            <div class="filter-group">
+                <button class="filter-btn secondary active" data-filter="all">All</button>
+                <button class="filter-btn secondary" data-filter="missing">Missing</button>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 1rem; align-items: center;">
+                <span id="status-message" class="status-msg"></span>
+                <button id="add-language-btn" class="secondary">+ Add Language</button>
+                <button id="save-all-btn">Save All</button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table class="translations-table">
+                <thead>
+                    <tr id="table-header">
+                        <th>Key</th>
+                        <!-- Language columns added dynamically -->
+                    </tr>
+                </thead>
+                <tbody id="translations-body">
+                    <!-- Translations added dynamically -->
+                </tbody>
+            </table>
+            <div class="add-key-row">
+                <input type="text" id="new-key-input" placeholder="Enter new key (e.g., myNewKey or category.key)">
+                <button id="add-key-btn">+ Add Key</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Language Modal -->
+    <div class="modal-overlay" id="add-language-modal">
+        <div class="modal">
+            <h2>Add New Language</h2>
+            <div class="form-group">
+                <label>Language Code (e.g., en, sr, de)</label>
+                <input type="text" id="new-lang-code" maxlength="10">
+            </div>
+            <div class="form-group">
+                <label>Language Name (e.g., English, Serbian)</label>
+                <input type="text" id="new-lang-name">
+            </div>
+            <div class="form-group">
+                <label>Native Name (e.g., English, Srpski)</label>
+                <input type="text" id="new-lang-native">
+            </div>
+            <div class="form-actions">
+                <button class="secondary" id="cancel-add-lang">Cancel</button>
+                <button id="confirm-add-lang">Add Language</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let languages = [];
+        let translations = {};
+        let allKeys = [];
+        let modifiedCells = new Set();
+        let currentFilter = 'all';
+        let searchText = '';
+
+        // Load data
+        async function loadData() {
+            try {
+                const [langRes, transRes, keysRes] = await Promise.all([
+                    fetch('/api/i18n/languages'),
+                    fetch('/api/i18n/translations'),
+                    fetch('/api/i18n/keys')
+                ]);
+
+                languages = await langRes.json();
+                translations = await transRes.json();
+                allKeys = await keysRes.json();
+
+                renderTable();
+            } catch (error) {
+                showStatus('Failed to load data: ' + error.message, 'error');
+            }
+        }
+
+        // Render the translations table
+        function renderTable() {
+            // Render header
+            const header = document.getElementById('table-header');
+            header.innerHTML = '<th>Key</th>';
+            languages.forEach(lang => {
+                const th = document.createElement('th');
+                th.textContent = `${lang.name} (${lang.code})`;
+                header.appendChild(th);
+            });
+
+            // Render body
+            const tbody = document.getElementById('translations-body');
+            tbody.innerHTML = '';
+
+            const filteredKeys = allKeys.filter(key => {
+                // Search filter
+                if (searchText && !key.toLowerCase().includes(searchText.toLowerCase())) {
+                    return false;
+                }
+                // Missing filter
+                if (currentFilter === 'missing') {
+                    return languages.some(lang => {
+                        const langTrans = translations[lang.code] || {};
+                        return !langTrans[key];
+                    });
+                }
+                return true;
+            });
+
+            filteredKeys.forEach(key => {
+                const tr = document.createElement('tr');
+
+                // Key column
+                const keyTd = document.createElement('td');
+                keyTd.className = 'key';
+                keyTd.textContent = key;
+                tr.appendChild(keyTd);
+
+                // Language columns
+                languages.forEach(lang => {
+                    const td = document.createElement('td');
+                    td.className = 'value';
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = (translations[lang.code] || {})[key] || '';
+                    input.dataset.lang = lang.code;
+                    input.dataset.key = key;
+
+                    if (!input.value) {
+                        input.classList.add('missing');
+                    }
+
+                    input.addEventListener('input', () => {
+                        const cellId = `${lang.code}:${key}`;
+                        modifiedCells.add(cellId);
+                        input.classList.add('modified');
+                        input.classList.remove('missing');
+                    });
+
+                    input.addEventListener('blur', () => {
+                        // Auto-save on blur
+                        const cellId = `${lang.code}:${key}`;
+                        if (modifiedCells.has(cellId)) {
+                            saveTranslation(lang.code, key, input.value, input);
+                        }
+                    });
+
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                });
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Save a single translation
+        async function saveTranslation(langCode, key, value, inputEl) {
+            try {
+                const response = await fetch(`/api/i18n/translations/${langCode}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key, value })
+                });
+
+                if (response.ok) {
+                    // Update local data
+                    if (!translations[langCode]) translations[langCode] = {};
+                    translations[langCode][key] = value;
+
+                    modifiedCells.delete(`${langCode}:${key}`);
+                    if (inputEl) {
+                        inputEl.classList.remove('modified');
+                        if (!value) inputEl.classList.add('missing');
+                    }
+                    showStatus('Saved!', 'success');
+                } else {
+                    const data = await response.json();
+                    showStatus('Save failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showStatus('Save failed: ' + error.message, 'error');
+            }
+        }
+
+        // Save all modified translations
+        async function saveAll() {
+            const promises = [];
+            document.querySelectorAll('input.modified').forEach(input => {
+                const langCode = input.dataset.lang;
+                const key = input.dataset.key;
+                const value = input.value;
+                promises.push(saveTranslation(langCode, key, value, input));
+            });
+
+            await Promise.all(promises);
+            if (modifiedCells.size === 0) {
+                showStatus('All changes saved!', 'success');
+            }
+        }
+
+        // Add a new key
+        async function addKey() {
+            const input = document.getElementById('new-key-input');
+            const key = input.value.trim();
+
+            if (!key) {
+                showStatus('Please enter a key', 'error');
+                return;
+            }
+
+            if (allKeys.includes(key)) {
+                showStatus('Key already exists', 'error');
+                return;
+            }
+
+            // Add empty translation for the default language to create the key
+            const defaultLang = languages.find(l => l.is_default) || languages[0];
+            if (defaultLang) {
+                await saveTranslation(defaultLang.code, key, '');
+                allKeys.push(key);
+                allKeys.sort();
+                input.value = '';
+                renderTable();
+                showStatus('Key added!', 'success');
+            }
+        }
+
+        // Add a new language
+        async function addLanguage() {
+            const code = document.getElementById('new-lang-code').value.trim();
+            const name = document.getElementById('new-lang-name').value.trim();
+            const nativeName = document.getElementById('new-lang-native').value.trim();
+
+            if (!code || !name) {
+                showStatus('Code and name are required', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/i18n/languages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, name, native_name: nativeName || name })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    languages.push(data.language);
+                    translations[code] = {};
+                    closeModal();
+                    renderTable();
+                    showStatus('Language added!', 'success');
+                } else {
+                    const data = await response.json();
+                    showStatus('Failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showStatus('Failed: ' + error.message, 'error');
+            }
+        }
+
+        // Show status message
+        function showStatus(message, type) {
+            const el = document.getElementById('status-message');
+            el.textContent = message;
+            el.className = 'status-msg ' + type;
+            setTimeout(() => {
+                el.textContent = '';
+                el.className = 'status-msg';
+            }, 3000);
+        }
+
+        // Modal controls
+        function openModal() {
+            document.getElementById('add-language-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('add-language-modal').classList.remove('active');
+            document.getElementById('new-lang-code').value = '';
+            document.getElementById('new-lang-name').value = '';
+            document.getElementById('new-lang-native').value = '';
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+
+            document.getElementById('save-all-btn').addEventListener('click', saveAll);
+            document.getElementById('add-key-btn').addEventListener('click', addKey);
+            document.getElementById('new-key-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') addKey();
+            });
+
+            document.getElementById('add-language-btn').addEventListener('click', openModal);
+            document.getElementById('cancel-add-lang').addEventListener('click', closeModal);
+            document.getElementById('confirm-add-lang').addEventListener('click', addLanguage);
+
+            document.getElementById('filter-input').addEventListener('input', (e) => {
+                searchText = e.target.value;
+                renderTable();
+            });
+
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.dataset.filter;
+                    renderTable();
+                });
+            });
+
+            // Close modal on overlay click
+            document.getElementById('add-language-modal').addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) closeModal();
+            });
+        });
+    </script>
+</body>
+</html>

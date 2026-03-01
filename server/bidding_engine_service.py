@@ -50,6 +50,7 @@ def ep_commands():
             "commands": ["7\u2660"],
             "player_position": 1,
             "phase": "playing",
+            "context": sess.get("last_context"),
         })
 
     if sid == STATE_GAME_END:
@@ -57,6 +58,7 @@ def ep_commands():
             "commands": [],
             "player_position": None,
             "phase": "scoring",
+            "context": sess.get("last_context"),
         })
 
     state = SM.get(sid)
@@ -67,6 +69,7 @@ def ep_commands():
         "commands": state["commands"],
         "player_position": state["player"],
         "phase": state["phase"],
+        "context": state.get("context"),
     })
 
 
@@ -88,6 +91,9 @@ def ep_execute():
     for edge in state["edges"]:
         if edge["cmd_idx"] == cid:
             sess["state_id"] = edge["next_state_id"]
+            # Preserve context from the last real state before END
+            if state.get("context") is not None:
+                sess["last_context"] = state["context"]
             return jsonify({"ok": True})
 
     return jsonify({"error": f"Invalid command_id {cid}"}), 400
