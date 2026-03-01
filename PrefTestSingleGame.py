@@ -1,5 +1,6 @@
 """Play a single Preferans game with three RandomMove players and log every move."""
 
+import json
 import os
 import sys
 import random
@@ -13,6 +14,56 @@ from models import (
     SUIT_NAMES, RANK_NAMES,
 )
 from engine import GameEngine
+
+# ---------------------------------------------------------------------------
+# Bidding state machine
+# ---------------------------------------------------------------------------
+_sm_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "server", "bidding_state_machine.json")
+with open(_sm_path, "r", encoding="utf-8") as _f:
+    _sm_list = json.load(_f)
+SM = {s["state_id"]: s for s in _sm_list}
+
+# Map SM auction command labels → bid dicts (bid_type, value, label)
+_AUCTION_CMD_TO_BID = {
+    "Pass":      {"bid_type": "pass",    "value": 0, "label": "Pass"},
+    "Game 2":    {"bid_type": "game",    "value": 2, "label": "Game 2"},
+    "Game 3":    {"bid_type": "game",    "value": 3, "label": "Game 3"},
+    "Game 4":    {"bid_type": "game",    "value": 4, "label": "Game 4"},
+    "Game 5":    {"bid_type": "game",    "value": 5, "label": "Game 5"},
+    "In Hand":   {"bid_type": "in_hand", "value": 0, "label": "In Hand"},
+    "In Hand 2": {"bid_type": "in_hand", "value": 2, "label": "In Hand 2"},
+    "In Hand 3": {"bid_type": "in_hand", "value": 3, "label": "In Hand 3"},
+    "In Hand 4": {"bid_type": "in_hand", "value": 4, "label": "In Hand 4"},
+    "In Hand 5": {"bid_type": "in_hand", "value": 5, "label": "In Hand 5"},
+    "Betl":      {"bid_type": "betl",    "value": 0, "label": "Betl"},
+    "Sans":      {"bid_type": "sans",    "value": 0, "label": "Sans"},
+    # in_hand N labels from SM (lowercase with space)
+    "in_hand 2": {"bid_type": "in_hand", "value": 2, "label": "In Hand 2"},
+    "in_hand 3": {"bid_type": "in_hand", "value": 3, "label": "In Hand 3"},
+    "in_hand 4": {"bid_type": "in_hand", "value": 4, "label": "In Hand 4"},
+    "in_hand 5": {"bid_type": "in_hand", "value": 5, "label": "In Hand 5"},
+}
+
+# Map SM whisting command labels → action dicts
+_WHIST_CMD_TO_ACTION = {
+    "Pass":           {"action": "pass",           "label": "Pass"},
+    "Follow":         {"action": "follow",         "label": "Follow"},
+    "Call":           {"action": "call",            "label": "Call"},
+    "Counter":        {"action": "counter",         "label": "Counter"},
+    "Start game":     {"action": "start_game",      "label": "Start game"},
+    "Double counter": {"action": "double_counter",  "label": "Double counter"},
+}
+
+# Map SM exchange suit labels → contract type/trump for announce_contract
+_EXCHANGE_SUIT_TO_CONTRACT = {
+    "Spades":   ("suit", "spades"),
+    "Diamonds": ("suit", "diamonds"),
+    "Hearts":   ("suit", "hearts"),
+    "Clubs":    ("suit", "clubs"),
+    "Betl":     ("betl", None),
+    "Sans":     ("sans", None),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -2645,6 +2696,289 @@ class PlayerCarol(WeightedRandomPlayer):
         return groups[shortest_suit][0]
 
 
+class NeuralPlayer(BasePlayer):
+    """ML-based Preferans player. Uses a trained PrefNet model for decisions.
+
+    Falls back to random moves if the model file is not found.
+    """
+
+    # Bid type ↔ index mapping
+    BID_TYPES = ["pass", "game", "in_hand", "betl", "sans"]
+    FOLLOWING_ACTIONS = ["pass", "follow", "call", "counter", "start_game", "double_counter"]
+
+    def __init__(self, name: str, seed: int | None = None,
+                 model_path: str = "neural/models/pref_net.pt",
+                 temperature: float = 0.0):
+        super().__init__(name)
+        self.rng = random.Random(seed)
+        self.temperature = temperature
+        self._observed_cards = []
+        self._cards_played = 0
+        self._is_declarer = False
+        self.model = None
+
+        # Try to load model
+        try:
+            import torch
+            from neural.model import PrefNet
+            self._torch = torch
+            self._features = __import__("neural.features", fromlist=["features"])
+            net = PrefNet()
+            if os.path.exists(model_path):
+                net.load_state_dict(torch.load(model_path, map_location="cpu",
+                                               weights_only=True))
+                net.eval()
+                self.model = net
+        except ImportError:
+            pass
+
+    def _sample_or_argmax(self, logits):
+        """Given 1D logits tensor, return index via argmax or temperature sampling."""
+        torch = self._torch
+        if self.temperature <= 0:
+            return logits.argmax().item()
+        probs = torch.softmax(logits / self.temperature, dim=-1)
+        return torch.multinomial(probs, 1).item()
+
+    # ------------------------------------------------------------------
+    # Bidding
+    # ------------------------------------------------------------------
+
+    def choose_bid(self, legal_bids):
+        hand = getattr(self, '_hand', [])
+
+        if self.model is None:
+            bid = self.rng.choice(legal_bids)
+            self.last_bid_intent = "neural (random fallback)"
+            return bid
+
+        torch = self._torch
+        feat = self._features
+
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        mask = torch.zeros(1, 5)
+        bid_type_map = {}
+        for b in legal_bids:
+            bt = b.get("bid_type")
+            if bt in self.BID_TYPES:
+                idx = self.BID_TYPES.index(bt)
+                mask[0, idx] = 1.0
+                bid_type_map[idx] = b
+
+        with torch.no_grad():
+            logits = self.model.forward_bid(hand_feat, mask)[0]
+
+        chosen_idx = self._sample_or_argmax(logits)
+        if chosen_idx in bid_type_map:
+            chosen = bid_type_map[chosen_idx]
+        else:
+            chosen = self.rng.choice(legal_bids)
+
+        self.last_bid_intent = f"neural (bid={self.BID_TYPES[chosen_idx]})"
+        return chosen
+
+    # ------------------------------------------------------------------
+    # Discarding
+    # ------------------------------------------------------------------
+
+    def choose_discard(self, hand_card_ids, talon_card_ids):
+        self._is_declarer = True
+
+        if self.model is None:
+            all_ids = list(hand_card_ids) + list(talon_card_ids)
+            return self.rng.sample(all_ids, 2)
+
+        torch = self._torch
+        feat = self._features
+        from models import Card
+
+        all_ids = list(hand_card_ids) + list(talon_card_ids)
+        all_cards = [Card.from_id(cid) for cid in all_ids]
+        talon_set = set(talon_card_ids)
+
+        hand_feat = torch.from_numpy(feat.encode_hand(all_cards)).unsqueeze(0)
+        suit_counts = feat.get_suit_counts(all_cards)
+
+        card_feats = []
+        for i, card in enumerate(all_cards):
+            is_talon = all_ids[i] in talon_set
+            card_feats.append(feat.encode_card(card, suit_counts, is_talon=is_talon))
+
+        card_feats_t = torch.from_numpy(
+            __import__("numpy").array(card_feats, dtype=__import__("numpy").float32)
+        ).unsqueeze(0)
+
+        with torch.no_grad():
+            scores = self.model.forward_discard(hand_feat, card_feats_t)[0]
+
+        # Pick top-2 scoring cards to discard
+        top2 = scores.topk(2).indices.tolist()
+        return [all_ids[i] for i in top2]
+
+    # ------------------------------------------------------------------
+    # Contract declaration
+    # ------------------------------------------------------------------
+
+    def choose_contract(self, legal_levels, hand, winner_bid):
+        if self.model is None:
+            suits = {}
+            for c in hand:
+                suits.setdefault(c.suit, []).append(c)
+            best_suit = max(suits, key=lambda s: len(suits[s]))
+            trump_name = SUIT_NAMES[best_suit]
+            level = min(legal_levels) if legal_levels else 2
+            return "suit", trump_name, level
+
+        torch = self._torch
+        feat = self._features
+
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+
+        bid_value = getattr(winner_bid, 'value', 2)
+        bid_type = getattr(winner_bid, 'bid_type', None)
+        is_ih = False
+        if hasattr(bid_type, 'value'):
+            is_ih = bid_type.value == "in_hand"
+        elif isinstance(bid_type, str):
+            is_ih = bid_type == "in_hand"
+
+        context = torch.from_numpy(
+            feat.encode_contract_context(bid_value, is_ih, legal_levels)
+        ).unsqueeze(0)
+
+        with torch.no_grad():
+            type_logits, trump_logits = self.model.forward_contract(hand_feat, context)
+
+        type_idx = type_logits[0].argmax().item()
+        contract_types = ["suit", "betl", "sans"]
+        ctype = contract_types[type_idx]
+
+        if ctype == "suit":
+            # Suit inherent levels: spades=2, diamonds=3, hearts=4, clubs=5
+            suit_levels = {"clubs": 5, "diamonds": 3, "hearts": 4, "spades": 2}
+            suit_names = ["clubs", "diamonds", "hearts", "spades"]
+            # Sort by model preference, pick first valid suit
+            trump_probs = trump_logits[0]
+            sorted_idx = trump_probs.argsort(descending=True).tolist()
+            trump = None
+            for idx in sorted_idx:
+                s = suit_names[idx]
+                if suit_levels[s] >= bid_value:
+                    trump = s
+                    break
+            if trump is None:
+                trump = suit_names[sorted_idx[0]]
+        else:
+            trump = None
+
+        level = min(legal_levels) if legal_levels else 2
+        return ctype, trump, level
+
+    # ------------------------------------------------------------------
+    # Whisting / following
+    # ------------------------------------------------------------------
+
+    def choose_whist_action(self, legal_actions):
+        hand = getattr(self, '_hand', [])
+        contract_type = getattr(self, '_contract_type', None)
+        trump_suit = getattr(self, '_trump_suit', None)
+
+        if self.model is None:
+            action = self.rng.choice(legal_actions)
+            return action.get("action") if isinstance(action, dict) else action
+
+        torch = self._torch
+        feat = self._features
+
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        context = torch.from_numpy(
+            feat.encode_following_context(contract_type, trump_suit, hand)
+        ).unsqueeze(0)
+
+        mask = torch.zeros(1, 6)
+        action_map = {}
+        for a in legal_actions:
+            act = a.get("action") if isinstance(a, dict) else a
+            if act in self.FOLLOWING_ACTIONS:
+                idx = self.FOLLOWING_ACTIONS.index(act)
+                mask[0, idx] = 1.0
+                action_map[idx] = act
+
+        with torch.no_grad():
+            logits = self.model.forward_following(hand_feat, context, mask)[0]
+
+        chosen_idx = self._sample_or_argmax(logits)
+        if chosen_idx in action_map:
+            return action_map[chosen_idx]
+
+        # Fallback
+        a = self.rng.choice(legal_actions)
+        return a.get("action") if isinstance(a, dict) else a
+
+    # ------------------------------------------------------------------
+    # Card play
+    # ------------------------------------------------------------------
+
+    def choose_card(self, legal_cards):
+        if self.model is None:
+            return self.rng.choice(legal_cards).id
+
+        torch = self._torch
+        feat = self._features
+        np = __import__("numpy")
+
+        hand = getattr(self, '_hand', legal_cards)
+        rnd = getattr(self, '_rnd', None)
+        contract_type_str = getattr(self, '_contract_type', "suit")
+        trump_suit = getattr(self, '_trump_suit', None)
+
+        # Determine trick context
+        trick_num = 1
+        is_leading = True
+        trick_cards_count = 0
+        led_suit = None
+
+        if rnd and rnd.current_trick:
+            trick = rnd.current_trick
+            trick_num = trick.number
+            trick_cards_count = len(trick.cards)
+            is_leading = trick_cards_count == 0
+            if trick.cards:
+                # trick.cards is list of (player_id, Card) tuples
+                led_suit = trick.cards[0][1].suit
+
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        play_ctx = torch.from_numpy(feat.encode_card_play_context(
+            self._is_declarer, trump_suit, trick_num, is_leading,
+            trick_cards_count, led_suit, contract_type_str, len(hand),
+        )).unsqueeze(0)
+        played_vec = torch.from_numpy(
+            feat.encode_cards_played(self._observed_cards)
+        ).unsqueeze(0)
+
+        suit_counts = feat.get_suit_counts(hand)
+        card_feats = []
+        for card in legal_cards:
+            card_feats.append(feat.encode_card(card, suit_counts))
+        card_feats_t = torch.from_numpy(
+            np.array(card_feats, dtype=np.float32)
+        ).unsqueeze(0)
+
+        with torch.no_grad():
+            scores = self.model.forward_card_play(
+                hand_feat, play_ctx, played_vec, card_feats_t)[0]
+
+        n = len(legal_cards)
+        chosen_idx = self._sample_or_argmax(scores[:n])
+        chosen_card = legal_cards[chosen_idx]
+
+        # Track played cards
+        self._observed_cards.append(chosen_card)
+        self._cards_played += 1
+
+        return chosen_card.id
+
+
 # ---------------------------------------------------------------------------
 # Logging helper
 # ---------------------------------------------------------------------------
@@ -2804,126 +3138,264 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
     emit(f"")
 
     # ------------------------------------------------------------------
-    # AUCTION
+    # Build position → player_id mapping
     # ------------------------------------------------------------------
+    pos_to_id = {p.position: p.id for p in game.players}
+
+    # ------------------------------------------------------------------
+    # AUCTION + EXCHANGING + WHISTING  (driven by state machine)
+    # ------------------------------------------------------------------
+    sm_state_id = 1  # SM always starts at state 1
+
     emit("--- Auction ---")
-    max_auction_steps = 30
-    while rnd.phase == RoundPhase.AUCTION and max_auction_steps > 0:
-        max_auction_steps -= 1
-        auction = rnd.auction
-        bidder_id = auction.current_bidder_id
-        if bidder_id is None:
-            break
-        bidder = game.get_player(bidder_id)
-        legal_bids = engine.get_legal_bids(bidder_id)
-        if not legal_bids:
-            break
 
-        strat = strategies[bidder_id]
-        strat._hand = bidder.hand
-        chosen = strat.choose_bid(legal_bids)
+    # Track SM-level contract info for engine calls
+    sm_contract_type = None   # "suit", "betl", "sans"
+    sm_contract_trump = None  # suit name or None
+    sm_contract_level = None  # int or None
+    sm_is_in_hand = False
+    sm_declarer_pos = None    # position of declarer (from SM context)
+    sm_exchange_done = False
+    sm_whist_emitted = False
+    sm_auction_winner_emitted = False
 
-        bid_label = chosen.get("label", chosen["bid_type"])
-        intent = getattr(strat, 'last_bid_intent', '')
-        if intent:
-            emit(f"  P{bidder.position} {bidder.name}: {bid_label}  [{intent}]")
-        else:
-            emit(f"  P{bidder.position} {bidder.name}: {bid_label}")
+    max_sm_steps = 80
+    while sm_state_id not in (0, -1) and max_sm_steps > 0:
+        max_sm_steps -= 1
+        state = SM[sm_state_id]
+        phase = state["phase"]
+        player_pos = state["player"]
+        commands = state["commands"]
+        edges = state["edges"]
+        player_id = pos_to_id[player_pos]
+        player = game.get_player(player_id)
+        strat = strategies[player_id]
 
-        # Compact log: record bid intent
-        bt = chosen["bid_type"]
-        if bt == "pass":
-            compact_bid_label = "pass"
-        elif bt in ("sans", "betl"):
-            compact_bid_label = bt
-        else:
-            # game or in_hand: map intended suit to index 0 (strongest)
-            compact_bid_label = "0"
-        compact_bids.append((bidder.name, list(bidder.hand), compact_bid_label))
+        if phase == "auction":
+            # ----- AUCTION step -----
+            # Build legal bids from SM commands
+            legal_bids = []
+            for cmd in commands:
+                bid = _AUCTION_CMD_TO_BID.get(cmd)
+                if bid:
+                    legal_bids.append(dict(bid))  # copy
 
-        engine.place_bid(bidder_id, chosen["bid_type"], chosen.get("value", 0))
+            strat._hand = player.hand
+            chosen = strat.choose_bid(legal_bids)
 
-    if rnd.phase == RoundPhase.REDEAL:
-        emit("  => All passed — redeal (game over for this round)")
-        emit("")
-        emit("--- Result: REDEAL ---")
-        # Compact log for redeal
-        for name, hand, blabel in compact_bids:
-            compact.append(f"{name} bid: {compact_hand_fmt(hand)} -> {blabel}")
-        compact.append("")
-        for p in sorted(game.players, key=lambda p: p.position):
-            compact.append(f"{p.name} score: {p.score}")
-        return log, compact
+            bid_label = chosen.get("label", chosen["bid_type"])
+            intent = getattr(strat, 'last_bid_intent', '')
+            if intent:
+                emit(f"  P{player.position} {player.name}: {bid_label}  [{intent}]")
+            else:
+                emit(f"  P{player.position} {player.name}: {bid_label}")
 
-    emit(f"")
-    declarer = game.get_player(rnd.declarer_id)
-    winner_bid = rnd.auction.get_winner_bid()
-    emit(f"Auction winner: P{declarer.position} {declarer.name} "
-         f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
-    emit(f"")
+            # Compact log: record bid intent
+            bt = chosen["bid_type"]
+            if bt == "pass":
+                compact_bid_label = "pass"
+            elif bt in ("sans", "betl"):
+                compact_bid_label = bt
+            else:
+                compact_bid_label = "0"
+            compact_bids.append((player.name, list(player.hand), compact_bid_label))
 
-    # ------------------------------------------------------------------
-    # EXCHANGE (if not in-hand)
-    # ------------------------------------------------------------------
-    if rnd.phase == RoundPhase.EXCHANGING:
-        emit("--- Exchange ---")
-        emit(f"  Talon: {' '.join(card_str(c) for c in rnd.talon)}")
+            # Call engine to mutate game state
+            engine.place_bid(player_id, chosen["bid_type"], chosen.get("value", 0))
 
-        strat = strategies[declarer.id]
-        hand_ids = [c.id for c in declarer.hand]
-        talon_ids = [c.id for c in rnd.talon]
-        discard_ids = strat.choose_discard(hand_ids, talon_ids)
+            # Find the matching SM edge label for the chosen bid
+            # Map chosen bid back to the SM command label
+            chosen_bt = chosen["bid_type"]
+            chosen_val = chosen.get("value", 0)
+            sm_label = None
+            for cmd in commands:
+                mapped = _AUCTION_CMD_TO_BID.get(cmd)
+                if mapped and mapped["bid_type"] == chosen_bt and mapped["value"] == chosen_val:
+                    sm_label = cmd
+                    break
 
-        engine.complete_exchange(declarer.id, discard_ids)
+            # Follow the edge
+            for edge in edges:
+                if edge["cmd_label"] == sm_label:
+                    sm_state_id = edge["next_state_id"]
+                    break
 
-        emit(f"  {declarer.name} discards: {', '.join(discard_ids)}")
-        emit(f"  Hand after exchange: {hand_str(declarer.hand)}")
-        emit(f"")
+            # Track in-hand status for later
+            if chosen_bt == "in_hand":
+                sm_is_in_hand = True
+            elif chosen_bt in ("betl", "sans") and rnd.phase != RoundPhase.EXCHANGING:
+                # betl/sans bid during auction = in-hand variant
+                sm_is_in_hand = True
 
-        # Announce contract
-        legal_levels = engine.get_legal_contract_levels(declarer.id)
-        ctype, trump, level = strat.choose_contract(legal_levels, declarer.hand, winner_bid)
-        engine.announce_contract(declarer.id, ctype, trump_suit=trump, level=level)
+        elif phase == "exchanging":
+            if commands == ["discard"]:
+                # ----- EXCHANGE: discard step -----
+                if not sm_exchange_done:
+                    # Get declarer from context
+                    ctx = state.get("context", [])
+                    sm_declarer_pos = ctx[0] if ctx else player_pos
+                    sm_contract_level = ctx[1] if ctx and len(ctx) > 1 else None
 
-        trump_display = f" ({trump})" if trump else ""
-        emit(f"Contract: {ctype}{trump_display} level {rnd.contract.bid_value}")
-        emit(f"")
+                    declarer_id = pos_to_id[sm_declarer_pos]
+                    declarer = game.get_player(declarer_id)
+                    winner_bid = rnd.auction.get_winner_bid()
 
-    elif rnd.phase == RoundPhase.PLAYING and rnd.contract is None:
-        # In-hand with undeclared value — declarer must announce
-        emit("--- In-Hand Contract Declaration ---")
-        strat = strategies[declarer.id]
-        legal_levels = engine.get_legal_contract_levels(declarer.id)
-        ctype, trump, level = strat.choose_contract(legal_levels, declarer.hand, winner_bid)
-        engine.announce_contract(declarer.id, ctype, trump_suit=trump, level=level)
+                    emit(f"")
+                    emit(f"Auction winner: P{declarer.position} {declarer.name} "
+                         f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+                    emit(f"")
+                    sm_auction_winner_emitted = True
+                    emit("--- Exchange ---")
+                    emit(f"  Talon: {' '.join(card_str(c) for c in rnd.talon)}")
 
-        trump_display = f" ({trump})" if trump else ""
-        emit(f"Contract: {ctype}{trump_display} level {rnd.contract.bid_value} (in-hand)")
-        emit(f"")
+                    strat_d = strategies[declarer_id]
+                    hand_ids = [c.id for c in declarer.hand]
+                    talon_ids = [c.id for c in rnd.talon]
+                    discard_ids = strat_d.choose_discard(hand_ids, talon_ids)
 
-    # ------------------------------------------------------------------
-    # WHISTING
-    # ------------------------------------------------------------------
-    if rnd.phase == RoundPhase.WHISTING:
-        emit("--- Whisting ---")
-        max_whist_steps = 20
-        while rnd.phase == RoundPhase.WHISTING and max_whist_steps > 0:
-            max_whist_steps -= 1
-            wid = rnd.whist_current_id
-            if wid is None:
-                break
-            wp = game.get_player(wid)
-            legal_actions = engine.get_legal_whist_actions(wid)
-            if not legal_actions:
-                break
+                    engine.complete_exchange(declarer_id, discard_ids)
 
-            strat = strategies[wid]
-            strat._hand = wp.hand
+                    emit(f"  {declarer.name} discards: {', '.join(discard_ids)}")
+                    emit(f"  Hand after exchange: {hand_str(declarer.hand)}")
+                    emit(f"")
+                    sm_exchange_done = True
+
+                # Follow the single discard edge
+                sm_state_id = edges[0]["next_state_id"]
+
+            else:
+                # ----- EXCHANGE: contract announcement step -----
+                # SM commands are suit names + Betl + Sans — already
+                # filtered to only suits whose inherent level >= winning bid.
+                ctx = state.get("context", [])
+                sm_declarer_pos = ctx[0] if ctx else player_pos
+                declarer_id = pos_to_id[sm_declarer_pos]
+                declarer = game.get_player(declarer_id)
+                winner_bid = rnd.auction.get_winner_bid()
+
+                # Build legal contract choices from SM commands
+                sm_legal_suits = set()  # lowercase suit names legal per SM
+                sm_has_betl = False
+                sm_has_sans = False
+                for cmd in commands:
+                    if cmd in ("Spades", "Diamonds", "Hearts", "Clubs"):
+                        sm_legal_suits.add(cmd.lower())
+                    elif cmd == "Betl":
+                        sm_has_betl = True
+                    elif cmd == "Sans":
+                        sm_has_sans = True
+
+                # Let strategy choose contract
+                legal_levels = engine.get_legal_contract_levels(declarer_id)
+                strat_d = strategies[declarer_id]
+                ctype, trump, level = strat_d.choose_contract(
+                    legal_levels, declarer.hand, winner_bid)
+
+                # Validate / fix suit choice against SM-legal suits
+                if ctype == "suit" and trump and trump.lower() not in sm_legal_suits:
+                    if sm_legal_suits:
+                        trump = sorted(sm_legal_suits)[0]
+                    elif sm_has_betl:
+                        ctype, trump, level = "betl", None, 6
+                    elif sm_has_sans:
+                        ctype, trump, level = "sans", None, 7
+
+                engine.announce_contract(declarer_id, ctype, trump_suit=trump, level=level)
+
+                trump_display = f" ({trump})" if trump else ""
+                emit(f"Contract: {ctype}{trump_display} level {rnd.contract.bid_value}")
+                emit(f"")
+
+                # Map strategy's choice to SM edge label
+                if ctype == "betl":
+                    sm_chosen_label = "Betl"
+                elif ctype == "sans":
+                    sm_chosen_label = "Sans"
+                else:
+                    sm_chosen_label = trump.capitalize() if trump else commands[0]
+
+                for edge in edges:
+                    if edge["cmd_label"] == sm_chosen_label:
+                        sm_state_id = edge["next_state_id"]
+                        break
+
+        elif phase == "playing":
+            # ----- IN-HAND CONTRACT DECLARATION (SM "playing" phase) -----
+            # SM states 26, 27, 36: in-hand bid, suit not yet chosen
+            # Commands are ['Spades', 'Diamonds', 'Hearts', 'Clubs']
+            declarer_id = player_id  # the player in this SM state IS the declarer
+            declarer = game.get_player(declarer_id)
+            winner_bid = rnd.auction.get_winner_bid()
+
+            if not sm_auction_winner_emitted:
+                emit(f"")
+                emit(f"Auction winner: P{declarer.position} {declarer.name} "
+                     f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+                emit(f"")
+                sm_auction_winner_emitted = True
+            emit("--- In-Hand Contract Declaration ---")
+
+            legal_levels = engine.get_legal_contract_levels(declarer_id)
+            strat_d = strategies[declarer_id]
+            ctype, trump, level = strat_d.choose_contract(
+                legal_levels, declarer.hand, winner_bid)
+            engine.announce_contract(declarer_id, ctype,
+                                     trump_suit=trump, level=level)
+
+            trump_display = f" ({trump})" if trump else ""
+            emit(f"Contract: {ctype}{trump_display} "
+                 f"level {rnd.contract.bid_value} (in-hand)")
+            emit(f"")
+
+            # Follow the SM edge for the chosen suit
+            if ctype == "betl":
+                sm_chosen_label = "Betl"
+            elif ctype == "sans":
+                sm_chosen_label = "Sans"
+            else:
+                sm_chosen_label = trump.capitalize() if trump else commands[0]
+
+            for edge in edges:
+                if edge["cmd_label"] == sm_chosen_label:
+                    sm_state_id = edge["next_state_id"]
+                    break
+
+        elif phase == "whisting":
+            # ----- WHISTING step -----
+            if not sm_whist_emitted:
+                # Emit auction winner if not already done
+                if not sm_auction_winner_emitted and rnd.declarer_id is not None:
+                    declarer = game.get_player(rnd.declarer_id)
+                    winner_bid = rnd.auction.get_winner_bid()
+
+                    emit(f"")
+                    emit(f"Auction winner: P{declarer.position} {declarer.name} "
+                         f"(bid: {winner_bid.bid_type.value} {winner_bid.value})")
+                    emit(f"")
+                    sm_auction_winner_emitted = True
+
+                    if rnd.contract is not None:
+                        trump_display = f" ({rnd.contract.trump_suit})" if rnd.contract.trump_suit else ""
+                        emit(f"Contract: {rnd.contract.type.value}{trump_display} "
+                             f"level {rnd.contract.bid_value} (in-hand)")
+                        emit(f"")
+
+                emit("--- Whisting ---")
+                sm_whist_emitted = True
+
+            # Build legal actions from SM commands
+            legal_actions = []
+            for cmd in commands:
+                act = _WHIST_CMD_TO_ACTION.get(cmd)
+                if act:
+                    legal_actions.append(dict(act))  # copy
+
+            strat._hand = player.hand
             strat._contract_type = rnd.contract.type.value if rnd.contract else None
             strat._trump_suit = rnd.contract.trump_suit if rnd.contract else None
             action = strat.choose_whist_action(legal_actions)
 
-            emit(f"  P{wp.position} {wp.name}: {action}")
+            emit(f"  P{player.position} {player.name}: {action}")
 
             # Compact log: record whisting decision
             contract = rnd.contract
@@ -2932,18 +3404,53 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
             elif contract.type == ContractType.BETL:
                 c_label = "betl"
             else:
-                c_label = str(compact_suit_index(contract.trump_suit, wp.hand))
+                c_label = str(compact_suit_index(contract.trump_suit, player.hand))
             compact_action = "call" if action not in ("pass",) else "pass"
-            compact_whists.append((wp.name, list(wp.hand), c_label, compact_action))
+            compact_whists.append((player.name, list(player.hand), c_label, compact_action))
 
+            # Call engine to mutate game state
             if rnd.whist_declaring_done:
-                engine.declare_counter_action(wid, action)
+                engine.declare_counter_action(player_id, action)
             else:
-                engine.declare_whist(wid, action)
+                engine.declare_whist(player_id, action)
 
+            # Follow the matching SM edge
+            sm_chosen_label = None
+            for cmd in commands:
+                act = _WHIST_CMD_TO_ACTION.get(cmd)
+                if act and act["action"] == action:
+                    sm_chosen_label = cmd
+                    break
+
+            for edge in edges:
+                if edge["cmd_label"] == sm_chosen_label:
+                    sm_state_id = edge["next_state_id"]
+                    break
+
+    # ------------------------------------------------------------------
+    # Post-SM: handle terminal states
+    # ------------------------------------------------------------------
+    if sm_state_id == -1:
+        # All passed (REDEAL) or all defenders passed (auto-win → SCORING)
+        if rnd.phase == RoundPhase.REDEAL:
+            emit("  => All passed — redeal (game over for this round)")
+            emit("")
+            emit("--- Result: REDEAL ---")
+            for name, hand, blabel in compact_bids:
+                compact.append(f"{name} bid: {compact_hand_fmt(hand)} -> {blabel}")
+            compact.append("")
+            for p in sorted(game.players, key=lambda p: p.position):
+                compact.append(f"{p.name} score: {p.score}")
+            return log, compact
+        elif rnd.phase == RoundPhase.SCORING:
+            emit("  => No followers — declarer wins automatically")
+            emit(f"")
+
+    if sm_state_id == 0:
+        # SM reached game_start → proceed to PLAYING
         if rnd.phase == RoundPhase.SCORING:
             emit("  => No followers — declarer wins automatically")
-        emit(f"")
+            emit(f"")
 
     # ------------------------------------------------------------------
     # PLAYING
@@ -2979,6 +3486,7 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
                 break
 
             strat = strategies[next_id]
+            strat._rnd = rnd
             card_id = strat.choose_card(legal_cards)
             card_obj = next(c for c in legal_cards if c.id == card_id)
 
