@@ -119,10 +119,10 @@ def parse_game(log_lines, name_map):
             result["is_redeal"] = True
 
         # Per-player scores
-        m_score = re.match(r"\s+P\d+ (\w+): tricks=\d+, score=(-?\d+)", line)
+        m_score = re.match(r"\s+P\d+ (\w+): tricks=\d+, score=(-?[\d.]+)", line)
         if m_score:
             eng = m_score.group(1)
-            score = int(m_score.group(2))
+            score = float(m_score.group(2))
             pool_name = name_map.get(eng, eng)
             result["scores"][pool_name] = score
 
@@ -174,7 +174,7 @@ def run_trial(trial_idx, master_seed):
             if " score: " in line:
                 parts = line.split(" score: ")
                 engine_name = parts[0].strip()
-                score = int(parts[1].strip())
+                score = float(parts[1].strip())
                 pool_name = name_map.get(engine_name, engine_name)
                 total_scores[pool_name] += score
                 game_counts[pool_name] += 1
@@ -341,7 +341,7 @@ def main():
         fs = cum["follow_pos_score"][name]
         avg = f"{fs / fc:+.1f}" if fc > 0 else "n/a"
         print(f"{name:>8s}  {gc:6d}  {fc:7d}  {pct(fc, defender_opps):>6s}  "
-              f"{fs:+9d}  {avg:>7s}")
+              f"{fs:+9.0f}  {avg:>7s}")
 
 
 if __name__ == "__main__":

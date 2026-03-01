@@ -1051,6 +1051,9 @@ class GameEngine:
         round = self.game.current_round
         round.phase = RoundPhase.SCORING
 
+        # Snapshot scores before this round for zero-sum adjustment
+        scores_before = {p.id: p.score for p in self.game.players}
+
         declarer = self._get_player(round.declarer_id)
         defenders = [p for p in self.game.players if p.id != round.declarer_id]
         contract = round.contract
@@ -1153,9 +1156,10 @@ class GameEngine:
                 # Counter player gets all combined defender tricks
                 counter_player = self._get_player(counter_player_id)
                 combined = sum(d.tricks_won for d in defenders)
+                scored_tricks = min(combined, 5)
 
                 if combined >= 5:
-                    sc = combined * game_value
+                    sc = scored_tricks * game_value
                 else:
                     sc = -(game_value * 10) + combined * game_value
                 counter_player.score += sc
@@ -1193,13 +1197,14 @@ class GameEngine:
                         break
 
                 if caller_id:
-                    # Calling
+                    # Calling — caller is the principal follower
                     caller = self._get_player(caller_id)
                     called = self._get_player(called_id) if called_id else None
                     combined = caller.tricks_won + (called.tricks_won if called else 0)
+                    scored_tricks = min(combined, 5)
 
                     if combined >= 4:
-                        caller_sc = combined * game_value
+                        caller_sc = scored_tricks * game_value
                     else:
                         caller_sc = -(game_value * 10) + combined * game_value
                     caller.score += caller_sc
@@ -1224,9 +1229,10 @@ class GameEngine:
                 elif len(followers) == 2:
                     # Both following
                     combined = sum(d.tricks_won for d in followers)
+                    scored_combined = min(combined, 5)
                     if combined >= 4:
                         for d in followers:
-                            sc = d.tricks_won * game_value
+                            sc = d.tricks_won * scored_combined / combined * game_value
                             d.score += sc
                             results["defender_results"].append({
                                 "player_id": d.id, "tricks": d.tricks_won,
@@ -1247,8 +1253,9 @@ class GameEngine:
                 elif len(followers) == 1:
                     # Single follower
                     follower = followers[0]
+                    scored_tricks = min(follower.tricks_won, 5)
                     if follower.tricks_won >= 2:
-                        sc = follower.tricks_won * game_value
+                        sc = scored_tricks * game_value
                     else:
                         sc = -(game_value * 10) + follower.tricks_won * game_value
                     follower.score += sc
@@ -1264,6 +1271,20 @@ class GameEngine:
                                 "score_change": 0,
                             })
 
+        # Zero-sum adjustment: redistribute so round scores sum to zero
+        round_total = sum(p.score - scores_before[p.id] for p in self.game.players)
+        adjustment = round_total / 3
+        for p in self.game.players:
+            p.score -= adjustment
+            # Update score_change in results for this player
+            for dr in results["defender_results"]:
+                if dr["player_id"] == p.id:
+                    dr["score_change"] -= adjustment
+                    break
+            else:
+                if p.id == declarer.id:
+                    pass  # declarer adjustment tracked in results below
+        results["zero_sum_adjustment"] = -adjustment
         results["scores"] = {p.id: p.score for p in self.game.players}
         return results
 
