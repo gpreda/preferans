@@ -242,6 +242,9 @@ AI_NAMES = ['Alice', 'Bob', 'Carol', 'Neural']
 def new_game():
     global session
 
+    data = request.get_json() or {}
+    debug = bool(data.get('debug'))
+
     r = http.post(f'{ENGINE_URL}/new-game', json={}).json()
 
     ai_names = random.sample(AI_NAMES, 2)
@@ -260,6 +263,7 @@ def new_game():
         'players': {1: 'You', 2: ai_names[0], 3: ai_names[1]},
         'human': 1,
         'discarded': [],
+        'debug': debug,
     }
 
     return jsonify(_build_state())
@@ -551,17 +555,19 @@ def _build_state():
     human = s.get('human', 1)
     players = s.get('players', {1: 'You', 2: 'P2', 3: 'P3'})
 
+    debug = s.get('debug', False)
+
     # Build hands with visibility rules
     hands = {}
     for p in [1, 2, 3]:
         h = s['hands'][str(p)]
-        if p == human:
+        if p == human or debug:
             hands[str(p)] = h
         else:
             hands[str(p)] = len(h)  # AI: send count only
 
     # Talon visibility: hidden unless exchange phase and declarer is human
-    if s['phase'] == 'exchange_cards' and s['declarer'] == human:
+    if (s['phase'] == 'exchange_cards' and s['declarer'] == human) or debug:
         talon = s['talon']
     else:
         talon = len(s['talon'])

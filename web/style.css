@@ -36,7 +36,7 @@ body {
     font-size: 14px;
 }
 
-#new-game-btn {
+#new-game-btn, #debug-game-btn {
     padding: 2px 12px;
     font-family: 'Courier New', Courier, monospace;
     font-size: 12px;
@@ -46,8 +46,18 @@ body {
     cursor: pointer;
 }
 
+#debug-game-btn {
+    color: #f55;
+    border-color: #f55;
+}
+
 #new-game-btn:hover {
     background: #5f5;
+    color: #000;
+}
+
+#debug-game-btn:hover {
+    background: #f55;
     color: #000;
 }
 
@@ -96,4 +106,10 @@ body {
 
 .line.separator {
     color: #333;
+}
+
+.cards {
+    font-size: 28px;
+    line-height: 1.2;
+    vertical-align: middle;
 }

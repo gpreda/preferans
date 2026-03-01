@@ -2,9 +2,22 @@
 
 const output = document.getElementById('output');
 const SUIT = {spades: '\u2660', diamonds: '\u2666', clubs: '\u2663', hearts: '\u2665'};
+const SUIT_ORDER = ['spades', 'diamonds', 'clubs', 'hearts'];
 
 let state = null;
 let exchangeSelected = [];
+let aiTimer = null;
+
+// ── helpers ─────────────────────────────────────────────────────────
+
+function playerName(p) {
+    if (!state || !state.players) return 'P' + p;
+    return state.players[String(p)] || 'P' + p;
+}
+
+function isAI(p) {
+    return state && state.human && p !== state.human;
+}
 
 // ── logging ─────────────────────────────────────────────────────────
 
@@ -16,6 +29,71 @@ function log(text, cls = 'info') {
     const line = document.createElement('div');
     line.className = 'line ' + cls;
     line.textContent = ts() + '  ' + text;
+    output.prepend(line);
+}
+
+function logCards(label, cards, cls = 'info') {
+    const line = document.createElement('div');
+    line.className = 'line ' + cls;
+
+    const prefix = document.createTextNode(ts() + '  ' + label);
+    line.appendChild(prefix);
+
+    const cardSpan = document.createElement('span');
+    cardSpan.className = 'cards';
+    cardSpan.innerHTML = formatCardsHtml(cards);
+    line.appendChild(cardSpan);
+
+    output.prepend(line);
+}
+
+function formatCardsHtml(cards) {
+    // Group cards by suit
+    const bySuit = {};
+    for (const id of cards) {
+        const [rank, suit] = id.split('_');
+        if (!bySuit[suit]) bySuit[suit] = [];
+        bySuit[suit].push(rank);
+    }
+    const parts = [];
+    for (const suit of SUIT_ORDER) {
+        if (!bySuit[suit]) continue;
+        const sym = SUIT[suit];
+        const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
+        const ranks = bySuit[suit].map(r => '<span style="color:' + color + '">' + r + sym + '</span>').join(' ');
+        parts.push(ranks);
+    }
+    return parts.join('&nbsp;&nbsp;&nbsp;');
+}
+
+function cardHtml(cardId) {
+    const [rank, suit] = cardId.split('_');
+    const sym = SUIT[suit];
+    const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
+    return '<span style="color:' + color + '">' + rank + sym + '</span>';
+}
+
+// Log a line with mixed text and big-font cards.
+// parts: strings for normal text, {card: id} for single card, {cards: [...]} for grouped hand
+function logLine(cls, ...parts) {
+    const line = document.createElement('div');
+    line.className = 'line ' + cls;
+    line.appendChild(document.createTextNode(ts() + '  '));
+    for (const part of parts) {
+        if (typeof part === 'string') {
+            line.appendChild(document.createTextNode(part));
+        } else if (part.cards) {
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(part.cards);
+            line.appendChild(span);
+        } else if (part.card) {
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = cardHtml(part.card);
+            line.appendChild(span);
+        }
+    }
     output.prepend(line);
 }
 
@@ -74,28 +152,115 @@ async function api(path, body) {
     const opts = body !== undefined
         ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}
         : {};
-    log('>> ' + (opts.method || 'GET') + ' ' + path + (body ? ' ' + JSON.stringify(body) : ''), 'dim');
     const r = await fetch(path, opts);
     const data = await r.json();
     if (!r.ok) {
         log('<< ' + r.status + ' ' + JSON.stringify(data), 'red');
         throw new Error(data.error || r.statusText);
     }
-    log('<< phase=' + data.phase + ' player=' + data.player_on_move, 'dim');
     return data;
+}
+
+// ── phase transition logging ────────────────────────────────────────
+
+function logTransition(prevPhase, newState) {
+    const phase = newState.phase;
+
+    if (phase === 'exchange_cards' && prevPhase === 'auction') {
+        log('auction winner: ' + playerName(newState.declarer), 'green');
+    }
+
+    if (phase === 'whisting' && (prevPhase === 'exchanging' || prevPhase === 'exchange_cards')) {
+        // Contract announced, show discarded cards
+        if (newState.contract) {
+            log('contract: ' + contractStr(newState.contract), 'green');
+        }
+        if (newState.discarded && newState.discarded.length > 0) {
+            logCards('discarded: ', newState.discarded, 'yellow');
+        }
+        sep();
+    }
+
+    if (phase === 'playing' && prevPhase !== 'playing') {
+        sep();
+        log('PLAY  ' + contractStr(newState.contract) + '  declarer=' + playerName(newState.declarer) + '  followers=[' + newState.followers.map(playerName).join(',') + ']', 'green');
+        logHands();
+        sep();
+    }
+
+    if (phase === 'scoring' && prevPhase !== 'scoring') {
+        // Will be rendered by renderScoring
+    }
+}
+
+// ── AI auto-play ────────────────────────────────────────────────────
+
+function clearAiTimer() {
+    if (aiTimer) {
+        clearTimeout(aiTimer);
+        aiTimer = null;
+    }
+}
+
+function scheduleAiMove() {
+    clearAiTimer();
+    const p = state.player_on_move;
+    if (!p || !isAI(p)) return;
+    if (state.phase === 'scoring') return;
+
+    aiTimer = setTimeout(async () => {
+        try {
+            const prevPhase = state.phase;
+            state = await api('/api/game/ai-move', {});
+            const act = state.ai_action;
+
+            // Log what AI did
+            if (act) {
+                const name = playerName(act.player);
+                if (act.command) {
+                    log(name + ' \u2192 ' + act.command, 'bright');
+                } else if (act.card) {
+                    logLine('bright', name + ' plays ', {card: act.card});
+                }
+            }
+
+            // Log trick result
+            if (state.play_result && state.play_result.trick_complete) {
+                log('\u2192 ' + playerName(state.play_result.winner) + ' wins trick ' + state.tricks_played, 'green');
+                sep();
+            }
+
+            // Log phase transitions
+            logTransition(prevPhase, state);
+
+            render();
+        } catch (e) {
+            log('AI ERROR: ' + e.message, 'red');
+        }
+    }, 800);
 }
 
 // ── game flow ───────────────────────────────────────────────────────
 
-async function newGame() {
+async function newGame(debug = false) {
     try {
+        clearAiTimer();
         sep();
-        log('NEW GAME', 'green');
-        state = await api('/api/game/new', {});
-        log('game_engine:  ' + state.ge_id, 'dim');
-        log('bidding_engine: ' + state.be_id, 'dim');
+        log(debug ? 'NEW DEBUG GAME' : 'NEW GAME', 'green');
+        state = await api('/api/game/new', {debug});
+
+        // Log player names
+        const names = state.players || {};
+        log(names['1'] + ' (P1) vs ' + names['2'] + ' (P2) vs ' + names['3'] + ' (P3)', 'green');
+
         sep();
-        log('talon: ' + handStr(state.talon), 'yellow');
+        // Talon: hidden
+        const talon = state.talon;
+        if (typeof talon === 'number') {
+            log('talon: ' + talon + ' cards (hidden)', 'yellow');
+        } else {
+            logCards('talon: ', talon, 'yellow');
+        }
         logHands();
         sep();
         render();
@@ -107,12 +272,18 @@ async function newGame() {
 function logHands() {
     for (const p of [1, 2, 3]) {
         const h = state.hands[String(p)];
-        log('  P' + p + ' (' + h.length + '): ' + handStr(h), 'info');
+        const name = playerName(p);
+        if (Array.isArray(h)) {
+            logCards('  ' + name + ' (' + h.length + '): ', h, 'info');
+        } else {
+            log('  ' + name + ': ' + h + ' cards', 'dim');
+        }
     }
 }
 
 function render() {
     clearButtons();
+    clearAiTimer();
     exchangeSelected = [];
     const phase = state.phase;
 
@@ -133,7 +304,15 @@ function renderAuction() {
 
 function renderBiddingEngine(label) {
     const p = state.player_on_move;
-    log(label + '  P' + p + ' to act  [' + (state.commands || []).join(', ') + ']', 'cyan');
+    const name = playerName(p);
+
+    if (isAI(p)) {
+        log(label + '  ' + name + ' thinking...', 'cyan');
+        scheduleAiMove();
+        return;
+    }
+
+    log(label + '  ' + name + ' to act  [' + (state.commands || []).join(', ') + ']', 'cyan');
     const buttons = (state.commands || []).map((cmd, i) => ({
         label: cmd,
         action: () => execBiddingEngine(i + 1, cmd, p),
@@ -143,17 +322,11 @@ function renderBiddingEngine(label) {
 
 async function execBiddingEngine(cmdIdx, label, player) {
     try {
-        log('P' + player + ' \u2192 ' + label, 'bright');
+        const prevPhase = state.phase;
+        log(playerName(player) + ' \u2192 ' + label, 'bright');
         state = await api('/api/game/execute', {command_id: cmdIdx});
 
-        // Log phase transitions
-        if (state.phase === 'exchange_cards') {
-            log('auction winner: P' + state.declarer, 'green');
-        } else if (state.phase === 'playing') {
-            log('contract: ' + contractStr(state.contract) + '  declarer=P' + state.declarer + '  followers=[' + state.followers.join(',') + ']', 'green');
-            logHands();
-        }
-
+        logTransition(prevPhase, state);
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
@@ -164,9 +337,17 @@ async function execBiddingEngine(cmdIdx, label, player) {
 
 function renderExchangeCards() {
     const p = state.declarer;
+    const name = playerName(p);
+
+    if (isAI(p)) {
+        log('EXCHANGE  ' + name + ' exchanging...', 'cyan');
+        scheduleAiMove();
+        return;
+    }
+
     const cards = state.exchange_cards;
-    log('EXCHANGE  P' + p + ' has ' + cards.length + ' cards \u2014 select 2 to discard', 'cyan');
-    log('  ' + handStr(cards), 'info');
+    log('EXCHANGE  ' + name + ' has ' + cards.length + ' cards \u2014 select 2 to discard', 'cyan');
+    logCards('  ', cards, 'info');
 
     const buttons = cards.map(c => ({
         label: cardName(c),
@@ -181,7 +362,6 @@ function toggleExchange(card) {
     const idx = exchangeSelected.indexOf(card);
     if (idx >= 0) exchangeSelected.splice(idx, 1);
     else if (exchangeSelected.length < 2) exchangeSelected.push(card);
-    // re-render buttons only (no log spam)
     const cards = state.exchange_cards;
     const buttons = cards.map(c => ({
         label: cardName(c),
@@ -198,11 +378,15 @@ async function confirmExchange() {
         return;
     }
     try {
-        log('P' + state.declarer + ' discards: ' + handStr(exchangeSelected), 'yellow');
+        const prevPhase = state.phase;
         state = await api('/api/game/execute', {cards: exchangeSelected});
+
         const h = state.hands[String(state.declarer)];
-        log('P' + state.declarer + ' hand after exchange (' + h.length + '): ' + handStr(h), 'info');
-        sep();
+        if (Array.isArray(h)) {
+            logCards(playerName(state.declarer) + ' hand after exchange (' + h.length + '): ', h, 'info');
+        }
+
+        logTransition(prevPhase, state);
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
@@ -211,20 +395,43 @@ async function confirmExchange() {
 
 // ── PLAYING ─────────────────────────────────────────────────────────
 
+function trickParts(trickNum, inTrick) {
+    const parts = ['TRICK ' + trickNum + '  '];
+    for (let i = 0; i < inTrick.length; i++) {
+        const tc = inTrick[i];
+        parts.push(playerName(tc.player) + ': ');
+        parts.push({card: tc.card});
+        if (i < inTrick.length - 1) parts.push('  ');
+    }
+    return parts;
+}
+
 function renderPlaying() {
     const p = state.player_on_move;
     if (!p) return;
 
     const trickNum = state.tricks_played + 1;
     const inTrick = state.trick_cards || [];
-    const hand = state.commands || [];
+    const name = playerName(p);
 
-    if (inTrick.length === 0) {
-        log('TRICK ' + trickNum + '  P' + p + ' leads  hand(' + hand.length + '): ' + handStr(hand), 'cyan');
-    } else {
-        const played = inTrick.map(tc => 'P' + tc.player + ':' + cardName(tc.card)).join(' ');
-        log('TRICK ' + trickNum + '  ' + played + '  |  P' + p + ' hand(' + hand.length + '): ' + handStr(hand), 'dim');
+    if (isAI(p)) {
+        if (inTrick.length > 0) {
+            logLine('dim', ...trickParts(trickNum, inTrick), '  |  ' + name + ' thinking...');
+        } else {
+            log('TRICK ' + trickNum + '  ' + name + ' thinking...', 'cyan');
+        }
+        scheduleAiMove();
+        return;
     }
+
+    // Human turn
+    const hand = state.commands || [];
+    if (inTrick.length === 0) {
+        log('TRICK ' + trickNum + '  ' + name + ' leads', 'cyan');
+    } else {
+        logLine('dim', ...trickParts(trickNum, inTrick));
+    }
+    logCards('  hand: ', hand, 'info');
 
     const buttons = hand.map(c => ({
         label: cardName(c),
@@ -235,12 +442,12 @@ function renderPlaying() {
 
 async function playCard(player, card) {
     try {
-        log('P' + player + ' plays ' + cardName(card), 'bright');
+        logLine('bright', playerName(player) + ' plays ', {card: card});
         state = await api('/api/game/execute', {player, card});
 
         const pr = state.play_result;
         if (pr && pr.trick_complete) {
-            log('\u2192 P' + pr.winner + ' wins trick ' + state.tricks_played, 'green');
+            log('\u2192 ' + playerName(pr.winner) + ' wins trick ' + state.tricks_played, 'green');
             sep();
         }
         render();
@@ -256,13 +463,16 @@ function renderScoring() {
     sep();
     if (state.all_pass) {
         log('ALL PASSED \u2014 redeal', 'yellow');
+    } else if (state.no_followers) {
+        log('NO FOLLOWERS \u2014 ' + playerName(state.declarer) + ' wins with ' + contractStr(state.contract), 'yellow');
     } else {
-        log('GAME OVER  contract: ' + contractStr(state.contract) + '  declarer: P' + state.declarer, 'cyan');
+        log('GAME OVER  contract: ' + contractStr(state.contract) + '  declarer: ' + playerName(state.declarer), 'cyan');
         const tw = state.tricks_won || {};
         for (const p of [1, 2, 3]) {
             const n = tw[String(p)] || 0;
+            const name = playerName(p);
             const role = p === state.declarer ? ' (declarer)' : state.followers.includes(p) ? ' (follower)' : ' (dropped)';
-            log('  P' + p + role + ': ' + n + ' tricks', 'info');
+            log('  ' + name + role + ': ' + n + ' tricks', 'info');
         }
     }
     sep();
@@ -272,4 +482,5 @@ function renderScoring() {
 // ── init ────────────────────────────────────────────────────────────
 
 log('ready', 'green');
-document.getElementById('new-game-btn').addEventListener('click', newGame);
+document.getElementById('new-game-btn').addEventListener('click', () => newGame(false));
+document.getElementById('debug-game-btn').addEventListener('click', () => newGame(true));
