@@ -1,8 +1,31 @@
 // Preferans Terminal UI
 
 const output = document.getElementById('output');
+const commandBar = document.getElementById('command-bar');
+const gameStateEl = document.getElementById('game-state');
+const handEls = {1: document.getElementById('hand-p1'), 2: document.getElementById('hand-p2'), 3: document.getElementById('hand-p3')};
+const talonLine = document.getElementById('talon-line');
+const prevTrickLine = document.getElementById('prev-trick-line');
+const remainingLine = document.getElementById('remaining-line');
+const gameInfo = document.getElementById('game-info');
+
 const SUIT = {spades: '\u2660', diamonds: '\u2666', clubs: '\u2663', hearts: '\u2665'};
 const SUIT_ORDER = ['spades', 'diamonds', 'clubs', 'hearts'];
+
+const _SUIT_SORT = {spades: 4, diamonds: 3, clubs: 2, hearts: 1};
+const _RANK_SORT = {'7': 8, '8': 7, '9': 6, '10': 5, 'J': 4, 'Q': 3, 'K': 2, 'A': 1};
+const RANKS = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+const FULL_DECK = [];
+for (const s of SUIT_ORDER) for (const r of RANKS) FULL_DECK.push(r + '_' + s);
+
+function _sort_cards(cardIds) {
+    return cardIds.slice().sort((a, b) => {
+        const [ra, sa] = a.split('_');
+        const [rb, sb] = b.split('_');
+        const sd = -(_SUIT_SORT[sa] || 0) + (_SUIT_SORT[sb] || 0);
+        return sd !== 0 ? sd : -(_RANK_SORT[ra] || 0) + (_RANK_SORT[rb] || 0);
+    });
+}
 
 let state = null;
 let exchangeSelected = [];
@@ -12,7 +35,17 @@ let aiTimer = null;
 
 function playerName(p) {
     if (!state || !state.players) return 'P' + p;
-    return state.players[String(p)] || 'P' + p;
+    let name = state.players[String(p)] || 'P' + p;
+    const tags = [];
+    if (state.dealer === p) tags.push('D');
+    if (state.phase === 'playing' && state.trick_lead === p) tags.push('L');
+    if (tags.length) name += ' (' + tags.join(',') + ')';
+    return name;
+}
+
+function playerVerb(p) {
+    // "You have" vs "Alice has"
+    return (state && state.players && state.players[String(p)] === 'You') ? 'have' : 'has';
 }
 
 function isAI(p) {
@@ -25,45 +58,51 @@ function ts() {
     return new Date().toISOString().substr(11, 12);
 }
 
-function log(text, cls = 'info') {
+function log(text, cls = 'info', html = false) {
     const line = document.createElement('div');
     line.className = 'line ' + cls;
-    line.textContent = ts() + '  ' + text;
+    if (html) {
+        line.innerHTML = ts() + '  ' + text;
+    } else {
+        line.textContent = ts() + '  ' + text;
+    }
     output.prepend(line);
 }
 
-function logCards(label, cards, cls = 'info') {
-    const line = document.createElement('div');
-    line.className = 'line ' + cls;
-
-    const prefix = document.createTextNode(ts() + '  ' + label);
-    line.appendChild(prefix);
-
-    const cardSpan = document.createElement('span');
-    cardSpan.className = 'cards';
-    cardSpan.innerHTML = formatCardsHtml(cards);
-    line.appendChild(cardSpan);
-
-    output.prepend(line);
-}
-
-function formatCardsHtml(cards) {
-    // Group cards by suit
+function formatCardsHtml(cards, discardedSet, talonSet) {
+    // Group cards by suit, preserving card IDs for discard lookup
     const bySuit = {};
     for (const id of cards) {
         const [rank, suit] = id.split('_');
         if (!bySuit[suit]) bySuit[suit] = [];
-        bySuit[suit].push(rank);
+        bySuit[suit].push({ rank, suit, id });
     }
-    const parts = [];
+    const suitParts = [];
     for (const suit of SUIT_ORDER) {
         if (!bySuit[suit]) continue;
         const sym = SUIT[suit];
         const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
-        const ranks = bySuit[suit].map(r => '<span style="color:' + color + '">' + r + sym + '</span>').join(' ');
-        parts.push(ranks);
+        const ranks = bySuit[suit].map(c => {
+            const isDiscarded = discardedSet && discardedSet.has(c.id);
+            const isTalon = talonSet && talonSet.has(c.id);
+            let cls = '';
+            if (isDiscarded) cls = 'card-discarded';
+            else if (isTalon) cls = 'card-talon';
+            return '<span style="color:' + color + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + c.rank + sym + '</span>';
+        }).join('<span class="card-gap"></span>');
+        suitParts.push({ html: ranks, count: bySuit[suit].length });
     }
-    return parts.join('&nbsp;&nbsp;&nbsp;');
+    // Split into two rows if first two suits have 3-7 cards total
+    const gap = '<span class="suit-gap"></span>';
+    if (suitParts.length >= 3) {
+        const firstTwoCount = suitParts[0].count + (suitParts[1] ? suitParts[1].count : 0);
+        if (firstTwoCount >= 3 && firstTwoCount <= 7) {
+            const row1 = suitParts.slice(0, 2).map(p => p.html).join(gap);
+            const row2 = suitParts.slice(2).map(p => p.html).join(gap);
+            return row1 + '<br>' + row2;
+        }
+    }
+    return suitParts.map(p => p.html).join(gap);
 }
 
 function cardHtml(cardId) {
@@ -71,30 +110,6 @@ function cardHtml(cardId) {
     const sym = SUIT[suit];
     const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
     return '<span style="color:' + color + '">' + rank + sym + '</span>';
-}
-
-// Log a line with mixed text and big-font cards.
-// parts: strings for normal text, {card: id} for single card, {cards: [...]} for grouped hand
-function logLine(cls, ...parts) {
-    const line = document.createElement('div');
-    line.className = 'line ' + cls;
-    line.appendChild(document.createTextNode(ts() + '  '));
-    for (const part of parts) {
-        if (typeof part === 'string') {
-            line.appendChild(document.createTextNode(part));
-        } else if (part.cards) {
-            const span = document.createElement('span');
-            span.className = 'cards';
-            span.innerHTML = formatCardsHtml(part.cards);
-            line.appendChild(span);
-        } else if (part.card) {
-            const span = document.createElement('span');
-            span.className = 'cards';
-            span.innerHTML = cardHtml(part.card);
-            line.appendChild(span);
-        }
-    }
-    output.prepend(line);
 }
 
 function sep() {
@@ -109,41 +124,376 @@ function cardName(id) {
     return rank + (SUIT[suit] || suit);
 }
 
-function handStr(cards) {
-    return cards.map(cardName).join(' ');
+function _logDiscardScores(cardIds, discardScores) {
+    // Show discard scores sorted by score descending, for suit and betl
+    for (const [label, scMap] of [['SUIT/SANS', discardScores.suit], ['BETL', discardScores.betl]]) {
+        if (!scMap) continue;
+        const scored = cardIds.map(id => {
+            const [rank, suit] = id.split('_');
+            return {rank, suit, id, score: scMap[id] || 0};
+        }).sort((a, b) => b.score - a.score);
+        const items = scored.map(c => {
+            const sym = SUIT[c.suit];
+            const color = (c.suit === 'diamonds' || c.suit === 'hearts') ? '#f55' : '#fff';
+            const s = Math.round(c.score * 10) / 10;
+            return '<span style="color:' + color + '">' + c.rank + sym + '</span>=' + s;
+        }).join(' ');
+        log(label + ': ' + items, 'gray', true);
+    }
 }
 
 function contractStr(c) {
     if (!c) return 'none';
-    if (c.type === 'suit') return c.trump + ' (level ' + c.level + ')';
+    if (c.type === 'suit') {
+        const sym = SUIT[c.trump] || c.trump;
+        return sym + ' ' + c.level;
+    }
     return c.type;
 }
 
-// ── buttons ─────────────────────────────────────────────────────────
-
-function clearButtons() {
-    const old = document.getElementById('action-bar');
-    if (old) old.remove();
+function appendLastAction(el, action) {
+    if (!action || el.innerHTML === '') return;
+    const infoRow = el.querySelector('.player-info-row');
+    const target = infoRow || el;
+    const span = document.createElement('span');
+    span.className = 'last-action';
+    if (action.startsWith('plays ')) {
+        const cardId = action.substring(6);
+        span.innerHTML = cardHtml(cardId);
+    } else {
+        span.textContent = action;
+    }
+    target.appendChild(span);
 }
 
-function showButtons(buttons) {
-    clearButtons();
-    if (!buttons.length) return;
-    const bar = document.createElement('div');
-    bar.id = 'action-bar';
-    bar.style.cssText = 'padding:6px 12px;background:#111;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0';
+// ── command bar ─────────────────────────────────────────────────────
+
+function renderCommandBar(buttons) {
+    commandBar.innerHTML = '';
+    if (!buttons || !buttons.length) return;
     for (const b of buttons) {
         const btn = document.createElement('button');
         btn.textContent = b.label;
-        btn.style.cssText = 'font-family:Courier New,monospace;font-size:12px;padding:2px 8px;background:#222;color:#5ff;border:1px solid #333;cursor:pointer';
-        if (b.active) btn.style.borderColor = btn.style.color = '#f55';
-        btn.onmouseenter = () => btn.style.background = '#333';
-        btn.onmouseleave = () => btn.style.background = '#222';
+        if (b.active) btn.classList.add('active');
         btn.onclick = () => b.action();
-        bar.appendChild(btn);
+        commandBar.appendChild(btn);
     }
-    const terminal = document.getElementById('terminal');
-    terminal.insertBefore(bar, output);
+}
+
+// ── game state panel ────────────────────────────────────────────────
+
+function renderGameState() {
+    for (const p of [1, 2, 3]) { handEls[p].innerHTML = ''; handEls[p].className = 'player-block'; }
+    talonLine.innerHTML = '';
+    prevTrickLine.innerHTML = '';
+    remainingLine.innerHTML = '';
+    remainingLine.className = 'hand-line dim';
+    gameInfo.innerHTML = '';
+
+    if (!state) return;
+
+    const human = state.human;
+    const phase = state.phase;
+    const lastActions = state.last_actions || {};
+
+    // Render each player in position order (1, 2, 3) top-down
+    // Skip hand rendering during scoring — renderInitialHands handles it
+    for (const p of [1, 2, 3]) {
+        const el = handEls[p];
+
+        if (phase === 'scoring') continue;
+
+        // Build display name with tricks count during playing
+        const tpp = state.tricks_per_player || {};
+        const tricks = tpp[String(p)] || 0;
+        const pname = phase === 'playing' ? playerName(p) + ' [' + tricks + ']' : playerName(p);
+
+        if (p === human) {
+            // Human hand (use exchange_cards during discard phase to show all 12)
+            const humanHand = (phase === 'exchange_cards' && Array.isArray(state.exchange_cards) && state.exchange_cards.length > 0)
+                ? state.exchange_cards
+                : state.hands[String(human)];
+            if (Array.isArray(humanHand) && humanHand.length > 0) {
+                const isHumanMove = state.player_on_move === human;
+                if (isHumanMove && phase === 'playing') {
+                    renderHandLineClickable(el, pname, humanHand, {
+                        legalCards: state.commands || [],
+                        onCardClick: (cardId) => playCard(human, cardId),
+                    });
+                } else if (phase === 'exchange_cards' && state.declarer === human) {
+                    renderHandLineClickable(el, pname, humanHand, {
+                        selectedCards: exchangeSelected,
+                        onCardClick: (cardId) => toggleExchange(cardId),
+                        discardScores: state.discard_scores,
+                    });
+                } else {
+                    renderHandLine(el, pname, humanHand.length, humanHand);
+                }
+            }
+        } else {
+            // Opponent hand
+            const hand = state.hands[String(p)];
+            if (state.debug) {
+                if (Array.isArray(hand) && hand.length > 0) {
+                    renderHandLine(el, pname, hand.length, hand, true);
+                }
+            } else {
+                if (hand != null) {
+                    const n = Array.isArray(hand) ? hand.length : hand;
+                    renderHandLineHidden(el, pname, n);
+                }
+            }
+        }
+        // During playing: show play order in current trick instead of last action
+        if (phase === 'playing') {
+            const trickCards = state.trick_cards || [];
+            const orderIdx = trickCards.findIndex(tc => tc.player === p);
+            if (orderIdx >= 0) {
+                const infoRow = el.querySelector('.player-info-row');
+                const target = infoRow || el;
+                const span = document.createElement('span');
+                span.className = 'last-action';
+                span.textContent = ' (' + (orderIdx + 1) + ')';
+                target.appendChild(span);
+                if (orderIdx === 0) el.classList.add('move-first');
+                if (orderIdx === 1) el.classList.add('move-second');
+            }
+            // Leader bar (trick_lead)
+            if (state.trick_lead === p) {
+                el.classList.add('leader');
+            }
+        } else {
+            appendLastAction(el, lastActions[String(p)]);
+        }
+
+        // Declarer highlight (after rendering so className isn't overwritten)
+        if (state.declarer && state.declarer === p) {
+            el.classList.add('declarer');
+        }
+    }
+
+    // Talon line: talon cards before playing, current trick + prev trick during playing
+    if (phase === 'playing') {
+        const trickNum = state.tricks_played + 1;
+        const inTrick = state.trick_cards || [];
+        if (inTrick.length > 0) {
+            talonLine.appendChild(nameLabel('Trick ' + trickNum));
+            for (const tc of inTrick) {
+                const cardSpan = document.createElement('span');
+                cardSpan.className = 'cards';
+                cardSpan.innerHTML = cardHtml(tc.card);
+                talonLine.appendChild(cardSpan);
+            }
+        } else {
+            talonLine.appendChild(nameLabel('Trick ' + trickNum));
+            talonLine.appendChild(document.createTextNode('\u2014'));
+        }
+        // Previous trick (on separate line below)
+        if (state.last_trick && state.last_trick.length > 0) {
+            const prevNum = state.tricks_played;
+            prevTrickLine.appendChild(nameLabel('Prev ' + prevNum));
+            for (const tc of state.last_trick) {
+                const cardSpan = document.createElement('span');
+                cardSpan.className = 'cards dim-cards';
+                cardSpan.innerHTML = cardHtml(tc.card);
+                prevTrickLine.appendChild(cardSpan);
+            }
+            if (state.last_trick_winner) {
+                const winSpan = document.createElement('span');
+                winSpan.className = 'last-action';
+                winSpan.textContent = ' \u2192 ' + playerName(state.last_trick_winner);
+                prevTrickLine.appendChild(winSpan);
+            }
+        }
+    } else if (phase === 'exchange_cards' || phase === 'exchanging' || phase === 'whisting') {
+        // Talon cards are public after auction
+        if (state.revealed_talon && state.revealed_talon.length > 0) {
+            talonLine.appendChild(nameLabel('Talon'));
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(state.revealed_talon);
+            talonLine.appendChild(span);
+        }
+        // Discarded cards visible only in debug mode
+        if (state.debug && state.discarded && state.discarded.length > 0) {
+            talonLine.appendChild(document.createTextNode('   Discarded: '));
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(state.discarded);
+            talonLine.appendChild(span);
+        }
+    } else if (phase === 'auction') {
+        const talon = state.talon;
+        if (state.debug && Array.isArray(talon)) {
+            talonLine.appendChild(nameLabel('Talon'));
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(talon);
+            talonLine.appendChild(span);
+        } else if (talon != null) {
+            talonLine.appendChild(nameLabel('Talon'));
+            talonLine.appendChild(document.createTextNode('\uD83C\uDCA0 \uD83C\uDCA0'));
+        }
+    }
+    // scoring / no game: talon line stays empty (hidden via CSS)
+
+    // Remaining cards line (playing phase, human player)
+    if (phase === 'playing' && human) {
+        const known = new Set();
+        // Human's own hand
+        const myHand = state.hands[String(human)];
+        if (Array.isArray(myHand)) myHand.forEach(c => known.add(c));
+        // Revealed talon
+        if (Array.isArray(state.revealed_talon)) state.revealed_talon.forEach(c => known.add(c));
+        // Discarded cards
+        if (Array.isArray(state.discarded)) state.discarded.forEach(c => known.add(c));
+        // All played cards
+        if (Array.isArray(state.played_cards)) state.played_cards.forEach(c => known.add(c));
+        // Cards currently on the table
+        const inTrick = state.trick_cards || [];
+        inTrick.forEach(tc => known.add(tc.card));
+
+        const remaining = FULL_DECK.filter(c => !known.has(c));
+        if (remaining.length > 0) {
+            const sorted = _sort_cards(remaining);
+            remainingLine.className = 'player-block dim';
+            const labelRow = document.createElement('div');
+            labelRow.className = 'player-info-row';
+            labelRow.appendChild(nameLabel('Remaining'));
+            remainingLine.appendChild(labelRow);
+            const row = document.createElement('div');
+            row.className = 'player-cards-row';
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(sorted);
+            row.appendChild(span);
+            remainingLine.appendChild(row);
+        }
+    }
+
+    // Game info line
+    if (state.contract) {
+        let text = contractStr(state.contract);
+        text += '  \u2502  declarer: ' + playerName(state.declarer);
+        const wa = state.whist_actions || {};
+        for (const pid of [1, 2, 3]) {
+            if (pid === state.declarer) continue;
+            const action = wa[String(pid)];
+            if (action) text += '  \u2502  ' + playerName(pid) + ': ' + action;
+        }
+        const tpp = state.tricks_per_player || {};
+        text += '  \u2502  tricks:';
+        for (const pid of [1, 2, 3]) {
+            text += ' ' + playerName(pid) + ':' + (tpp[String(pid)] || 0);
+        }
+        gameInfo.textContent = text;
+    }
+}
+
+const NAME_WIDTH = 20;
+
+function nameLabel(name) {
+    const span = document.createElement('span');
+    span.className = 'player-name';
+    const truncated = name.length > NAME_WIDTH ? name.substring(0, NAME_WIDTH - 1) + '\u2026' : name;
+    span.textContent = truncated.padEnd(NAME_WIDTH) + ' ';
+    return span;
+}
+
+function _makePlayerRows(el, name, dim) {
+    el.className = 'player-block' + (dim ? ' dim' : '');
+    el.innerHTML = '';
+    const infoRow = document.createElement('div');
+    infoRow.className = 'player-info-row';
+    infoRow.appendChild(nameLabel(name));
+    el.appendChild(infoRow);
+    const cardsRow = document.createElement('div');
+    cardsRow.className = 'player-cards-row';
+    el.appendChild(cardsRow);
+    return { infoRow, cardsRow };
+}
+
+function renderHandLine(el, name, count, cards, dim) {
+    const { cardsRow } = _makePlayerRows(el, name, dim);
+    const span = document.createElement('span');
+    span.className = 'cards';
+    span.innerHTML = formatCardsHtml(cards);
+    cardsRow.appendChild(span);
+}
+
+function renderHandLineHidden(el, name, count) {
+    const { cardsRow } = _makePlayerRows(el, name, true);
+    cardsRow.appendChild(document.createTextNode(count + ' cards (hidden)'));
+}
+
+function renderHandLineClickable(el, name, cards, options) {
+    // options: { legalCards?, onCardClick, selectedCards?, discardScores? }
+
+    // Build underline set from discard scores (suit scores used by default)
+    let ulRed = new Set(), ulYellow = new Set();
+    if (options.discardScores) {
+        const scMap = options.discardScores.suit || {};
+        const sorted = cards.slice().sort((a, b) => (scMap[b] || 0) - (scMap[a] || 0));
+        if (sorted.length >= 1) ulRed.add(sorted[0]);
+        if (sorted.length >= 2) ulRed.add(sorted[1]);
+        for (let k = 2; k < sorted.length; k++) {
+            if ((scMap[sorted[k]] || 0) > 30) ulYellow.add(sorted[k]);
+        }
+    }
+
+    const bySuit = {};
+    for (const id of cards) {
+        const [rank, suit] = id.split('_');
+        if (!bySuit[suit]) bySuit[suit] = [];
+        bySuit[suit].push({ id, rank, suit });
+    }
+
+    const { cardsRow } = _makePlayerRows(el, name, false);
+    let first = true;
+    for (const suit of SUIT_ORDER) {
+        if (!bySuit[suit]) continue;
+        if (!first) {
+            const spacer = document.createElement('span');
+            spacer.className = 'suit-gap';
+            cardsRow.appendChild(spacer);
+        }
+        first = false;
+
+        for (const card of bySuit[suit]) {
+            const btn = document.createElement('button');
+            btn.className = 'card-btn';
+            const sym = SUIT[card.suit];
+            const color = (card.suit === 'diamonds' || card.suit === 'hearts') ? '#f55' : '#fff';
+            btn.innerHTML = card.rank + sym;
+            btn.style.color = color;
+
+            if (ulRed.has(card.id)) {
+                btn.style.textDecoration = 'underline';
+                btn.style.textDecorationColor = 'red';
+                btn.style.textUnderlineOffset = '4px';
+            } else if (ulYellow.has(card.id)) {
+                btn.style.textDecoration = 'underline';
+                btn.style.textDecorationColor = 'yellow';
+                btn.style.textUnderlineOffset = '4px';
+            }
+
+            const isLegal = !options.legalCards || options.legalCards.includes(card.id);
+            const isSelected = options.selectedCards && options.selectedCards.includes(card.id);
+
+            if (isSelected) btn.classList.add('selected');
+            if (!isLegal) {
+                btn.classList.add('disabled');
+                btn.disabled = true;
+            }
+
+            if (isLegal && options.onCardClick) {
+                const cardId = card.id;
+                btn.onclick = () => options.onCardClick(cardId);
+            }
+
+            cardsRow.appendChild(btn);
+        }
+    }
 }
 
 // ── API ─────────────────────────────────────────────────────────────
@@ -153,6 +503,11 @@ async function api(path, body) {
         ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}
         : {};
     const r = await fetch(path, opts);
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+        const text = await r.text();
+        throw new Error('Server error ' + r.status + ': ' + text.substring(0, 200));
+    }
     const data = await r.json();
     if (!r.ok) {
         log('<< ' + r.status + ' ' + JSON.stringify(data), 'red');
@@ -170,13 +525,24 @@ function logTransition(prevPhase, newState) {
         log('auction winner: ' + playerName(newState.declarer), 'green');
     }
 
+    // AI declarer: auction → exchanging or whisting (exchange happened server-side)
+    if (prevPhase === 'auction' && (phase === 'exchanging' || phase === 'whisting')) {
+        log('auction winner: ' + playerName(newState.declarer), 'green');
+        if (newState.discarded && newState.discarded.length > 0) {
+            log(playerName(newState.declarer) + ' discarded: ' + newState.discarded.map(cardName).join(' '), 'yellow');
+        }
+        if (phase === 'whisting' && newState.contract) {
+            log('contract: ' + contractStr(newState.contract), 'green');
+        }
+        sep();
+    }
+
     if (phase === 'whisting' && (prevPhase === 'exchanging' || prevPhase === 'exchange_cards')) {
-        // Contract announced, show discarded cards
         if (newState.contract) {
             log('contract: ' + contractStr(newState.contract), 'green');
         }
         if (newState.discarded && newState.discarded.length > 0) {
-            logCards('discarded: ', newState.discarded, 'yellow');
+            log('discarded: ' + newState.discarded.map(cardName).join(' '), 'yellow');
         }
         sep();
     }
@@ -184,7 +550,6 @@ function logTransition(prevPhase, newState) {
     if (phase === 'playing' && prevPhase !== 'playing') {
         sep();
         log('PLAY  ' + contractStr(newState.contract) + '  declarer=' + playerName(newState.declarer) + '  followers=[' + newState.followers.map(playerName).join(',') + ']', 'green');
-        logHands();
         sep();
     }
 
@@ -218,9 +583,10 @@ function scheduleAiMove() {
             if (act) {
                 const name = playerName(act.player);
                 if (act.command) {
-                    log(name + ' \u2192 ' + act.command, 'bright');
+                    const aiCmd = (prevPhase === 'whisting' && act.command === 'Pass') ? 'Not follow' : act.command;
+                    log(name + ' \u2192 ' + aiCmd, 'bright');
                 } else if (act.card) {
-                    logLine('bright', name + ' plays ', {card: act.card});
+                    log(name + ' plays ' + cardName(act.card), 'bright');
                 }
             }
 
@@ -254,35 +620,15 @@ async function newGame(debug = false) {
         log(names['1'] + ' (P1) vs ' + names['2'] + ' (P2) vs ' + names['3'] + ' (P3)', 'green');
 
         sep();
-        // Talon: hidden
-        const talon = state.talon;
-        if (typeof talon === 'number') {
-            log('talon: ' + talon + ' cards (hidden)', 'yellow');
-        } else {
-            logCards('talon: ', talon, 'yellow');
-        }
-        logHands();
-        sep();
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
     }
 }
 
-function logHands() {
-    for (const p of [1, 2, 3]) {
-        const h = state.hands[String(p)];
-        const name = playerName(p);
-        if (Array.isArray(h)) {
-            logCards('  ' + name + ' (' + h.length + '): ', h, 'info');
-        } else {
-            log('  ' + name + ': ' + h + ' cards', 'dim');
-        }
-    }
-}
-
 function render() {
-    clearButtons();
+    renderCommandBar([]);
+    renderGameState();
     clearAiTimer();
     exchangeSelected = [];
     const phase = state.phase;
@@ -312,18 +658,21 @@ function renderBiddingEngine(label) {
         return;
     }
 
-    log(label + '  ' + name + ' to act  [' + (state.commands || []).join(', ') + ']', 'cyan');
+    const displayCmd = cmd => (label === 'WHIST' && cmd === 'Pass') ? 'Not follow' : cmd;
+    log(label + '  ' + name + ' to act  [' + (state.commands || []).map(displayCmd).join(', ') + ']', 'cyan');
     const buttons = (state.commands || []).map((cmd, i) => ({
-        label: cmd,
+        label: displayCmd(cmd),
         action: () => execBiddingEngine(i + 1, cmd, p),
     }));
-    showButtons(buttons);
+    renderCommandBar(buttons);
+    renderGameState();
 }
 
 async function execBiddingEngine(cmdIdx, label, player) {
     try {
         const prevPhase = state.phase;
-        log(playerName(player) + ' \u2192 ' + label, 'bright');
+        const displayLabel = (prevPhase === 'whisting' && label === 'Pass') ? 'Not follow' : label;
+        log(playerName(player) + ' \u2192 ' + displayLabel, 'bright');
         state = await api('/api/game/execute', {command_id: cmdIdx});
 
         logTransition(prevPhase, state);
@@ -345,31 +694,24 @@ function renderExchangeCards() {
         return;
     }
 
-    const cards = state.exchange_cards;
-    log('EXCHANGE  ' + name + ' has ' + cards.length + ' cards \u2014 select 2 to discard', 'cyan');
-    logCards('  ', cards, 'info');
+    log('EXCHANGE  ' + name + ' ' + playerVerb(p) + ' ' + state.exchange_cards.length + ' cards \u2014 click 2 to discard', 'cyan');
 
-    const buttons = cards.map(c => ({
-        label: cardName(c),
-        active: exchangeSelected.includes(c),
-        action: () => toggleExchange(c),
-    }));
-    buttons.push({label: 'CONFIRM', action: confirmExchange});
-    showButtons(buttons);
+    // Debug: show discard scores for each card
+    if (state.discard_scores) {
+        _logDiscardScores(state.exchange_cards, state.discard_scores);
+    }
+
+    // Only CONFIRM in command bar; card selection is in the hand display
+    renderCommandBar([{label: 'CONFIRM (' + exchangeSelected.length + '/2)', action: confirmExchange}]);
+    renderGameState();
 }
 
 function toggleExchange(card) {
     const idx = exchangeSelected.indexOf(card);
     if (idx >= 0) exchangeSelected.splice(idx, 1);
     else if (exchangeSelected.length < 2) exchangeSelected.push(card);
-    const cards = state.exchange_cards;
-    const buttons = cards.map(c => ({
-        label: cardName(c),
-        active: exchangeSelected.includes(c),
-        action: () => toggleExchange(c),
-    }));
-    buttons.push({label: 'CONFIRM', action: confirmExchange});
-    showButtons(buttons);
+    renderCommandBar([{label: 'CONFIRM (' + exchangeSelected.length + '/2)', action: confirmExchange}]);
+    renderGameState();
 }
 
 async function confirmExchange() {
@@ -381,11 +723,6 @@ async function confirmExchange() {
         const prevPhase = state.phase;
         state = await api('/api/game/execute', {cards: exchangeSelected});
 
-        const h = state.hands[String(state.declarer)];
-        if (Array.isArray(h)) {
-            logCards(playerName(state.declarer) + ' hand after exchange (' + h.length + '): ', h, 'info');
-        }
-
         logTransition(prevPhase, state);
         render();
     } catch (e) {
@@ -395,54 +732,27 @@ async function confirmExchange() {
 
 // ── PLAYING ─────────────────────────────────────────────────────────
 
-function trickParts(trickNum, inTrick) {
-    const parts = ['TRICK ' + trickNum + '  '];
-    for (let i = 0; i < inTrick.length; i++) {
-        const tc = inTrick[i];
-        parts.push(playerName(tc.player) + ': ');
-        parts.push({card: tc.card});
-        if (i < inTrick.length - 1) parts.push('  ');
-    }
-    return parts;
-}
-
 function renderPlaying() {
     const p = state.player_on_move;
     if (!p) return;
 
     const trickNum = state.tricks_played + 1;
-    const inTrick = state.trick_cards || [];
     const name = playerName(p);
 
     if (isAI(p)) {
-        if (inTrick.length > 0) {
-            logLine('dim', ...trickParts(trickNum, inTrick), '  |  ' + name + ' thinking...');
-        } else {
-            log('TRICK ' + trickNum + '  ' + name + ' thinking...', 'cyan');
-        }
+        log('TRICK ' + trickNum + '  ' + name + ' thinking...', 'cyan');
         scheduleAiMove();
         return;
     }
 
-    // Human turn
-    const hand = state.commands || [];
-    if (inTrick.length === 0) {
-        log('TRICK ' + trickNum + '  ' + name + ' leads', 'cyan');
-    } else {
-        logLine('dim', ...trickParts(trickNum, inTrick));
-    }
-    logCards('  hand: ', hand, 'info');
-
-    const buttons = hand.map(c => ({
-        label: cardName(c),
-        action: () => playCard(p, c),
-    }));
-    showButtons(buttons);
+    // Human turn — cards are clickable in the hand display
+    renderCommandBar([]);
+    renderGameState();
 }
 
 async function playCard(player, card) {
     try {
-        logLine('bright', playerName(player) + ' plays ', {card: card});
+        log(playerName(player) + ' plays ' + cardName(card), 'bright');
         state = await api('/api/game/execute', {player, card});
 
         const pr = state.play_result;
@@ -459,7 +769,11 @@ async function playCard(player, card) {
 // ── SCORING ─────────────────────────────────────────────────────────
 
 function renderScoring() {
-    clearButtons();
+    renderCommandBar([]);
+
+    // Show initial hands in the hand lines during scoring
+    renderInitialHands();
+
     sep();
     if (state.all_pass) {
         log('ALL PASSED \u2014 redeal', 'yellow');
@@ -482,6 +796,51 @@ function renderScoring() {
     }
     sep();
     log('click New Game to play again', 'dim');
+}
+
+function renderInitialHands() {
+    const ih = state.initial_hands;
+    const it = state.initial_talon;
+    if (!ih) return;
+
+    const decl = state.declarer;
+    const discarded = state.discarded || [];
+    const discardedSet = new Set(discarded);
+    // Did declarer go through exchange? (has talon cards and discards)
+    const hadExchange = decl && Array.isArray(it) && it.length > 0 && discarded.length > 0;
+
+    for (const p of [1, 2, 3]) {
+        const el = handEls[p];
+        let cards = ih[String(p)];
+        if (!Array.isArray(cards) || cards.length === 0) continue;
+
+        if (hadExchange && p === decl) {
+            // Merge talon into declarer's hand, show discards with strikethrough
+            const merged = _sort_cards(cards.concat(it));
+            const talonSet = new Set(it);
+            renderHandLineWithDiscards(el, playerName(p), merged, discardedSet, talonSet);
+        } else {
+            renderHandLine(el, playerName(p), cards.length, cards);
+        }
+        if (decl && decl === p) el.classList.add('declarer');
+    }
+
+    // Only show talon separately if there was no exchange
+    if (!hadExchange && Array.isArray(it) && it.length > 0) {
+        talonLine.appendChild(nameLabel('Talon'));
+        const span = document.createElement('span');
+        span.className = 'cards';
+        span.innerHTML = formatCardsHtml(it);
+        talonLine.appendChild(span);
+    }
+}
+
+function renderHandLineWithDiscards(el, name, cards, discardedSet, talonSet) {
+    const { cardsRow } = _makePlayerRows(el, name, false);
+    const span = document.createElement('span');
+    span.className = 'cards';
+    span.innerHTML = formatCardsHtml(cards, discardedSet, talonSet);
+    cardsRow.appendChild(span);
 }
 
 function renderScoreTable() {
@@ -514,8 +873,126 @@ function renderScoreTable() {
     }
 }
 
+// ── Agent Panel (debug mode only) ───────────────────────────────────
+
+const agentPanel  = document.getElementById('agent-panel');
+const agentHeader = document.getElementById('agent-header');
+const agentOutput = document.getElementById('agent-output');
+const agentInput  = document.getElementById('agent-input');
+const agentStatus = document.getElementById('agent-status');
+const agentToggle = document.getElementById('agent-toggle');
+const agentLoadBtn = document.getElementById('agent-load-btn');
+let agentPollTimer  = null;
+let agentPolling = false;
+
+// Toggle collapsed/expanded
+if (agentHeader) agentHeader.addEventListener('click', (e) => {
+    if (e.target === agentInput || e.target === agentLoadBtn) return;
+    agentPanel.classList.toggle('collapsed');
+});
+
+function agentAppend(text, cls) {
+    const div = document.createElement('div');
+    div.className = 'agent-msg ' + cls;
+    if (cls === 'user') {
+        div.textContent = '> ' + text;
+    } else {
+        div.textContent = text;
+    }
+    agentOutput.appendChild(div);
+    agentOutput.scrollTop = agentOutput.scrollHeight;
+}
+
+function agentSetStatus(text) {
+    agentStatus.textContent = text;
+    agentStatus.className = text ? 'active' : '';
+}
+
+function clearAgentPoll() {
+    if (agentPollTimer) {
+        clearInterval(agentPollTimer);
+        agentPollTimer = null;
+    }
+    agentPolling = false;
+}
+
+function startAgentPoll() {
+    clearAgentPoll();
+    agentPolling = true;
+    agentPollTimer = setInterval(async () => {
+        try {
+            const r = await fetch('/api/agent/status');
+            const data = await r.json();
+
+            agentSetStatus(data.status_text || '');
+
+            if (data.status === 'complete') {
+                clearAgentPoll();
+                agentAppend(data.response, 'assistant');
+                agentSetStatus('');
+            } else if (data.status === 'error') {
+                clearAgentPoll();
+                agentAppend('Error: ' + (data.error || 'Unknown error'), 'error');
+                agentSetStatus('');
+            }
+        } catch (_) { /* network blip — keep polling */ }
+    }, 1500);
+}
+
+// Load last agent response from server
+async function agentLoadLast() {
+    try {
+        const r = await fetch('/api/agent/status');
+        const data = await r.json();
+        if (!data.question && !data.response) {
+            agentAppend('(no previous agent response)', 'status');
+            return;
+        }
+        agentOutput.innerHTML = '';
+        if (data.question) agentAppend(data.question, 'user');
+        if (data.status === 'complete' && data.response) {
+            agentAppend(data.response, 'assistant');
+        } else if (data.status === 'error') {
+            agentAppend('Error: ' + (data.error || 'Unknown error'), 'error');
+        } else if (data.status === 'running') {
+            agentSetStatus(data.status_text || 'Running...');
+            startAgentPoll();
+        } else {
+            agentAppend('(no response yet)', 'status');
+        }
+    } catch (err) {
+        agentAppend('Error loading: ' + err.message, 'error');
+    }
+}
+
+if (agentLoadBtn) agentLoadBtn.addEventListener('click', () => {
+    agentPanel.classList.remove('collapsed');
+    agentLoadLast();
+});
+
+if (agentInput) agentInput.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    const question = agentInput.value.trim();
+    if (!question) return;
+    agentInput.value = '';
+
+    agentPanel.classList.remove('collapsed');
+    agentAppend(question, 'user');
+    clearAgentPoll();
+
+    try {
+        agentSetStatus('Sending to Claude...');
+        await api('/api/agent/ask', { question });
+        agentSetStatus('Claude is thinking...');
+        startAgentPoll();
+    } catch (err) {
+        agentAppend('Error: ' + err.message, 'error');
+        agentSetStatus('');
+    }
+});
+
 // ── init ────────────────────────────────────────────────────────────
 
 log('ready', 'green');
-document.getElementById('new-game-btn').addEventListener('click', () => newGame(false));
-document.getElementById('debug-game-btn').addEventListener('click', () => newGame(true));
+document.getElementById('new-game-btn').addEventListener('click', () => newGame(IS_DEBUG));
