@@ -44,10 +44,10 @@ def assign_targets(rng):
 
 def transform_label(label):
     """Convert service label to compact display form."""
-    if label.startswith("Game "):
-        return label[5:]          # "Game 2" → "2"
-    if label == "In Hand":
-        return "InHand"           # "In Hand" → "InHand"
+    if label in ("2", "3", "4", "5"):
+        return label
+    if label == "Hand":
+        return label
     if label.startswith("in_hand "):
         return "InHand " + label[8:]  # "in_hand 2" → "InHand 2"
     return label                  # Pass, Betl, Sans, Spades, … unchanged
@@ -97,10 +97,10 @@ def choose_auction_bid(target, cmds, player_has_bid):
     t, v = target
 
     pass_idx      = next((i + 1 for i, c in enumerate(cmds) if c == "Pass"), 1)
-    in_hand_idx   = next((i + 1 for i, c in enumerate(cmds) if c == "In Hand"), None)
+    in_hand_idx   = next((i + 1 for i, c in enumerate(cmds) if c == "Hand"), None)
     betl_idx      = next((i + 1 for i, c in enumerate(cmds) if c == "Betl"), None)
     sans_idx      = next((i + 1 for i, c in enumerate(cmds) if c == "Sans"), None)
-    game_cmds     = [(i + 1, int(c.split()[1])) for i, c in enumerate(cmds) if c.startswith("Game ")]
+    game_cmds     = [(i + 1, int(c)) for i, c in enumerate(cmds) if c in ("2", "3", "4", "5")]
     in_hand_decls = [(i + 1, int(c.split()[1])) for i, c in enumerate(cmds) if c.startswith("in_hand ")]
 
     if t == "pass":
@@ -115,7 +115,7 @@ def choose_auction_bid(target, cmds, player_has_bid):
                 return max(valid, key=lambda x: x[1])[0]
         return pass_idx
 
-    # IN_HAND_DECIDING phase — has "In Hand" but no "Game N"
+    # IN_HAND_DECIDING phase — has "Hand" but no game bid
     if in_hand_idx and not game_cmds:
         if t == "in_hand":
             return in_hand_idx

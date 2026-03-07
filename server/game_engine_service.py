@@ -18,11 +18,17 @@ Card-play endpoints (delegate to engine.py):
   GET  /tricks        → {tricks}
 """
 
+import json
 import os
 import uuid
 from flask import Flask, jsonify, request
-from models import Game, SUIT_SORT_ORDER, RANK_SORT_ORDER
+from models import Game, RoundPhase, ContractType, SUIT_SORT_ORDER, RANK_SORT_ORDER
 from engine import GameEngine, InvalidMoveError, InvalidPhaseError, GameError
+
+# Load bidding state machine (covers auction → exchange → whisting → terminal)
+_SM_PATH = os.path.join(os.path.dirname(__file__), 'bidding_state_machine.json')
+with open(_SM_PATH) as f:
+    _SM_STATES = {s['state_id']: s for s in json.load(f)}
 
 app = Flask(__name__)
 
@@ -47,8 +53,17 @@ class GameSession:
         self.engine = GameEngine(game)
         self.engine.start_game()
         self.exchange_discards = []   # card dicts picked for discard so far
+        self.sm_state_id = 1          # state machine state (initial auction)
+        self.sm_active = True         # True while state machine is driving pre-play
 
     # ── helpers ──────────────────────────────────────────────────────────────
+
+    def get_phase(self):
+        """Return current phase string."""
+        if self.sm_active:
+            return _SM_STATES[self.sm_state_id]['phase']
+        rnd = self.engine.game.current_round
+        return rnd.phase.value if rnd else None
 
     def _st(self):
         return self.engine.get_game_state()
@@ -77,113 +92,298 @@ class GameSession:
 
     def get_commands(self):
         """Return (commands: list[str], player_position: int|None)."""
+        if self.sm_active:
+            state = _SM_STATES[self.sm_state_id]
+            player_pos = state['player']
+
+            if state['commands'] == ['discard']:
+                # For discard, return actual card choices from engine
+                st = self._st()
+                rnd = st.get('current_round') or {}
+                did = rnd['declarer_id']
+                declarer = next((p for p in st['players'] if p['id'] == did), None)
+                hand = declarer['hand'] if declarer else []
+                talon = rnd['talon']
+                chosen = {c['id'] for c in self.exchange_discards}
+                cmds = []
+                for i, card in enumerate(hand + talon, 1):
+                    if card['id'] not in chosen:
+                        cmds.append(str(i))
+                return cmds, player_pos
+
+            return list(state['commands']), player_pos
+
+        # State machine not active — playing / scoring phases
         st  = self._st()
         rnd = st.get('current_round') or {}
         phase = rnd.get('phase')
         cmds = []
 
-        if phase == 'auction':
-            for b in st.get('legal_bids', []):
-                if b['bid_type'] == 'game':
-                    v = b['value']
-                    cmds.append('Betl' if v == 6 else 'Sans' if v == 7 else f'Game {v}')
-                else:
-                    cmds.append(b.get('label') or b['bid_type'])
-
-        elif phase == 'exchanging':
-            if rnd.get('talon'):
-                # discard-picking: hand cards first (C1-C10), then talon (C11-C12)
-                did = rnd['declarer_id']
-                declarer = next((p for p in st['players'] if p['id'] == did), None)
-                hand  = declarer['hand'] if declarer else []
-                talon = rnd['talon']
-                chosen = {c['id'] for c in self.exchange_discards}
-                for i, card in enumerate(hand + talon, 1):
-                    if card['id'] not in chosen:
-                        cmds.append(str(i))
-            elif st.get('legal_contract_levels'):
-                for lvl in st['legal_contract_levels']:
-                    cmds.append(LEVEL_LABELS.get(lvl, f'Level {lvl}'))
-
-        elif phase == 'whisting':
-            wid = rnd.get('whist_current_id')
-            if wid:
-                for a in self.engine.get_legal_whist_actions(wid):
-                    cmds.append(a['label'])
-
-        elif phase == 'playing':
-            if not rnd.get('contract') and st.get('legal_contract_levels'):
-                for lvl in st['legal_contract_levels']:
-                    cmds.append(LEVEL_LABELS.get(lvl, f'Level {lvl}'))
-            else:
-                for card in st.get('legal_cards', []):
-                    cmds.append(fmt_card(card))
-
+        if phase == 'playing':
+            for card in st.get('legal_cards', []):
+                cmds.append(fmt_card(card))
         elif phase == 'scoring':
             cmds.append('Next Round')
 
         return cmds, self._acting_player_position(st, rnd, phase)
 
+    # ── position / player helpers ────────────────────────────────────────────
+
+    def _pos_to_pid(self, pos):
+        """Translate player position (1/2/3) to engine player id."""
+        p = self.engine._get_player_by_position(pos)
+        return p.id
+
+    # ── state-machine side-effect helpers ─────────────────────────────────
+
+    def _sm_setup_declarer(self, declarer_pos):
+        """Set declarer on engine round (bypass engine auction)."""
+        rnd = self.engine.game.current_round
+        pid = self._pos_to_pid(declarer_pos)
+        player = self.engine._get_player(pid)
+        player.is_declarer = True
+        rnd.declarer_id = pid
+
+    def _sm_announce_contract(self, cmd_label, declarer_pos, bid_level, is_in_hand=False):
+        """Inject winner bid + announce contract from a command label."""
+        self._sm_inject_winner_bid(declarer_pos, bid_level, is_in_hand)
+        self._sm_do_announce_contract(cmd_label, declarer_pos)
+
+    def _sm_do_announce_contract(self, cmd_label, declarer_pos):
+        """Announce contract from a command label (no bid injection)."""
+        pid = self._pos_to_pid(declarer_pos)
+        if cmd_label in ('Betl', 'betl'):
+            self.engine.announce_contract(pid, 'betl', None, level=6)
+        elif cmd_label in ('Sans', 'sans'):
+            self.engine.announce_contract(pid, 'sans', None, level=7)
+        else:
+            trump = cmd_label.lower()   # "Spades" → "spades"
+            lvl = SUIT_TO_LEVEL[trump]
+            self.engine.announce_contract(pid, 'suit', trump, level=lvl)
+
+    def _sm_inject_winner_bid(self, declarer_pos, bid_level, is_in_hand=False):
+        """Inject a synthetic winner bid into the auction so engine validation works."""
+        from models import Bid, BidType
+        pid = self._pos_to_pid(declarer_pos)
+        auction = self.engine.game.current_round.auction
+
+        if bid_level == 6:
+            bid = Bid(player_id=pid, bid_type=BidType.BETL, value=6)
+        elif bid_level == 7:
+            bid = Bid(player_id=pid, bid_type=BidType.SANS, value=7)
+        elif is_in_hand:
+            bid = Bid(player_id=pid, bid_type=BidType.IN_HAND, value=bid_level)
+        else:
+            bid = Bid(player_id=pid, bid_type=BidType.GAME, value=bid_level)
+        # Mark player as in-hand so engine skips exchange validation
+        if is_in_hand and pid not in auction.in_hand_players:
+            auction.in_hand_players.append(pid)
+        auction.add_bid(bid)
+        # For in-hand bids, ensure the bid is set as the winner even with value=0
+        if is_in_hand and auction.highest_in_hand_bid is None:
+            auction.highest_in_hand_bid = bid
+
+    def _sm_handle_discard(self, command_id):
+        """Pick a card for discard during exchange phase."""
+        st = self._st()
+        rnd = st.get('current_round') or {}
+        did = rnd['declarer_id']
+        declarer = next((p for p in st['players'] if p['id'] == did), None)
+        hand = declarer['hand'] if declarer else []
+        talon = rnd['talon']
+        chosen = {c['id'] for c in self.exchange_discards}
+        available = [c for c in hand + talon if c['id'] not in chosen]
+        self.exchange_discards.append(available[command_id - 1])
+        if len(self.exchange_discards) == 2:
+            self.engine.complete_exchange(did, [c['id'] for c in self.exchange_discards])
+            self.exchange_discards = []
+
+    def _sm_apply_preset_declarations(self, ctx):
+        """Apply pre-set whist declarations from SM context.
+
+        Context format: [declarer_pos, contract_type, [[pos, action], ...]]
+        The third element contains pre-set declarations (e.g. betl forces follow).
+        """
+        if not ctx or len(ctx) < 3:
+            return
+        declarations = ctx[2]
+        if not isinstance(declarations, list):
+            return
+        rnd = self.engine.game.current_round
+        for pos_str, action in declarations:
+            pid = self._pos_to_pid(int(pos_str))
+            if action == 'follow':
+                rnd.whist_declarations[pid] = 'follow'
+                if pid not in rnd.whist_followers:
+                    rnd.whist_followers.append(pid)
+
+    def _sm_handle_whist_action(self, cmd_label, player_pos):
+        """Record a whist declaration on the round object.
+
+        All decision logic (who moves next, what options are available) lives
+        in the SM JSON.  The engine only needs the final declarations to know
+        who plays, who called/countered, etc.
+        """
+        pid = self._pos_to_pid(player_pos)
+        rnd = self.engine.game.current_round
+        label_to_action = {
+            'Pass': 'pass', 'Follow': 'follow', 'Call': 'call',
+            'Counter': 'counter', 'Double counter': 'double_counter',
+            'Start game': 'start_game',
+        }
+        action = label_to_action[cmd_label]
+
+        if action == 'follow':
+            rnd.whist_declarations[pid] = 'follow'
+            if pid not in rnd.whist_followers:
+                rnd.whist_followers.append(pid)
+        elif action == 'pass':
+            rnd.whist_declarations[pid] = 'pass'
+        elif action == 'call':
+            rnd.whist_declarations[pid] = 'call'
+            if pid not in rnd.whist_followers:
+                rnd.whist_followers.append(pid)
+        elif action == 'counter':
+            rnd.has_counter = True
+            rnd.counter_player_id = pid
+        elif action == 'double_counter':
+            rnd.has_double_counter = True
+        # 'start_game' — no state change needed
+
+    def _sm_finalize_whist(self):
+        """Transition from WHISTING to PLAYING or SCORING after SM completes."""
+        self.engine.finalize_whist()
+
+    # ── main execute ──────────────────────────────────────────────────────
+
     def execute(self, command_id):
         """Execute the command at 1-based index. Raises on bad index or invalid move."""
+        if self.sm_active:
+            state = _SM_STATES[self.sm_state_id]
+            phase = state['phase']
+            ctx = state.get('context')
+
+            # Handle discard separately: two picks on the same SM state,
+            # only advance after the second pick completes the exchange
+            if state['commands'] == ['discard']:
+                self._sm_handle_discard(command_id)
+                if self.exchange_discards:
+                    # First card picked, stay on same state
+                    return
+                # Both picked; complete_exchange already called, advance SM
+                edge = state['edges'][0]
+            else:
+                edge = next(e for e in state['edges'] if e['cmd_idx'] == command_id)
+
+            next_id = edge['next_state_id']
+            cmd_label = edge['cmd_label']
+
+            # ── Apply side effects based on phase & transition ──
+
+            if next_id > 0:
+                next_state = _SM_STATES[next_id]
+                next_phase = next_state['phase']
+                next_ctx = next_state.get('context')
+
+                # Auction → Exchanging: set declarer, set engine phase
+                if phase == 'auction' and next_phase == 'exchanging':
+                    declarer_pos = next_ctx[0]
+                    self._sm_setup_declarer(declarer_pos)
+                    self.engine.game.current_round.phase = RoundPhase.EXCHANGING
+
+                # Auction → Whisting: in-hand or betl/sans (contract known, no exchange)
+                elif phase == 'auction' and next_phase == 'whisting':
+                    declarer_pos = next_ctx[0]
+                    contract_type_str = next_ctx[1]  # 'betl', 'sans', or 'suit'
+                    if contract_type_str == 'betl':
+                        bid_level = 6
+                    elif contract_type_str == 'sans':
+                        bid_level = 7
+                    elif cmd_label.startswith('in_hand '):
+                        bid_level = int(cmd_label.split()[-1])  # "in_hand 3" → 3
+                    else:
+                        bid_level = 2
+                    self._sm_setup_declarer(declarer_pos)
+                    # All auction→whisting paths skip exchange; mark as in-hand so
+                    # announce_contract skips exchange validation
+                    self._sm_inject_winner_bid(declarer_pos, bid_level, is_in_hand=True)
+                    if contract_type_str == 'suit':
+                        # In-hand suit: derive trump from level
+                        trump = LEVEL_TO_TRUMP[bid_level]
+                        pid = self._pos_to_pid(declarer_pos)
+                        self.engine.announce_contract(pid, 'suit', trump, level=bid_level)
+                    else:
+                        self._sm_do_announce_contract(contract_type_str, declarer_pos)
+
+                # Auction → Playing: in-hand undeclared (declarer picks suit later)
+                elif phase == 'auction' and next_phase == 'playing':
+                    # Declarer is the player who will select the contract suit
+                    declarer_pos = next_state['player']
+                    self._sm_setup_declarer(declarer_pos)
+                    self._sm_inject_winner_bid(declarer_pos, 0, is_in_hand=True)
+                    self.engine.game.current_round.phase = RoundPhase.PLAYING
+
+                # Exchanging contract selection (Spades/Diamonds/Hearts/Clubs/Betl/Sans)
+                elif phase == 'exchanging' and cmd_label != 'discard':
+                    declarer_pos = ctx[0]
+                    bid_level = ctx[1]
+                    self._sm_announce_contract(cmd_label, declarer_pos, bid_level)
+
+                # Playing phase contract selection (in-hand undeclared)
+                elif phase == 'playing':
+                    # Declarer picking suit for in-hand game;
+                    # winner bid already injected during auction→playing transition
+                    declarer_pos = state['player']
+                    self._sm_do_announce_contract(cmd_label, declarer_pos)
+
+                # Whisting actions
+                elif phase == 'whisting':
+                    self._sm_handle_whist_action(cmd_label, state['player'])
+
+                self.sm_state_id = next_id
+
+                # Apply pre-set declarations when entering whisting
+                if next_phase == 'whisting' and phase != 'whisting':
+                    self._sm_apply_preset_declarations(next_ctx)
+
+            elif next_id == 0:
+                # Terminal: game_start → transition to PLAYING phase
+                if phase == 'whisting':
+                    self._sm_handle_whist_action(cmd_label, state['player'])
+                    self._sm_finalize_whist()
+                elif phase == 'playing':
+                    # In-hand undeclared suit selection → announce contract
+                    self._sm_do_announce_contract(cmd_label, state['player'])
+                self.sm_active = False
+
+            elif next_id == -1:
+                # Terminal: game_end → redeal (all passed) or no-followers scoring
+                if phase == 'auction':
+                    # All players passed — redeal
+                    self.engine.game.current_round.phase = RoundPhase.REDEAL
+                elif phase == 'whisting':
+                    # Last whist action — no followers, go to scoring
+                    self._sm_handle_whist_action(cmd_label, state['player'])
+                    self._sm_finalize_whist()
+                self.sm_active = False
+
+            return
+
+        # ── State machine not active — playing / scoring ──
         st  = self._st()
         rnd = st.get('current_round') or {}
         phase = rnd.get('phase')
         i = command_id - 1
 
-        if phase == 'auction':
-            b = st['legal_bids'][i]
-            self.engine.place_bid(st['current_bidder_id'], b['bid_type'], b.get('value', 0))
-
-        elif phase == 'exchanging':
-            if rnd.get('talon'):
-                did = rnd['declarer_id']
-                declarer = next((p for p in st['players'] if p['id'] == did), None)
-                hand  = declarer['hand'] if declarer else []
-                talon = rnd['talon']
-                chosen = {c['id'] for c in self.exchange_discards}
-                available = [c for c in hand + talon if c['id'] not in chosen]
-                self.exchange_discards.append(available[i])
-                if len(self.exchange_discards) == 2:
-                    self.engine.complete_exchange(did, [c['id'] for c in self.exchange_discards])
-                    self.exchange_discards = []
-
-            elif st.get('legal_contract_levels'):
-                lvl = st['legal_contract_levels'][i]
-                did = rnd['declarer_id']
-                if lvl == 6:
-                    self.engine.announce_contract(did, 'betl', None, level=lvl)
-                elif lvl == 7:
-                    self.engine.announce_contract(did, 'sans', None, level=lvl)
-                else:
-                    self.engine.announce_contract(did, 'suit', LEVEL_TO_TRUMP[lvl], level=lvl)
-
-        elif phase == 'whisting':
-            round_obj = self.engine.game.current_round
-            wid = round_obj.whist_current_id
-            actions = self.engine.get_legal_whist_actions(wid)
-            action_str = actions[i]['action']
-            if round_obj.whist_declaring_done or round_obj.declarer_responding:
-                self.engine.declare_counter_action(wid, action_str)
-            else:
-                self.engine.declare_whist(wid, action_str)
-
-        elif phase == 'playing':
-            if not rnd.get('contract') and st.get('legal_contract_levels'):
-                lvl = st['legal_contract_levels'][i]
-                did = rnd['declarer_id']
-                if lvl == 6:
-                    self.engine.announce_contract(did, 'betl', None, level=lvl)
-                elif lvl == 7:
-                    self.engine.announce_contract(did, 'sans', None, level=lvl)
-                else:
-                    self.engine.announce_contract(did, 'suit', LEVEL_TO_TRUMP[lvl], level=lvl)
-            else:
-                card = st['legal_cards'][i]
-                self.engine.play_card(st['current_player_id'], card['id'])
+        if phase == 'playing':
+            card = st['legal_cards'][i]
+            self.engine.play_card(st['current_player_id'], card['id'])
 
         elif phase == 'scoring':
             self.engine.start_next_round()
+            # Reset state machine for next round
+            self.sm_state_id = 1
+            self.sm_active = True
 
         else:
             raise GameError(f'No executable commands in phase {phase!r}')
@@ -208,11 +408,12 @@ def ep_new_game():
 
     # Build hands and talon for the response
     st  = sess._st()
-    rnd = st.get('current_round') or {}
     hands = {}
     for p in st.get('players', []):
         hands[str(p['position'])] = [c['id'] for c in p['hand']]
-    talon = [c['id'] for c in rnd.get('talon', [])]
+    # Get talon directly from engine (to_dict hides it during auction)
+    rnd_obj = sess.engine.game.current_round
+    talon = [c.to_dict()['id'] for c in rnd_obj.talon] if rnd_obj else []
 
     return jsonify({'game_id': gid, 'hands': hands, 'talon': talon})
 
@@ -224,19 +425,67 @@ def ep_commands():
     if not sess:
         return jsonify({'error': 'Game not found'}), 404
     cmds, pos = sess.get_commands()
-    st  = sess._st()
-    rnd = st.get('current_round') or {}
-    phase = rnd.get('phase')
+
+    # ── Determine phase from state machine or engine ──────────────────────
+
+    if sess.sm_active:
+        sm_state = _SM_STATES[sess.sm_state_id]
+        phase = sm_state['phase']
+        ctx = sm_state.get('context')
+    else:
+        st  = sess._st()
+        rnd = st.get('current_round') or {}
+        phase = rnd.get('phase')
+        ctx = None
+
     resp = {'commands': cmds, 'player_position': pos, 'phase': phase}
 
-    # ── context construction (for preferans_server.py _sync_phase) ────────
+    # ── Context from state machine ────────────────────────────────────────
 
-    if phase in ('scoring', 'playing'):
-        # Build context: [declarer_pos, contract_type, [[pos, action], ...]]
+    if sess.sm_active:
+        if phase == 'auction':
+            # Auction context: [highest_bidder_pos_or_null, [passed_positions]]
+            if ctx:
+                if ctx[0] is not None:
+                    resp['highest_bidder_position'] = ctx[0]
+                if ctx[1]:
+                    resp['passed_positions'] = sorted(ctx[1])
+
+        elif phase == 'exchanging':
+            # Exchanging context: [declarer_pos, bid_level]
+            if ctx:
+                resp['context'] = [ctx[0], ctx[1]]
+                resp['declarer_position'] = ctx[0]
+                resp['bid_level'] = ctx[1]
+
+        elif phase == 'whisting':
+            # Whisting context: [declarer_pos, contract_type_str, [[pos_str, action], ...]]
+            if ctx:
+                resp['declarer_position'] = ctx[0]
+                resp['contract_type'] = ctx[1]
+                decls = {}
+                for item in ctx[2]:
+                    decls[str(item[0])] = item[1]
+                if decls:
+                    resp['whist_declarations'] = decls
+                # Include trump suit from engine contract
+                contract = sess.engine.game.current_round.contract
+                if contract and contract.trump_suit:
+                    resp['trump'] = contract.trump_suit
+
+        elif phase == 'playing':
+            # Playing context (in-hand undeclared): [declarer_pos, ...]
+            if ctx:
+                resp['context'] = [ctx[0], None, []]
+
+    # ── Context from engine (when state machine not active) ───────────────
+
+    elif phase in ('scoring', 'playing'):
+        st  = sess._st()
+        rnd = st.get('current_round') or {}
         round_obj = sess.engine.game.current_round
         did = rnd.get('declarer_id')
         if did is None:
-            # All passed
             resp['context'] = [None, None, []]
         else:
             declarer_pos = sess._pid_to_position(st, did)
@@ -248,6 +497,8 @@ def ep_commands():
                 if p_pos is not None:
                     whist_decls.append([p_pos, action])
             resp['context'] = [declarer_pos, ctype, whist_decls]
+            if contract and contract.trump_suit:
+                resp['trump'] = contract.trump_suit
 
         # Include scoring results (keyed by position)
         if phase == 'scoring' and hasattr(round_obj, 'results') and round_obj.results:
@@ -262,13 +513,12 @@ def ep_commands():
             }
             for p in st.get('players', []):
                 pid = p['id']
-                pos = str(p['position'])
+                pos_str = str(p['position'])
                 score = res['scores'].get(pid, 0)
-                scoring['players'][pos] = {
+                scoring['players'][pos_str] = {
                     'score': round(score, 1),
                     'tricks': next((pp for pp in sess.engine.game.players if pp.id == pid), None).tricks_won,
                 }
-            # Defender details (role, score_change)
             for dr in res.get('defender_results', []):
                 dp = str(sess._pid_to_position(st, dr['player_id']))
                 if dp in scoring['players']:
@@ -276,64 +526,6 @@ def ep_commands():
                     if dr.get('role'):
                         scoring['players'][dp]['role'] = dr['role']
             resp['scoring'] = scoring
-
-    elif phase == 'exchanging':
-        # For discard step: context = [declarer_pos, bid_level]
-        did = rnd.get('declarer_id')
-        if did:
-            declarer_pos = sess._pid_to_position(st, did)
-            auction = rnd.get('auction', {})
-            winner_bid = auction.get('highest_in_hand_bid') or auction.get('highest_game_bid')
-            bid_level = winner_bid.get('effective_value', winner_bid.get('value', 0)) if winner_bid else 0
-            resp['context'] = [declarer_pos, bid_level]
-
-    # ── additional metadata for state machine consumers ───────────────────
-
-    # Include declarer position for exchanging/whisting phases
-    if phase in ('exchanging', 'whisting') and rnd.get('declarer_id'):
-        did = rnd['declarer_id']
-        dp = sess._pid_to_position(st, did)
-        if dp is not None:
-            resp['declarer_position'] = dp
-
-    # Include whist declarations and contract type for whisting phase
-    if phase == 'whisting':
-        round_obj = sess.engine.game.current_round
-        decls = {}
-        for pid, action in round_obj.whist_declarations.items():
-            p = next((p for p in st.get('players', []) if p['id'] == pid), None)
-            if p:
-                decls[str(p['position'])] = action
-        if decls:
-            resp['whist_declarations'] = decls
-        if round_obj.contract:
-            resp['contract_type'] = round_obj.contract.type.value
-
-    # Include winning bid value for exchange phase
-    if phase == 'exchanging':
-        auction = rnd.get('auction', {})
-        winner_bid = auction.get('highest_in_hand_bid') or auction.get('highest_game_bid')
-        if winner_bid:
-            resp['bid_level'] = winner_bid.get('effective_value', winner_bid.get('value', 0))
-
-    # Include auction context for disambiguation
-    if phase == 'auction':
-        auction = rnd.get('auction', {})
-        winner_bid = auction.get('highest_in_hand_bid') or auction.get('highest_game_bid')
-        if winner_bid:
-            wid = winner_bid.get('player_id')
-            if wid:
-                wp = sess._pid_to_position(st, wid)
-                if wp is not None:
-                    resp['highest_bidder_position'] = wp
-        passed_ids = auction.get('passed_players', [])
-        passed_positions = []
-        for pid in passed_ids:
-            p = next((p for p in st.get('players', []) if p['id'] == pid), None)
-            if p:
-                passed_positions.append(p['position'])
-        if passed_positions:
-            resp['passed_positions'] = sorted(passed_positions)
 
     return jsonify(resp)
 
@@ -344,6 +536,9 @@ def ep_player_on_move():
     sess = sessions.get(gid)
     if not sess:
         return jsonify({'error': 'Game not found'}), 404
+    if sess.sm_active:
+        state = _SM_STATES[sess.sm_state_id]
+        return jsonify({'player_position': state['player']})
     st   = sess._st()
     rnd  = st.get('current_round') or {}
     pos  = sess._acting_player_position(st, rnd, rnd.get('phase'))
@@ -389,9 +584,21 @@ def ep_talon():
     sess, err = _get_session(gid)
     if err:
         return err
-    st = sess._st()
-    rnd = st.get('current_round') or {}
-    return jsonify({"cards": [c['id'] for c in rnd.get('talon', [])]})
+    # Get talon directly from engine (to_dict hides it during auction)
+    rnd_obj = sess.engine.game.current_round
+    cards = [c.to_dict()['id'] for c in rnd_obj.talon] if rnd_obj else []
+    return jsonify({"cards": cards})
+
+
+@app.route('/original-talon')
+def ep_original_talon():
+    gid = request.args.get("game_id")
+    sess, err = _get_session(gid)
+    if err:
+        return err
+    rnd_obj = sess.engine.game.current_round
+    cards = [c.to_dict()['id'] for c in rnd_obj.original_talon] if rnd_obj else []
+    return jsonify({"cards": cards})
 
 
 @app.route('/discard', methods=['POST'])
@@ -507,6 +714,8 @@ def ep_play_card():
         winner_id = result.get('trick_winner_id')
         winner_pos = sess._pid_to_position(st, winner_id)
         resp['winner'] = winner_pos
+        if result.get('round_complete'):
+            resp['round_complete'] = True
 
     return jsonify(resp)
 

@@ -47,7 +47,7 @@ class TestAuction(unittest.TestCase):
         auction = self.game.current_round.auction
         self.assertEqual(auction.phase, AuctionPhase.INITIAL)
         labels = self.get_legal_bid_labels(1)
-        self.assertEqual(labels, ['Pass', '2', 'In Hand', 'Betl', 'Sans'])
+        self.assertEqual(labels, ['Pass', '2', 'Hand', 'Betl', 'Sans'])
 
     def test_example1_game_bidding_with_hold(self):
         """
@@ -65,7 +65,7 @@ class TestAuction(unittest.TestCase):
         labels = self.get_legal_bid_labels(2)
         self.assertIn('Pass', labels)
         self.assertIn('3', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
         self.assertIn('Betl', labels)
         self.assertIn('Sans', labels)
 
@@ -76,7 +76,7 @@ class TestAuction(unittest.TestCase):
         labels = self.get_legal_bid_labels(3)
         self.assertIn('Pass', labels)
         self.assertIn('3', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
 
         # P3 bids 3
         self.engine.place_bid(3, 'game', 3)
@@ -157,7 +157,7 @@ class TestAuction(unittest.TestCase):
         # P2 options: pass, in_hand, betl, sans
         labels = self.get_legal_bid_labels(2)
         self.assertIn('Pass', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
         self.assertIn('Betl', labels)
         self.assertIn('Sans', labels)
 
@@ -301,7 +301,7 @@ class TestAuction(unittest.TestCase):
         # P3 options: pass, in_hand, betl, sans
         labels = self.get_legal_bid_labels(3)
         self.assertIn('Pass', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
         self.assertIn('Betl', labels)
         self.assertIn('Sans', labels)
 
@@ -435,14 +435,14 @@ class TestAuction(unittest.TestCase):
 
         # P3 bids in_hand (their first bid - allowed)
         labels = self.get_legal_bid_labels(3)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
 
         # P3 passes instead
         self.engine.place_bid(3, 'pass', 0)
 
         # P1 already bid, so no in_hand option
         labels = self.get_legal_bid_labels(1)
-        self.assertNotIn('In Hand', labels)
+        self.assertNotIn('Hand', labels)
         self.assertNotIn('Betl', labels)  # Also not available (already bid)
         self.assertNotIn('Sans', labels)
 
@@ -467,7 +467,7 @@ class TestAuction(unittest.TestCase):
 
         # P1 options: pass, 2, in_hand, betl, sans
         labels = self.get_legal_bid_labels(1)
-        self.assertEqual(labels, ['Pass', '2', 'In Hand', 'Betl', 'Sans'])
+        self.assertEqual(labels, ['Pass', '2', 'Hand', 'Betl', 'Sans'])
 
         # P1 bids 2
         self.engine.place_bid(1, 'game', 2)
@@ -477,7 +477,7 @@ class TestAuction(unittest.TestCase):
         labels = self.get_legal_bid_labels(2)
         self.assertIn('Pass', labels)
         self.assertIn('3', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
         self.assertIn('Betl', labels)
         self.assertIn('Sans', labels)
 
@@ -488,7 +488,7 @@ class TestAuction(unittest.TestCase):
         labels = self.get_legal_bid_labels(3)
         self.assertIn('Pass', labels)
         self.assertIn('4', labels)
-        self.assertIn('In Hand', labels)
+        self.assertIn('Hand', labels)
         self.assertIn('Betl', labels)
         self.assertIn('Sans', labels)
 

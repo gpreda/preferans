@@ -5,8 +5,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 2",
-      "In Hand",
+      "2",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -18,12 +18,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 2",
+        "cmd_label": "2",
         "next_state_id": 3
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 4
       },
       {
@@ -44,8 +44,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 2",
-      "In Hand",
+      "2",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -57,12 +57,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 2",
+        "cmd_label": "2",
         "next_state_id": 8
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 9
       },
       {
@@ -89,8 +89,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3",
-      "In Hand",
+      "3",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -102,12 +102,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 13
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 9
       },
       {
@@ -132,7 +132,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "In Hand",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -144,7 +144,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 15
       },
       {
@@ -220,8 +220,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 2",
-      "In Hand",
+      "2",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -233,12 +233,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 2",
+        "cmd_label": "2",
         "next_state_id": 20
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 21
       },
       {
@@ -266,8 +266,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3",
-      "In Hand",
+      "3",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -279,12 +279,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 25
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 26
       },
       {
@@ -311,7 +311,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "In Hand",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -323,7 +323,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 28
       },
       {
@@ -403,8 +403,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3",
-      "In Hand",
+      "3",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -416,12 +416,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 33
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 26
       },
       {
@@ -448,8 +448,8 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4",
-      "In Hand",
+      "4",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -461,12 +461,12 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 35
       },
       {
         "cmd_idx": 3,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 26
       },
       {
@@ -491,7 +491,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "In Hand",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -503,7 +503,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 37
       },
       {
@@ -530,7 +530,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "In Hand",
+      "Hand",
       "Betl",
       "Sans"
     ],
@@ -542,7 +542,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "In Hand",
+        "cmd_label": "Hand",
         "next_state_id": 39
       },
       {
@@ -668,7 +668,7 @@
       {
         "cmd_idx": 1,
         "cmd_label": "Pass",
-        "next_state_id": 0
+        "next_state_id": 155
       },
       {
         "cmd_idx": 2,
@@ -832,7 +832,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3"
+      "3"
     ],
     "edges": [
       {
@@ -842,7 +842,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 50
       }
     ],
@@ -1048,7 +1048,7 @@
       {
         "cmd_idx": 1,
         "cmd_label": "Pass",
-        "next_state_id": 0
+        "next_state_id": 157
       },
       {
         "cmd_idx": 2,
@@ -1092,7 +1092,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3"
+      "3"
     ],
     "edges": [
       {
@@ -1102,7 +1102,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 60
       }
     ],
@@ -1119,7 +1119,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 3"
+      "3"
     ],
     "edges": [
       {
@@ -1129,7 +1129,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 3",
+        "cmd_label": "3",
         "next_state_id": 62
       }
     ],
@@ -1146,7 +1146,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -1156,7 +1156,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 64
       }
     ],
@@ -1583,7 +1583,7 @@
       {
         "cmd_idx": 1,
         "cmd_label": "Pass",
-        "next_state_id": 0
+        "next_state_id": 159
       },
       {
         "cmd_idx": 2,
@@ -1676,7 +1676,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -1686,7 +1686,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 86
       }
     ],
@@ -2003,7 +2003,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -2013,7 +2013,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 92
       }
     ],
@@ -2049,7 +2049,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -2059,7 +2059,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 94
       }
     ],
@@ -2076,7 +2076,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5"
+      "5"
     ],
     "edges": [
       {
@@ -2086,7 +2086,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 96
       }
     ],
@@ -2103,7 +2103,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5"
+      "5"
     ],
     "edges": [
       {
@@ -2113,7 +2113,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 98
       }
     ],
@@ -2798,7 +2798,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -2808,7 +2808,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 108
       }
     ],
@@ -2988,7 +2988,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -2998,7 +2998,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 97
       }
     ],
@@ -3058,7 +3058,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 4"
+      "4"
     ],
     "edges": [
       {
@@ -3068,7 +3068,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 4",
+        "cmd_label": "4",
         "next_state_id": 113
       }
     ],
@@ -3131,7 +3131,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5"
+      "5"
     ],
     "edges": [
       {
@@ -3141,7 +3141,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 118
       }
     ],
@@ -3478,7 +3478,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5"
+      "5"
     ],
     "edges": [
       {
@@ -3488,7 +3488,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 126
       }
     ],
@@ -3643,7 +3643,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5"
+      "5"
     ],
     "edges": [
       {
@@ -3653,7 +3653,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 119
       }
     ],
@@ -3772,7 +3772,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5",
+      "5",
       "Betl"
     ],
     "edges": [
@@ -3783,7 +3783,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 136
       },
       {
@@ -3805,7 +3805,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5",
+      "5",
       "Betl"
     ],
     "edges": [
@@ -3816,7 +3816,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 137
       },
       {
@@ -4044,7 +4044,7 @@
     "phase": "auction",
     "commands": [
       "Pass",
-      "Game 5",
+      "5",
       "Betl"
     ],
     "edges": [
@@ -4055,7 +4055,7 @@
       },
       {
         "cmd_idx": 2,
-        "cmd_label": "Game 5",
+        "cmd_label": "5",
         "next_state_id": 96
       },
       {
@@ -4809,6 +4809,234 @@
     "context": [
       2,
       6
+    ]
+  },
+  {
+    "state_id": 155,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 156
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 156,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      1,
+      "sans",
+      [
+        [
+          "2",
+          "follow"
+        ],
+        [
+          "3",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 157,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 158
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "3",
+          "follow"
+        ],
+        [
+          "1",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 158,
+    "player": 2,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      2,
+      "sans",
+      [
+        [
+          "3",
+          "follow"
+        ],
+        [
+          "1",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 159,
+    "player": 1,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Call",
+      "Counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Call",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 3,
+        "cmd_label": "Counter",
+        "next_state_id": 160
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "pass"
+        ]
+      ]
+    ]
+  },
+  {
+    "state_id": 160,
+    "player": 3,
+    "phase": "whisting",
+    "commands": [
+      "Start game",
+      "Double counter"
+    ],
+    "edges": [
+      {
+        "cmd_idx": 1,
+        "cmd_label": "Start game",
+        "next_state_id": 0
+      },
+      {
+        "cmd_idx": 2,
+        "cmd_label": "Double counter",
+        "next_state_id": 0
+      }
+    ],
+    "context": [
+      3,
+      "sans",
+      [
+        [
+          "1",
+          "follow"
+        ],
+        [
+          "2",
+          "pass"
+        ]
+      ]
     ]
   }
 ]

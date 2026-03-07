@@ -28,12 +28,16 @@ class RLNeuralPlayer:
     """
 
     BID_TYPES = ["pass", "game", "in_hand", "betl", "sans"]
-    FOLLOWING_ACTIONS = ["pass", "follow", "call", "counter", "start_game", "double_counter"]
+    FOLLOWING_ACTIONS = ["pass", "follow"]
+    CALLING_ACTIONS = ["pass", "follow", "call", "counter"]
+    COUNTERING_ACTIONS = ["start_game", "counter", "double_counter"]
 
-    def __init__(self, model: PrefNet, temperature: float = 0.5, name: str = ""):
+    def __init__(self, model: PrefNet, temperature: float = 0.5,
+                 name: str = "", aggressiveness: float = 0.5):
         self.model = model
         self.temperature = temperature
         self.name = name
+        self.aggressiveness = aggressiveness
         self.last_bid_intent = ""
         self.trajectory = []  # [(head_name, log_prob, entropy), ...]
 
@@ -45,6 +49,10 @@ class RLNeuralPlayer:
         self._observed_cards = []
         self._cards_played = 0
         self._is_declarer = False
+
+    def _aggr_tensor(self):
+        """Return aggressiveness as (1, 1) tensor."""
+        return torch.tensor([[self.aggressiveness]], dtype=torch.float32)
 
     def reset_trajectory(self):
         """Clear trajectory for a new episode."""
@@ -71,6 +79,7 @@ class RLNeuralPlayer:
         hand = getattr(self, '_hand', [])
 
         hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
         mask = torch.zeros(1, 5)
         bid_type_map = {}
         for b in legal_bids:
@@ -80,14 +89,13 @@ class RLNeuralPlayer:
                 mask[0, idx] = 1.0
                 bid_type_map[idx] = b
 
-        # No torch.no_grad() — keep graph alive for REINFORCE
-        logits = self.model.forward_bid(hand_feat, mask)[0]
+        logits = self.model.forward_bid(hand_feat, aggr, mask)[0]
         chosen_idx = self._sample_and_record(logits, "bid")
 
         if chosen_idx in bid_type_map:
             chosen = bid_type_map[chosen_idx]
         else:
-            chosen = legal_bids[0]  # fallback to first legal bid
+            chosen = legal_bids[0]
 
         self.last_bid_intent = f"rl (bid={self.BID_TYPES[chosen_idx]})"
         return chosen
@@ -104,6 +112,7 @@ class RLNeuralPlayer:
         talon_set = set(talon_card_ids)
 
         hand_feat = torch.from_numpy(feat.encode_hand(all_cards)).unsqueeze(0)
+        aggr = self._aggr_tensor()
         suit_counts = feat.get_suit_counts(all_cards)
 
         card_feats = []
@@ -115,18 +124,17 @@ class RLNeuralPlayer:
             np.array(card_feats, dtype=np.float32)
         ).unsqueeze(0)
 
-        scores = self.model.forward_discard(hand_feat, card_feats_t)[0]
+        scores = self.model.forward_discard(hand_feat, aggr, card_feats_t)[0]
 
         # Treat discard as independent Bernoulli per card (sigmoid probabilities)
-        # Sample top-2 from the distribution
         probs = torch.sigmoid(scores / self.temperature)
 
-        # Use Gumbel trick for differentiable top-k: add noise to logits, pick top 2
+        # Use Gumbel trick for differentiable top-k
         gumbel_noise = -torch.log(-torch.log(torch.rand_like(scores) + 1e-8) + 1e-8)
         noisy_scores = scores / self.temperature + gumbel_noise
         top2_indices = noisy_scores.topk(2).indices.tolist()
 
-        # Record log-prob for each selected card (Bernoulli log-prob)
+        # Record log-prob for each selected card
         for idx in top2_indices:
             p = probs[idx].clamp(1e-7, 1 - 1e-7)
             log_prob = torch.log(p)
@@ -141,6 +149,7 @@ class RLNeuralPlayer:
 
     def choose_contract(self, legal_levels, hand, winner_bid):
         hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
 
         bid_value = getattr(winner_bid, 'value', 2)
         bid_type = getattr(winner_bid, 'bid_type', None)
@@ -154,7 +163,7 @@ class RLNeuralPlayer:
             feat.encode_contract_context(bid_value, is_ih, legal_levels)
         ).unsqueeze(0)
 
-        type_logits, trump_logits = self.model.forward_contract(hand_feat, context)
+        type_logits, trump_logits = self.model.forward_contract(hand_feat, aggr, context)
 
         # Sample contract type
         type_idx = self._sample_and_record(type_logits[0], "contract_type")
@@ -168,7 +177,6 @@ class RLNeuralPlayer:
             suit_levels = {"clubs": 5, "diamonds": 3, "hearts": 4, "spades": 2}
 
             trump = suit_names[trump_idx]
-            # If invalid level, find the closest valid suit by model preference
             if suit_levels[trump] < bid_value:
                 sorted_idx = trump_logits[0].argsort(descending=True).tolist()
                 trump = None
@@ -186,7 +194,7 @@ class RLNeuralPlayer:
         return ctype, trump, level
 
     # ------------------------------------------------------------------
-    # Whisting / following
+    # Whisting / following — routes to correct head
     # ------------------------------------------------------------------
 
     def choose_whist_action(self, legal_actions):
@@ -194,12 +202,27 @@ class RLNeuralPlayer:
         contract_type = getattr(self, '_contract_type', None)
         trump_suit = getattr(self, '_trump_suit', None)
 
+        # Determine which actions are legal
+        action_strs = set()
+        for a in legal_actions:
+            act = a.get("action") if isinstance(a, dict) else a
+            action_strs.add(act)
+
+        if "call" in action_strs:
+            return self._choose_calling(hand, contract_type, trump_suit, legal_actions, action_strs)
+        elif "start_game" in action_strs and ("counter" in action_strs or "double_counter" in action_strs):
+            return self._choose_countering(hand, contract_type, trump_suit, legal_actions, action_strs)
+        else:
+            return self._choose_following(hand, contract_type, trump_suit, legal_actions, action_strs)
+
+    def _choose_following(self, hand, contract_type, trump_suit, legal_actions, action_strs):
         hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
         context = torch.from_numpy(
             feat.encode_following_context(contract_type, trump_suit, hand)
         ).unsqueeze(0)
 
-        mask = torch.zeros(1, 6)
+        mask = torch.zeros(1, 2)
         action_map = {}
         for a in legal_actions:
             act = a.get("action") if isinstance(a, dict) else a
@@ -208,13 +231,75 @@ class RLNeuralPlayer:
                 mask[0, idx] = 1.0
                 action_map[idx] = act
 
-        logits = self.model.forward_following(hand_feat, context, mask)[0]
+        logits = self.model.forward_following(hand_feat, aggr, context, mask)[0]
         chosen_idx = self._sample_and_record(logits, "following")
 
         if chosen_idx in action_map:
             return action_map[chosen_idx]
+        a = legal_actions[0]
+        return a.get("action") if isinstance(a, dict) else a
 
-        # Fallback
+    def _choose_calling(self, hand, contract_type, trump_suit, legal_actions, action_strs):
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
+
+        other_defender_passed = "follow" not in action_strs and "pass" in action_strs
+        is_counter_subphase = "counter" in action_strs
+        contract_level = 2
+
+        context = torch.from_numpy(
+            feat.encode_calling_context(
+                contract_type, trump_suit, hand,
+                other_defender_passed, is_counter_subphase, contract_level,
+            )
+        ).unsqueeze(0)
+
+        mask = torch.zeros(1, 4)
+        action_map = {}
+        for a in legal_actions:
+            act = a.get("action") if isinstance(a, dict) else a
+            if act in self.CALLING_ACTIONS:
+                idx = self.CALLING_ACTIONS.index(act)
+                mask[0, idx] = 1.0
+                action_map[idx] = act
+
+        logits = self.model.forward_calling(hand_feat, aggr, context, mask)[0]
+        chosen_idx = self._sample_and_record(logits, "calling")
+
+        if chosen_idx in action_map:
+            return action_map[chosen_idx]
+        a = legal_actions[0]
+        return a.get("action") if isinstance(a, dict) else a
+
+    def _choose_countering(self, hand, contract_type, trump_suit, legal_actions, action_strs):
+        hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
+
+        is_declarer_responding = "double_counter" in action_strs
+        contract_level = 2
+        num_followers = 1
+
+        context = torch.from_numpy(
+            feat.encode_countering_context(
+                contract_type, trump_suit, hand,
+                is_declarer_responding, contract_level, num_followers,
+            )
+        ).unsqueeze(0)
+
+        mask = torch.zeros(1, 3)
+        action_map = {}
+        for a in legal_actions:
+            act = a.get("action") if isinstance(a, dict) else a
+            if act in self.COUNTERING_ACTIONS:
+                idx = self.COUNTERING_ACTIONS.index(act)
+                mask[0, idx] = 1.0
+                action_map[idx] = act
+
+        logits = self.model.forward_countering(hand_feat, aggr, context, mask)[0]
+        chosen_idx = self._sample_and_record(logits, "countering")
+
+        if chosen_idx in action_map:
+            return action_map[chosen_idx]
         a = legal_actions[0]
         return a.get("action") if isinstance(a, dict) else a
 
@@ -243,6 +328,7 @@ class RLNeuralPlayer:
                 led_suit = trick.cards[0][1].suit
 
         hand_feat = torch.from_numpy(feat.encode_hand(hand)).unsqueeze(0)
+        aggr = self._aggr_tensor()
         play_ctx = torch.from_numpy(feat.encode_card_play_context(
             self._is_declarer, trump_suit, trick_num, is_leading,
             trick_cards_count, led_suit, contract_type_str, len(hand),
@@ -260,7 +346,7 @@ class RLNeuralPlayer:
         ).unsqueeze(0)
 
         scores = self.model.forward_card_play(
-            hand_feat, play_ctx, played_vec, card_feats_t)[0]
+            hand_feat, aggr, play_ctx, played_vec, card_feats_t)[0]
 
         n = len(legal_cards)
         chosen_idx = self._sample_and_record(scores[:n], "card_play")

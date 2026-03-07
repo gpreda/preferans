@@ -1,8 +1,11 @@
-"""REINFORCE self-play training for PrefNet.
+"""REINFORCE self-play training for PrefNet with aggressiveness shaping.
 
 Three RLNeuralPlayer instances (sharing the same model) play against each other.
-Each game produces a score for each player, used as the reward signal for
-policy gradient updates.
+Each player gets a random aggressiveness level (0.0, 0.5, 1.0) per game.
+Rewards are shaped asymmetrically based on aggressiveness:
+  - aggr=0.0 (conservative): losses penalized 2x
+  - aggr=0.5 (balanced):     symmetric rewards
+  - aggr=1.0 (aggressive):   wins amplified 1.5x, losses dampened 0.5x
 
 Usage:
     python neural/self_play.py [--episodes N] [--lr LR] [--temperature T] ...
@@ -39,19 +42,38 @@ from PrefTestSingleGame import play_game, PlayerAlice, PlayerBob, PlayerCarol
 
 
 POSITION_NAMES = ["Alice", "Bob", "Carol"]
+AGGR_LEVELS = [0.0, 0.5, 1.0]
+
+
+def shape_reward(score, aggressiveness):
+    """Apply asymmetric reward shaping based on aggressiveness level.
+
+    aggr=0.0: conservative — losses hurt 2x, wins normal
+    aggr=0.5: balanced — symmetric
+    aggr=1.0: aggressive — wins amplified 1.5x, losses dampened 0.5x
+    """
+    if aggressiveness <= 0.0:
+        # Conservative: penalize losses heavily
+        return score * 2.0 if score < 0 else score
+    elif aggressiveness >= 1.0:
+        # Aggressive: amplify wins, dampen losses
+        return score * 1.5 if score > 0 else score * 0.5
+    else:
+        # Balanced: symmetric
+        return score
 
 
 def parse_scores(compact_lines):
     """Extract scores from compact log lines.
 
-    Returns dict like {"Alice": 10, "Bob": -5, "Carol": -5}.
+    Returns dict like {"Alice": 10.0, "Bob": -5.0, "Carol": -5.0}.
     """
     scores = {}
     for line in compact_lines:
         if " score: " in line:
             parts = line.split(" score: ")
             name = parts[0].strip()
-            score = int(parts[1].strip())
+            score = float(parts[1].strip())
             scores[name] = score
     return scores
 
@@ -62,59 +84,64 @@ def is_redeal(scores):
 
 
 def evaluate(model, num_games=100, seed=42):
-    """Evaluate current model against heuristic players.
+    """Evaluate current model against heuristic players at all aggressiveness levels.
 
-    Plays num_games games of Neural vs Alice+Bob+Carol (3 chosen randomly
-    from pool of 4 each game). Returns mean score for Neural.
+    Returns dict {aggr_level: (mean_score, game_count)} and overall mean.
     """
     from PrefTestSingleGame import NeuralPlayer
 
     rng = random.Random(seed)
-    total_score = 0
-    game_count = 0
     player_names = ["Alice", "Bob", "Carol", "Neural"]
 
     # Save model to temp file for NeuralPlayer to load
     tmp_path = "neural/models/_eval_tmp.pt"
     torch.save(model.state_dict(), tmp_path)
 
-    for g in range(num_games):
-        game_seed = rng.randint(0, 10**9)
-        chosen = rng.sample(player_names, 3)
+    results = {}
+    for aggr in AGGR_LEVELS:
+        total_score = 0
+        game_count = 0
 
-        players_map = {
-            "Alice": PlayerAlice(seed=game_seed),
-            "Bob": PlayerBob(seed=game_seed + 1),
-            "Carol": PlayerCarol(seed=game_seed + 2),
-            "Neural": NeuralPlayer("Neural", seed=game_seed + 3,
-                                   model_path=tmp_path, temperature=0.0),
-        }
+        for g in range(num_games):
+            game_seed = rng.randint(0, 10**9)
+            chosen = rng.sample(player_names, 3)
 
-        strategies = {}
-        name_map = {}
-        for i, pool_name in enumerate(chosen):
-            pos = i + 1
-            strategies[pos] = players_map[pool_name]
-            name_map[POSITION_NAMES[i]] = pool_name
+            players_map = {
+                "Alice": PlayerAlice(seed=game_seed),
+                "Bob": PlayerBob(seed=game_seed + 1),
+                "Carol": PlayerCarol(seed=game_seed + 2),
+                "Neural": NeuralPlayer("Neural", seed=game_seed + 3,
+                                       model_path=tmp_path, temperature=0.0,
+                                       aggressiveness=aggr),
+            }
 
-        try:
-            random.seed(game_seed)
-            _, compact = play_game(strategies, seed=game_seed)
-            scores = parse_scores(compact)
+            strategies = {}
+            name_map = {}
+            for i, pool_name in enumerate(chosen):
+                pos = i + 1
+                strategies[pos] = players_map[pool_name]
+                name_map[POSITION_NAMES[i]] = pool_name
 
-            for engine_name, score in scores.items():
-                pool_name = name_map.get(engine_name, engine_name)
-                if pool_name == "Neural":
-                    total_score += score
-                    game_count += 1
-        except Exception:
-            pass
+            try:
+                random.seed(game_seed)
+                _, compact, _ = play_game(strategies, seed=game_seed)
+                scores = parse_scores(compact)
+
+                for engine_name, score in scores.items():
+                    pool_name = name_map.get(engine_name, engine_name)
+                    if pool_name == "Neural":
+                        total_score += score
+                        game_count += 1
+            except Exception:
+                pass
+
+        results[aggr] = (total_score / max(game_count, 1), game_count)
 
     # Clean up temp file
     if os.path.exists(tmp_path):
         os.remove(tmp_path)
 
-    return total_score / max(game_count, 1), game_count
+    return results
 
 
 class RunningStats:
@@ -186,13 +213,15 @@ def self_play_train(
 
     os.makedirs("neural/models", exist_ok=True)
 
-    print(f"REINFORCE self-play training")
+    print(f"REINFORCE self-play training (aggressiveness shaping)")
     print(f"  Episodes: {num_episodes}")
     print(f"  LR: {lr}")
     print(f"  Temperature: {temperature} → {temp_end}")
     print(f"  Entropy coeff: {entropy_coeff}")
     print(f"  Reward clip: ±{reward_clip}")
-    print(f"  Eval every: {eval_every} episodes ({eval_games} games)")
+    print(f"  Aggressiveness levels: {AGGR_LEVELS}")
+    print(f"  Reward shaping: a=0→loss*2, a=0.5→symmetric, a=1→win*1.5/loss*0.5")
+    print(f"  Eval every: {eval_every} episodes ({eval_games} games per aggr level)")
     print(f"  Save every: {save_every} episodes")
     print(f"  Model params: {model.param_count()}")
     print(f"  Output: {output_path}")
@@ -205,19 +234,23 @@ def self_play_train(
         progress = episode / max(num_episodes - 1, 1)
         current_temp = temperature + (temp_end - temperature) * progress
 
-        # Create 3 RLNeuralPlayer instances sharing the same model
+        # Create 3 RLNeuralPlayer instances with random aggressiveness
         players = {}
+        player_aggr = {}
         for pid in [1, 2, 3]:
+            aggr = rng.choice(AGGR_LEVELS)
             p = RLNeuralPlayer(model, temperature=current_temp,
-                               name=POSITION_NAMES[pid - 1])
+                               name=POSITION_NAMES[pid - 1],
+                               aggressiveness=aggr)
             p.reset_trajectory()
             players[pid] = p
+            player_aggr[POSITION_NAMES[pid - 1]] = aggr
 
         # Play one game
         game_seed = rng.randint(0, 10**9)
         try:
             random.seed(game_seed)
-            _, compact = play_game(players, seed=game_seed)
+            _, compact, _ = play_game(players, seed=game_seed)
             scores = parse_scores(compact)
         except Exception as e:
             errors += 1
@@ -234,13 +267,17 @@ def self_play_train(
         mean_score = sum(scores.values()) / 3
         centered = {name: score - mean_score for name, score in scores.items()}
 
-        # Update running stats with each player's centered reward
-        for r in centered.values():
+        # Apply aggressiveness-based reward shaping
+        shaped = {name: shape_reward(r, player_aggr[name])
+                  for name, r in centered.items()}
+
+        # Update running stats with shaped rewards
+        for r in shaped.values():
             reward_stats.update(r)
 
         # Normalize and clip rewards
         rewards = {}
-        for name, r in centered.items():
+        for name, r in shaped.items():
             normed = reward_stats.normalize(r)
             rewards[name] = max(-reward_clip, min(reward_clip, normed))
 
@@ -300,16 +337,25 @@ def self_play_train(
         # Periodic evaluation
         if (episode + 1) % eval_every == 0:
             model.eval()
-            eval_score, eval_count = evaluate(model, num_games=eval_games,
-                                               seed=episode)
+            eval_results = evaluate(model, num_games=eval_games,
+                                    seed=episode)
             model.train()
+
+            # Overall score = mean across all aggressiveness levels
+            total_score = sum(s for s, _ in eval_results.values())
+            total_count = sum(c for _, c in eval_results.values())
+            eval_score = total_score / len(eval_results)
 
             improved = eval_score > best_eval_score
             if improved:
                 best_eval_score = eval_score
                 torch.save(model.state_dict(), output_path)
 
-            print(f"  Eval ({eval_count} games): Neural mean={eval_score:+.1f}  "
+            parts = "  ".join(
+                f"a{aggr:.1f}={score:+.1f}({cnt}g)"
+                for aggr, (score, cnt) in sorted(eval_results.items())
+            )
+            print(f"  Eval: {parts}  avg={eval_score:+.1f}  "
                   f"best={best_eval_score:+.1f}  "
                   f"{'*** NEW BEST ***' if improved else ''}")
 

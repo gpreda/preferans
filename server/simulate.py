@@ -1,8 +1,8 @@
 """Game simulation generator for Preferans.
 
 Each simulation is driven by random target bids assigned to players.
-Players bid up to their target, then pass. Follow/counter/double-counter
-decisions use fixed probabilities.
+All pre-play phases (auction, exchange, whisting) are driven entirely
+through the GameSession state machine — no direct engine bidding calls.
 """
 import random
 import os
@@ -27,7 +27,7 @@ SUIT_SYMBOL = {
 
 LEVEL_TO_TRUMP = {2: "spades", 3: "diamonds", 4: "hearts", 5: "clubs"}
 
-# Target bid probability table: (target_type, target_value) → weight
+# Target bid probability table: (target_type, target_value) -> weight
 TARGET_PROBS = [
     (("pass",       0), 34),
     (("game",       2), 10), (("game",       3), 10),
@@ -48,6 +48,7 @@ TARGET_PROBS_SUIT_ONLY = [
 PROB_FOLLOW         = 0.50
 PROB_COUNTER        = 0.10
 PROB_DOUBLE_COUNTER = 0.10
+PROB_CALL           = 0.15
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +61,6 @@ def card_str(card: Card) -> str:
 
 def hand_str(cards: list[Card]) -> str:
     return " ".join(card_str(c) for c in cards)
-
-
-def bid_label(bid_dict: dict) -> str:
-    bt = bid_dict["bid_type"]
-    v  = bid_dict["value"]
-    if bt == "pass":     return "pass"
-    if bt == "game":     return f"game_{v}"
-    if bt == "in_hand":  return f"in_hand_{v}" if v > 0 else "in_hand"
-    return bt  # betl, sans
 
 
 def target_label(target: tuple) -> str:
@@ -87,9 +79,6 @@ def format_step(step_num: int, game: Game, engine: GameEngine,
 
     # Game header line
     talon_s = hand_str(initial_talon)
-    bidder = "-"
-    if rnd.phase == RoundPhase.AUCTION and rnd.auction.current_bidder_id:
-        bidder = f"P{rnd.auction.current_bidder_id}"
     contract_s = "-"
     if rnd.contract:
         c = rnd.contract
@@ -106,25 +95,13 @@ def format_step(step_num: int, game: Game, engine: GameEngine,
     if rnd.current_trick and rnd.current_trick.cards:
         trick_s = " ".join(f"P{pid}:{card_str(c)}" for pid, c in rnd.current_trick.cards)
     lines.append(
-        f"game: talon={talon_s} | bidder={bidder} | contract={contract_s}"
+        f"game: talon={talon_s} | contract={contract_s}"
         f" | discarded={discarded_s} | trick={trick_s}"
     )
 
     # Player lines
     for p in sorted(game.players, key=lambda x: x.id):
-        on_move = "no"
-        if rnd.phase == RoundPhase.AUCTION:
-            on_move = "yes" if rnd.auction.current_bidder_id == p.id else "no"
-        elif rnd.phase == RoundPhase.PLAYING and not rnd.current_trick and rnd.contract is None:
-            on_move = "yes" if rnd.declarer_id == p.id else "no"
-        elif rnd.phase == RoundPhase.PLAYING and rnd.current_trick:
-            next_id = engine._get_next_player_in_trick(rnd.current_trick)
-            on_move = "yes" if next_id == p.id else "no"
-        elif rnd.phase == RoundPhase.WHISTING:
-            on_move = "yes" if rnd.whist_current_id == p.id else "no"
-        elif rnd.phase == RoundPhase.EXCHANGING:
-            on_move = "yes" if rnd.declarer_id == p.id else "no"
-        lines.append(f"P{p.id}: hand={hand_str(p.hand)} | tricks={p.tricks_won} | on_move={on_move}")
+        lines.append(f"P{p.id}: hand={hand_str(p.hand)} | tricks={p.tricks_won}")
 
     lines.append(f"commands: {' '.join(commands)}")
     lines.append(f"> {chosen}")
@@ -132,144 +109,290 @@ def format_step(step_num: int, game: Game, engine: GameEngine,
 
 
 # ---------------------------------------------------------------------------
-# Target-based bidding
+# Target-based choice from SM commands
 # ---------------------------------------------------------------------------
 
+# SM command label -> (type, effective_value)
+_CMD_MAP = {
+    'Pass':    ('pass', 0),
+    '2':       ('game', 2),  '3':       ('game', 3),
+    '4':       ('game', 4),  '5':       ('game', 5),
+    'Hand':    ('in_hand', 0),
+    'Betl':    ('betl', 6),
+    'Sans':    ('sans', 7),
+}
+
+# Contract command -> level
+_CONTRACT_CMD_MAP = {
+    'Spades': 2, 'Diamonds': 3, 'Hearts': 4, 'Clubs': 5,
+    'Betl': 6, 'Sans': 7,
+}
+
+
 def assign_targets(rng, suit_only: bool = False) -> list[tuple]:
-    """Draw a target bid for each of the 3 players."""
     pool = TARGET_PROBS_SUIT_ONLY if suit_only else TARGET_PROBS
     bids, weights = zip(*pool)
     return [rng.choices(bids, weights=weights, k=1)[0] for _ in range(3)]
 
 
-def _find(legal_bids: list, bid_type: str, value: int):
-    """Return the first bid dict matching bid_type and value, or None."""
-    for b in legal_bids:
-        if b["bid_type"] == bid_type and b["value"] == value:
-            return b
-    return None
-
-
-def choose_bid(target: tuple, legal_bids: list, auction, player_id: int) -> dict:
-    """Return the bid to play based on the player's target."""
+def choose_auction_cmd(target: tuple, commands: list[str]) -> int:
+    """Return 1-based index of the command to execute during auction."""
     target_type, target_value = target
-    pass_bid = _find(legal_bids, "pass", 0)
-    phase = auction.phase
-    player_has_bid = any(b.player_id == player_id for b in auction.bids)
+    cmd_set = set(commands)
 
     if target_type == "pass":
-        return pass_bid
+        return commands.index("Pass") + 1
 
-    # IN_HAND_DECLARING: in_hand targets declare their level
-    if phase == AuctionPhase.IN_HAND_DECLARING:
-        if target_type != "in_hand":
-            return pass_bid
-        valid = [b for b in legal_bids if b["bid_type"] == "in_hand" and b["value"] <= target_value]
-        return max(valid, key=lambda x: x["value"]) if valid else pass_bid
+    # In-hand targets
+    if target_type in ("in_hand", "in_hand_betl", "in_hand_sans"):
+        if "Hand" in cmd_set:
+            return commands.index("Hand") + 1
+        # In-hand deciding: try specific bids
+        if target_type == "in_hand_sans" and "Sans" in cmd_set:
+            return commands.index("Sans") + 1
+        if target_type in ("in_hand_betl", "in_hand_sans") and "Betl" in cmd_set:
+            return commands.index("Betl") + 1
+        # In-hand declaring: pick highest in_hand_N <= target
+        in_hand_cmds = [c for c in commands if c.startswith("in_hand ")]
+        if in_hand_cmds:
+            if target_type == "in_hand":
+                valid = [c for c in in_hand_cmds if int(c.split()[-1]) <= target_value]
+                if valid:
+                    return commands.index(max(valid, key=lambda c: int(c.split()[-1]))) + 1
+            else:
+                return commands.index(in_hand_cmds[-1]) + 1
+        return commands.index("Pass") + 1
 
-    # IN_HAND_DECIDING: in_hand-track targets join or escalate
-    if phase == AuctionPhase.IN_HAND_DECIDING:
-        if target_type == "in_hand":
-            return _find(legal_bids, "in_hand", 0) or pass_bid
-        if target_type == "in_hand_betl":
-            return (_find(legal_bids, "betl", 6) or
-                    _find(legal_bids, "in_hand", 0) or pass_bid)
-        if target_type == "in_hand_sans":
-            return (_find(legal_bids, "sans", 7) or
-                    _find(legal_bids, "betl", 6) or
-                    _find(legal_bids, "in_hand", 0) or pass_bid)
-        return pass_bid  # game-track targets pass in in_hand phase
-
-    # INITIAL or GAME_BIDDING
-    # In_hand-track targets bid their intent as first bid
-    if target_type == "in_hand":
-        if not player_has_bid:
-            return _find(legal_bids, "in_hand", 0) or pass_bid
-        return pass_bid
-
-    if target_type == "in_hand_betl":
-        if not player_has_bid:
-            return (_find(legal_bids, "betl", 6) or
-                    _find(legal_bids, "in_hand", 0) or pass_bid)
-        return pass_bid
-
-    if target_type == "in_hand_sans":
-        if not player_has_bid:
-            return (_find(legal_bids, "sans", 7) or
-                    _find(legal_bids, "betl", 6) or
-                    _find(legal_bids, "in_hand", 0) or pass_bid)
-        return pass_bid
-
-    # Game-track targets (game_N, betl, sans): bid up to effective target value
+    # Game / betl / sans targets
     target_eff = (target_value if target_type == "game"
                   else 6 if target_type == "betl" else 7)
-    current_high = auction.highest_game_bid.effective_value if auction.highest_game_bid else 0
 
-    if current_high > target_eff:
-        return pass_bid  # already outbid
-
-    # Collect game-track candidates ≤ target_eff.
-    # Skip betl/sans when player hasn't bid yet — those become in_hand bids.
-    # Skip betl/sans when circle_can_hold is True — hold first, raise to betl/sans later.
-    holding = getattr(auction, 'circle_can_hold', False)
-    candidates = []
-    for b in legal_bids:
-        bt = b["bid_type"]
-        if bt == "game":
-            beff = b["value"]
-        elif bt == "betl":
-            if not player_has_bid or holding:
-                continue
-            beff = 6
-        elif bt == "sans":
-            if not player_has_bid or holding:
-                continue
-            beff = 7
-        else:
+    # Pick highest game-level bid <= target
+    best_cmd = None
+    best_eff = -1
+    for cmd in commands:
+        info = _CMD_MAP.get(cmd)
+        if not info:
             continue
-        if beff <= target_eff:
-            candidates.append((beff, b))
+        ctype, cval = info
+        if ctype == 'pass':
+            continue
+        if ctype == 'in_hand':
+            continue
+        eff = cval
+        if eff <= target_eff and eff > best_eff:
+            best_eff = eff
+            best_cmd = cmd
 
-    if candidates:
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        return candidates[0][1]
-
-    return pass_bid
+    if best_cmd:
+        return commands.index(best_cmd) + 1
+    return commands.index("Pass") + 1
 
 
-def choose_contract_level(target: tuple, legal_levels: list) -> int:
-    """Choose the contract level to announce based on the declarer's target."""
+def choose_contract_cmd(target: tuple, commands: list[str], suit_only: bool = False) -> int:
+    """Return 1-based index for contract selection (exchanging phase)."""
     t, v = target
-    level = (v if t in ("game", "in_hand")
-             else 6 if t in ("betl", "in_hand_betl")
-             else 7 if t in ("sans", "in_hand_sans")
-             else min(legal_levels))
-    return level if level in legal_levels else min(legal_levels)
+    target_level = (v if t in ("game", "in_hand")
+                    else 6 if t in ("betl", "in_hand_betl")
+                    else 7 if t in ("sans", "in_hand_sans")
+                    else 2)
+    if suit_only:
+        target_level = min(target_level, 5)
+
+    # Find matching or closest command
+    best_cmd = None
+    best_diff = 999
+    for cmd in commands:
+        lvl = _CONTRACT_CMD_MAP.get(cmd)
+        if lvl is None:
+            continue
+        if suit_only and lvl > 5:
+            continue
+        diff = abs(lvl - target_level)
+        if diff < best_diff:
+            best_diff = diff
+            best_cmd = cmd
+    if best_cmd:
+        return commands.index(best_cmd) + 1
+    return 1
 
 
-# ---------------------------------------------------------------------------
-# Whisting decisions
-# ---------------------------------------------------------------------------
+def _cards_by_suit(hand_cards) -> dict:
+    """Group cards into {Suit: [Card, ...]}."""
+    suits = {}
+    for card in hand_cards:
+        suits.setdefault(card.suit, []).append(card)
+    return suits
 
-def choose_whist_action(rng, actions: list) -> dict:
-    """Choose a whist action using fixed probabilities."""
-    amap = {a["action"]: a for a in actions}
 
-    # Declarer responding to a counter
-    if "double_counter" in amap:
-        return amap["double_counter"] if rng.random() < PROB_DOUBLE_COUNTER else amap["start_game"]
+def _count_trump_tricks(trump_cards) -> int:
+    """Count guaranteed trump tricks.
 
-    # Counter/call sub-phase (follower)
-    if "start_game" in amap and "counter" in amap:
-        return amap["counter"] if rng.random() < PROB_COUNTER else amap["start_game"]
+    1-trick: A, Kx, Dxx (10xx), Jxxx
+    2-trick: AK, AD (A+10), AJxe (AJ+2x), KJx, DJxx (10+J+xx)
+    """
+    ranks = {c.rank for c in trump_cards}
+    count = len(trump_cards)
+    has_A = Rank.ACE in ranks
+    has_K = Rank.KING in ranks
+    has_D = Rank.TEN in ranks
+    has_J = Rank.JACK in ranks
 
-    # Declaration phase: always has pass + follow; may have counter
+    # 2-trick combinations
+    if has_A and has_K:
+        return 2
+    if has_A and has_D:
+        return 2
+    if has_A and has_J and count >= 4:
+        return 2
+    if has_K and has_J and count >= 3:
+        return 2
+    if has_D and has_J and count >= 4:
+        return 2
+
+    # 1-trick combinations
+    if has_A:
+        return 1
+    if has_K and count >= 2:
+        return 1
+    if has_D and count >= 3:
+        return 1
+    if has_J and count >= 4:
+        return 1
+
+    return 0
+
+
+def _suit_reason(cards) -> float:
+    """Compute reason strength for a non-trump suit.
+
+    Strong (1.0): A with <5 cards, Kx with <4 cards
+    Medium (0.5): A with <6, Kx with <5, Dxx (10xx) with <4
+    Weak (0.25): A/Kx/Dxx any count
+    """
+    ranks = {c.rank for c in cards}
+    count = len(cards)
+    has_A = Rank.ACE in ranks
+    has_K = Rank.KING in ranks
+    has_D = Rank.TEN in ranks
+
+    # Strong
+    if has_A and count < 5:
+        return 1.0
+    if has_K and count >= 2 and count < 4:
+        return 1.0
+
+    # Medium
+    if has_A and count < 6:
+        return 0.5
+    if has_K and count >= 2 and count < 5:
+        return 0.5
+    if has_D and count >= 3 and count < 4:
+        return 0.5
+
+    # Weak
+    if has_A:
+        return 0.25
+    if has_K and count >= 2:
+        return 0.25
+    if has_D and count >= 3:
+        return 0.25
+
+    return 0.0
+
+
+def _compute_follow_stats(hand_cards, trump_suit) -> tuple:
+    """Compute (num_trump_tricks, sum_reasons)."""
+    by_suit = _cards_by_suit(hand_cards)
+
+    trump_cards = by_suit.get(trump_suit, [])
+    num_trump_tricks = _count_trump_tricks(trump_cards)
+
+    sum_reasons = 0.0
+    for suit, cards in by_suit.items():
+        if suit == trump_suit:
+            continue
+        sum_reasons += _suit_reason(cards)
+
+    # Weak reason: 3+ trump cards without a safe trick
+    if len(trump_cards) >= 3 and num_trump_tricks == 0:
+        sum_reasons += 0.25
+
+    return num_trump_tricks, sum_reasons
+
+
+def _boost_for_talon(hand_cards, talon, trump_suit) -> float:
+    """For each revealed talon card where the player has a reason in that suit,
+    increase by 0.25. Only considers non-trump suits."""
+    by_suit = _cards_by_suit(hand_cards)
+    boost = 0.0
+    for card in talon:
+        if card.suit == trump_suit:
+            continue
+        suit_cards = by_suit.get(card.suit, [])
+        if suit_cards and _suit_reason(suit_cards) > 0:
+            boost += 0.25
+    return boost
+
+
+def _should_follow(hand_cards, trump_suit, talon=None,
+                   is_aggressive=False, first_defender_passed=False) -> bool:
+    """Determine if the player should follow based on hand analysis."""
+    num_trump_tricks, sum_reasons = _compute_follow_stats(hand_cards, trump_suit)
+
+    if talon:
+        sum_reasons += _boost_for_talon(hand_cards, talon, trump_suit)
+
+    if num_trump_tricks >= 2:
+        return True
+    if sum_reasons >= 3:
+        return True
+    if num_trump_tricks >= 1 and sum_reasons >= 2:
+        return True
+    if is_aggressive and sum_reasons >= 2.5:
+        return True
+    if is_aggressive and first_defender_passed and sum_reasons >= 2:
+        return True
+
+    return False
+
+
+def choose_whist_cmd(rng, commands: list[str], hand_cards=None, trump_suit=None,
+                     talon=None, is_aggressive=False,
+                     first_defender_passed=False) -> int:
+    """Return 1-based index for whisting commands with hand-based heuristics."""
+    cmd_set = set(commands)
+
+    # Declarer responding to counter
+    if "Double counter" in cmd_set:
+        if rng.random() < PROB_DOUBLE_COUNTER:
+            return commands.index("Double counter") + 1
+        return commands.index("Start game") + 1
+
+    # Counter sub-phase (follower): start_game / call / counter
+    if "Start game" in cmd_set:
+        r = rng.random()
+        if "Call" in cmd_set and r < PROB_CALL:
+            return commands.index("Call") + 1
+        if "Counter" in cmd_set and r < PROB_CALL + PROB_COUNTER:
+            return commands.index("Counter") + 1
+        return commands.index("Start game") + 1
+
+    # Heuristic-based follow decision
+    if hand_cards and trump_suit and "Follow" in cmd_set:
+        if _should_follow(hand_cards, trump_suit, talon,
+                          is_aggressive, first_defender_passed):
+            return commands.index("Follow") + 1
+
+    # Declaration phase: Pass / Follow (+ possibly Call / Counter)
     r = rng.random()
     if r < PROB_FOLLOW:
-        return amap["follow"]
-    if "counter" in amap and r < PROB_FOLLOW + PROB_COUNTER:
-        return amap["counter"]
-    return amap["pass"]
+        return commands.index("Follow") + 1
+    if "Counter" in cmd_set and r < PROB_FOLLOW + PROB_COUNTER:
+        return commands.index("Counter") + 1
+    if "Call" in cmd_set and r < PROB_FOLLOW + PROB_COUNTER + PROB_CALL:
+        return commands.index("Call") + 1
+    return commands.index("Pass") + 1
 
 
 # ---------------------------------------------------------------------------
@@ -277,10 +400,9 @@ def choose_whist_action(rng, actions: list) -> dict:
 # ---------------------------------------------------------------------------
 
 def simulate_round(seed: int, suit_only: bool = False) -> list[str]:
-    """Simulate one complete round. Returns list of text blocks (params + steps)."""
+    """Simulate one complete round via the GameSession SM."""
     rng = random.Random(seed)
 
-    # Use seed for shuffle so deck is deterministic, then restore global rng
     old_state = random.getstate()
     random.setstate(rng.getstate())
 
@@ -293,142 +415,79 @@ def simulate_round(seed: int, suit_only: bool = False) -> list[str]:
     # Assign target bids
     targets = assign_targets(rng, suit_only)
     players_sorted = sorted(game.players, key=lambda p: p.id)
-    player_targets = {p.id: t for p, t in zip(players_sorted, targets)}
+    player_targets = {p.position: t for p, t in zip(players_sorted, targets)}
 
     # Parameters block
     param_lines = ["--- parameters ---"]
     for p in players_sorted:
-        param_lines.append(f"P{p.id}: target={target_label(player_targets[p.id])}")
+        param_lines.append(f"P{p.id}: target={target_label(player_targets[p.position])}")
     blocks = ["\n".join(param_lines)]
 
     initial_talon = list(game.current_round.talon)
     step_num = 1
 
-    # --- Auction ---
-    max_steps = 30
-    while game.current_round.phase == RoundPhase.AUCTION and max_steps > 0:
+    # --- SM-driven phases (auction, exchange, whisting) ---
+    max_steps = 60
+    while session.sm_active and max_steps > 0:
         max_steps -= 1
-        auction = game.current_round.auction
-        if auction.phase == AuctionPhase.COMPLETE:
-            break
-        bidder_id = auction.current_bidder_id
-        if bidder_id is None:
+        commands, player_pos = session.get_commands()
+        if not commands:
             break
 
-        legal = engine.get_legal_bids(bidder_id)
-        if not legal:
-            break
+        phase = session.get_phase()
 
-        commands = [f"{i+1}:{bid_label(b)}" for i, b in enumerate(legal)]
-        choice = choose_bid(player_targets[bidder_id], legal, auction, bidder_id)
-        idx = next(i for i, b in enumerate(legal)
-                   if b["bid_type"] == choice["bid_type"] and b["value"] == choice["value"])
-        chosen = f"{idx+1}:{bid_label(choice)} (P{bidder_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
-        step_num += 1
-
-        engine.place_bid(bidder_id, choice["bid_type"], choice["value"])
-
-    # --- Exchange (regular game, declarer picks up talon) ---
-    rnd = game.current_round
-    if rnd.phase == RoundPhase.EXCHANGING:
-        declarer_id = rnd.declarer_id
-        declarer = engine._get_player(declarer_id)
-
-        combined_ids = [c.id for c in declarer.hand] + [c.id for c in rnd.talon]
-        discard_ids = rng.sample(combined_ids, 2)
-        all_cards_map = {c.id: c for c in declarer.hand}
-        for c in rnd.talon:
-            all_cards_map[c.id] = c
-        discard_labels = [card_str(all_cards_map[cid]) for cid in discard_ids]
-
-        commands = [f"discard:{' '.join(discard_labels)}"]
-        chosen  = f"{commands[0]} (P{declarer_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
-        step_num += 1
-
-        engine.complete_exchange(declarer_id, discard_ids)
-
-        # Announce contract
-        legal_levels = engine.get_legal_contract_levels(declarer_id)
-        if suit_only:
-            legal_levels = [l for l in legal_levels if l <= 5]
-        level = choose_contract_level(player_targets[declarer_id], legal_levels)
-        ct = "suit" if level <= 5 else "betl" if level == 6 else "sans"
-        ts = LEVEL_TO_TRUMP.get(level)
-
-        commands = [f"contract:{level}"]
-        chosen  = f"contract:{level} (P{declarer_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
-        step_num += 1
-
-        engine.announce_contract(declarer_id, ct, ts, level=level)
-
-    # --- Undeclared in-hand: announce contract ---
-    elif rnd.phase == RoundPhase.PLAYING and rnd.contract is None:
-        declarer_id = rnd.declarer_id
-        legal_levels = engine.get_legal_contract_levels(declarer_id)
-        level = choose_contract_level(player_targets[declarer_id], legal_levels)
-        ct = "suit" if level <= 5 else "betl" if level == 6 else "sans"
-        ts = LEVEL_TO_TRUMP.get(level)
-
-        commands = [f"contract:{level}"]
-        chosen  = f"contract:{level} (P{declarer_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
-        step_num += 1
-
-        engine.announce_contract(declarer_id, ct, ts, level=level)
-
-    # --- Whisting ---
-    rnd = game.current_round
-    while rnd.phase == RoundPhase.WHISTING:
-        defender_id = rnd.whist_current_id
-        if defender_id is None:
-            break
-
-        actions = engine.get_legal_whist_actions(defender_id)
-        if not actions:
-            break
-
-        commands = [f"{i+1}:{a['label'].lower()}" for i, a in enumerate(actions)]
-        choice = choose_whist_action(rng, actions)
-        idx = next(i for i, a in enumerate(actions) if a["action"] == choice["action"])
-        chosen = f"{idx+1}:{choice['label'].lower()} (P{defender_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
-        step_num += 1
-
-        if rnd.whist_declaring_done:
-            engine.declare_counter_action(defender_id, choice["action"])
+        if phase == 'auction':
+            target = player_targets[player_pos]
+            cmd_id = choose_auction_cmd(target, commands)
+        elif phase == 'exchanging':
+            if commands[0].isdigit():
+                # Discard: pick randomly
+                cmd_id = rng.randint(1, len(commands))
+            else:
+                # Contract selection
+                target = player_targets[player_pos]
+                cmd_id = choose_contract_cmd(target, commands, suit_only)
+        elif phase == 'whisting':
+            rnd = game.current_round
+            contract = rnd.contract if rnd else None
+            trump_s = contract.trump_suit if contract else None
+            player_obj = next((p for p in game.players if p.position == player_pos), None)
+            hand_c = list(player_obj.hand) if player_obj else None
+            orig_talon = list(rnd.original_talon) if rnd else None
+            is_aggr = player_obj and player_obj.playing_style == PlayingStyle.AGGRESSIVE
+            first_passed = any(v == "pass" for v in rnd.whist_declarations.values()) if rnd else False
+            cmd_id = choose_whist_cmd(rng, commands, hand_cards=hand_c, trump_suit=trump_s,
+                                      talon=orig_talon, is_aggressive=is_aggr,
+                                      first_defender_passed=first_passed)
+        elif phase == 'playing':
+            # In-hand undeclared: contract selection
+            target = player_targets[player_pos]
+            cmd_id = choose_contract_cmd(target, commands, suit_only)
         else:
-            engine.declare_whist(defender_id, choice["action"])
+            break
 
-    # --- Trick play ---
+        cmd_labels = [f"{i+1}:{c.lower()}" for i, c in enumerate(commands)]
+        chosen = f"{cmd_id}:{commands[cmd_id-1].lower()} (P{player_pos})"
+        blocks.append(format_step(step_num, game, engine, cmd_labels, chosen, initial_talon))
+        step_num += 1
+
+        session.execute(cmd_id)
+
+    # --- Trick play (not SM-driven) ---
     max_steps = 50
     while game.current_round.phase == RoundPhase.PLAYING and max_steps > 0:
         max_steps -= 1
-        trick = game.current_round.current_trick
-        if not trick:
+        commands, player_pos = session.get_commands()
+        if not commands:
             break
 
-        player_id = engine._get_next_player_in_trick(trick)
-        legal_cards = engine.get_legal_cards(player_id)
-        if not legal_cards:
-            break
-
-        commands = [f"{i+1}:{card_str(c)}" for i, c in enumerate(legal_cards)]
-        card = rng.choice(legal_cards)
-        idx  = legal_cards.index(card)
-        chosen = f"{idx+1}:{card_str(card)} (P{player_id})"
-
-        blocks.append(format_step(step_num, game, engine, commands, chosen, initial_talon))
+        card_labels = [f"{i+1}:{c.lower()}" for i, c in enumerate(commands)]
+        cmd_id = rng.randint(1, len(commands))
+        chosen = f"{cmd_id}:{commands[cmd_id-1].lower()} (P{player_pos})"
+        blocks.append(format_step(step_num, game, engine, card_labels, chosen, initial_talon))
         step_num += 1
 
-        engine.play_card(player_id, card.id)
+        session.execute(cmd_id)
 
     # --- Scoring ---
     rnd = game.current_round
@@ -472,7 +531,7 @@ def main():
             with open(path, "w", encoding="utf-8") as f:
                 f.write("\n\n".join(blocks) + "\n")
             builtins.print = original_print
-            print(f"  wrote {path} ({len(blocks) - 1} steps)")  # -1 for params block
+            print(f"  wrote {path} ({len(blocks) - 1} steps)")
             builtins.print = lambda *a, **k: None
 
         for i in range(11, 21):

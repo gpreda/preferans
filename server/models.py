@@ -455,6 +455,7 @@ class Auction:
 class Round:
     id: int
     talon: list[Card] = field(default_factory=list)
+    original_talon: list[Card] = field(default_factory=list)
     discarded: list[Card] = field(default_factory=list)
     declarer_id: Optional[int] = None
     contract: Optional[Contract] = None
@@ -609,6 +610,7 @@ class Game:
 
         # 2 cards to talon
         self.current_round.talon = [deck[idx], deck[idx + 1]]
+        self.current_round.original_talon = list(self.current_round.talon)
         idx += 2
 
         # Next 4 cards to each player

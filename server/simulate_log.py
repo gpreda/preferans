@@ -52,13 +52,12 @@ def api_new_game() -> str:
     return r.json()["game_id"]
 
 
-def api_commands(game_id: str) -> tuple:
-    """GET /commands → (commands: list, player_position: int|None, phase: str|None)."""
+def api_commands(game_id: str) -> dict:
+    """GET /commands → full response dict."""
     r = requests.get(f"{ENGINE_URL}/commands",
                      params={"game_id": game_id}, timeout=5)
     r.raise_for_status()
-    d = r.json()
-    return d.get("commands", []), d.get("player_position"), d.get("phase")
+    return r.json()
 
 
 def api_execute(game_id: str, command_id: int) -> None:
@@ -70,6 +69,22 @@ def api_execute(game_id: str, command_id: int) -> None:
     data = r.json()
     if "error" in data:
         raise RuntimeError(f"Execute error: {data['error']}")
+
+
+def api_hand(game_id: str, player: int) -> list:
+    """GET /hand → list of card IDs for the player."""
+    r = requests.get(f"{ENGINE_URL}/hand",
+                     params={"game_id": game_id, "player": player}, timeout=5)
+    r.raise_for_status()
+    return r.json().get("cards", [])
+
+
+def api_original_talon(game_id: str) -> list:
+    """GET /original-talon → list of card IDs from the revealed talon."""
+    r = requests.get(f"{ENGINE_URL}/original-talon",
+                     params={"game_id": game_id}, timeout=5)
+    r.raise_for_status()
+    return r.json().get("cards", [])
 
 
 # ---------------------------------------------------------------------------
@@ -92,9 +107,9 @@ def choose_auction_cmd(rng, commands: list) -> int:
     for cmd in commands:
         if cmd == "Pass":
             w = W_PASS
-        elif cmd.startswith("Game ") or cmd.startswith("in_hand "):
+        elif cmd in ("2", "3", "4", "5") or cmd.startswith("in_hand "):
             w = W_GAME
-        elif cmd in ("In Hand", "in_hand"):
+        elif cmd in ("Hand", "in_hand"):
             w = W_IN_HAND
         elif cmd == "Betl":
             w = W_BETL
@@ -106,8 +121,168 @@ def choose_auction_cmd(rng, commands: list) -> int:
     return rng.choices(range(1, len(commands) + 1), weights=weights, k=1)[0]
 
 
-def choose_whist_cmd(rng, commands: list) -> int:
-    """Return 1-based index using whist probability constants."""
+def _parse_hand_by_suit(hand: list) -> dict:
+    """Parse card IDs into {suit: set(rank_str)}."""
+    suits = {}
+    for card_id in hand:
+        parts = card_id.split("_", 1)
+        if len(parts) == 2:
+            suits.setdefault(parts[1], set()).add(parts[0])
+    return suits
+
+
+def _count_trump_tricks(trump_ranks: set, trump_count: int) -> int:
+    """Count guaranteed trump tricks.
+
+    1-trick: A, Kx, Dxx (10xx), Jxxx
+    2-trick: AK, AD (A+10), AJxe (AJ+2x), KJx, DJxx (10+J+xx)
+    """
+    tricks = 0
+    has_A = "A" in trump_ranks
+    has_K = "K" in trump_ranks
+    has_D = "10" in trump_ranks
+    has_J = "J" in trump_ranks
+
+    # 2-trick combinations (check first)
+    if has_A and has_K:
+        return 2
+    if has_A and has_D:
+        return 2
+    if has_A and has_J and trump_count >= 4:
+        return 2
+    if has_K and has_J and trump_count >= 3:
+        return 2
+    if has_D and has_J and trump_count >= 4:
+        return 2
+
+    # 1-trick combinations
+    if has_A:
+        tricks = 1
+    elif has_K and trump_count >= 2:
+        tricks = 1
+    elif has_D and trump_count >= 3:
+        tricks = 1
+    elif has_J and trump_count >= 4:
+        tricks = 1
+
+    return tricks
+
+
+def _suit_reason(ranks: set, count: int, is_trump: bool) -> float:
+    """Compute reason strength for a non-trump suit.
+
+    Strong (1.0): A with <5 cards, Kx with <4 cards
+    Medium (0.5): A with <6, Kx with <5, Dxx (10xx) with <4
+    Weak (0.25): A/Kx/Dxx any count, or 3 trump cards without safe trick
+    """
+    has_A = "A" in ranks
+    has_K = "K" in ranks
+    has_D = "10" in ranks
+
+    # Strong
+    if has_A and count < 5:
+        return 1.0
+    if has_K and count >= 2 and count < 4:
+        return 1.0
+
+    # Medium
+    if has_A and count < 6:
+        return 0.5
+    if has_K and count >= 2 and count < 5:
+        return 0.5
+    if has_D and count >= 3 and count < 4:
+        return 0.5
+
+    # Weak
+    if has_A:
+        return 0.25
+    if has_K and count >= 2:
+        return 0.25
+    if has_D and count >= 3:
+        return 0.25
+
+    return 0.0
+
+
+def _compute_follow_stats(hand: list, trump: str) -> tuple:
+    """Compute (num_trump_tricks, sum_reasons) for follow decision.
+
+    Returns (int, float).
+    """
+    by_suit = _parse_hand_by_suit(hand)
+
+    trump_ranks = by_suit.get(trump, set())
+    trump_count = len(trump_ranks)
+    num_trump_tricks = _count_trump_tricks(trump_ranks, trump_count)
+
+    sum_reasons = 0.0
+    for suit, ranks in by_suit.items():
+        if suit == trump:
+            continue
+        reason = _suit_reason(ranks, len(ranks), False)
+        sum_reasons += reason
+
+    # Weak reason: 3+ trump cards without a safe trick (no 1+ trick)
+    if trump_count >= 3 and num_trump_tricks == 0:
+        sum_reasons += 0.25
+
+    return num_trump_tricks, sum_reasons
+
+
+def _boost_for_talon(hand: list, talon: list, trump: str) -> float:
+    """For each revealed talon card where the player has a reason in that suit,
+    increase by 0.25. Only considers non-trump suits."""
+    by_suit = _parse_hand_by_suit(hand)
+    boost = 0.0
+    for card_id in talon:
+        parts = card_id.split("_", 1)
+        if len(parts) != 2:
+            continue
+        suit = parts[1]
+        if suit == trump:
+            continue
+        ranks = by_suit.get(suit, set())
+        if not ranks:
+            continue
+        reason = _suit_reason(ranks, len(ranks), False)
+        if reason > 0:
+            boost += 0.25
+    return boost
+
+
+def _should_follow(hand: list, trump: str, talon: list = None,
+                   is_aggressive: bool = False, first_defender_passed: bool = False) -> bool:
+    """Determine if the player should follow based on hand analysis.
+
+    Rules:
+    1. Any player: follow if trump_tricks >= 2 OR sum_reasons >= 3
+       OR (trump_tricks == 1 AND sum_reasons >= 2)
+    2. Aggressive: also follow if sum_reasons >= 2.5
+    3. Aggressive + first defender passed: also follow if sum_reasons >= 2
+    """
+    num_trump_tricks, sum_reasons = _compute_follow_stats(hand, trump)
+
+    if talon:
+        sum_reasons += _boost_for_talon(hand, talon, trump)
+
+    if num_trump_tricks >= 2:
+        return True
+    if sum_reasons >= 3:
+        return True
+    if num_trump_tricks >= 1 and sum_reasons >= 2:
+        return True
+    if is_aggressive and sum_reasons >= 2.5:
+        return True
+    if is_aggressive and first_defender_passed and sum_reasons >= 2:
+        return True
+
+    return False
+
+
+def choose_whist_cmd(rng, commands: list, hand: list = None, trump: str = None,
+                     talon: list = None, is_aggressive: bool = False,
+                     first_defender_passed: bool = False) -> int:
+    """Return 1-based index for whisting commands with hand-based heuristics."""
     amap = {cmd: i + 1 for i, cmd in enumerate(commands)}
 
     if "Double counter" in amap:
@@ -115,6 +290,11 @@ def choose_whist_cmd(rng, commands: list) -> int:
 
     if "Start game" in amap and "Counter" in amap:
         return amap["Counter"] if rng.random() < PROB_COUNTER else amap["Start game"]
+
+    # Heuristic-based follow decision
+    if hand and trump and "Follow" in amap:
+        if _should_follow(hand, trump, talon, is_aggressive, first_defender_passed):
+            return amap["Follow"]
 
     r = rng.random()
     if r < PROB_FOLLOW and "Follow" in amap:
@@ -168,7 +348,10 @@ def simulate_game(seed: int, rows: list) -> None:
     while max_steps > 0:
         max_steps -= 1
 
-        commands, player_pos, phase = api_commands(engine_id)
+        cmd_resp = api_commands(engine_id)
+        commands = cmd_resp.get("commands", [])
+        player_pos = cmd_resp.get("player_position")
+        phase = cmd_resp.get("phase")
 
         if not commands or player_pos is None or phase == "scoring":
             break
@@ -188,7 +371,7 @@ def simulate_game(seed: int, rows: list) -> None:
             idx1 = rng.randint(1, len(commands))
             api_execute(engine_id, idx1)
             # Second discard
-            commands2, _, _ = api_commands(engine_id)
+            commands2 = api_commands(engine_id).get("commands", [])
             idx2 = rng.randint(1, len(commands2))
             api_execute(engine_id, idx2)
 
@@ -202,7 +385,15 @@ def simulate_game(seed: int, rows: list) -> None:
         if phase == "auction":
             idx = choose_auction_cmd(rng, commands)
         elif phase == "whisting":
-            idx = choose_whist_cmd(rng, commands)
+            trump = cmd_resp.get("trump")
+            hand = api_hand(engine_id, player_pos) if trump else None
+            talon = api_original_talon(engine_id) if trump else None
+            is_aggressive = (player_pos == 1)  # Alice = P1
+            whist_decls = cmd_resp.get("whist_declarations", {})
+            first_passed = any(v == "pass" for v in whist_decls.values())
+            idx = choose_whist_cmd(rng, commands, hand=hand, trump=trump,
+                                   talon=talon, is_aggressive=is_aggressive,
+                                   first_defender_passed=first_passed)
         else:
             idx = rng.randint(1, len(commands))
 
