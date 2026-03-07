@@ -762,167 +762,96 @@ class GameEngine:
     # === Whisting Phase ===
 
     def _setup_whisting(self, declarer_id: int):
-        """Set up the whisting phase: defenders declare follow/pass/counter."""
+        """Initialize whisting phase fields. Decision logic lives in the SM JSON."""
         round = self.game.current_round
-        declarer = self._get_player(declarer_id)
-        # Defenders in clockwise order from declarer (positions 1→2→3→1)
-        defenders = []
-        for i in range(1, 3):
-            next_pos = ((declarer.position - 1 + i) % 3) + 1
-            defender = self._get_player_by_position(next_pos)
-            defenders.append(defender.id)
-        round.whist_pending = defenders
-        round.whist_current_id = defenders[0]
-        round.whist_declaring_done = False
         round.whist_followers = []
         round.whist_declarations = {}
-        round.declarer_responding = False
         round.has_counter = False
-
-        # For BETL: all defenders are mandatory — skip Follow/Pass and go straight
-        # to the counter sub-phase where each defender says "Start game" or "Counter".
-        if round.contract and round.contract.type == ContractType.BETL:
-            for d_id in defenders:
-                round.whist_declarations[d_id] = "follow"
-                round.whist_followers.append(d_id)
-            round.whist_declaring_done = True
-            round.whist_pending = list(defenders)
-            round.whist_current_id = defenders[0]
+        round.has_double_counter = False
+        round.counter_player_id = None
+        # Set up pending defenders and first whist_current_id
+        round.whist_pending = [
+            p.id for p in sorted(self.game.players, key=lambda p: p.position)
+            if p.id != declarer_id
+        ]
+        round.whist_declaring_done = False
+        if round.whist_pending:
+            round.whist_current_id = round.whist_pending[0]
 
     def get_legal_whist_actions(self, player_id: int) -> list[dict]:
-        """Get legal whist actions for the current whisting player."""
+        """Return legal whist actions for the given defender."""
         round = self.game.current_round
         if round.phase != RoundPhase.WHISTING:
             return []
-        if round.whist_current_id != player_id:
-            return []
-        if round.contract is None:
-            return []
-
-        if round.declarer_responding:
-            return [
-                {"action": "start_game", "label": "Start game"},
-                {"action": "double_counter", "label": "Double counter"},
-            ]
-
         if round.whist_declaring_done:
-            # For SUIT contracts, Call is available in the counter sub-phase
-            # For BETL/SANS, only Start game and Counter
-            contract_type = round.contract.type
-            if contract_type == ContractType.SUIT:
-                actions = [
-                    {"action": "start_game", "label": "Start game"},
-                ]
-                # Call is only available if there's a defender who passed
-                has_passed_defender = any(
-                    v == "pass" for v in round.whist_declarations.values()
-                )
-                if has_passed_defender:
-                    actions.append({"action": "call", "label": "Call"})
-                actions.append({"action": "counter", "label": "Counter"})
-                return actions
-            else:
-                return [
-                    {"action": "start_game", "label": "Start game"},
-                    {"action": "counter", "label": "Counter"},
-                ]
-
-        # Initial declaration phase: always Pass and Follow
-        actions = [
-            {"action": "pass", "label": "Pass"},
-            {"action": "follow", "label": "Follow"},
-        ]
-        # Call/Counter available when previous players all passed (no follower yet)
-        if round.whist_declarations and not round.whist_followers:
-            actions.append({"action": "call", "label": "Call"})
-            actions.append({"action": "counter", "label": "Counter"})
-        return actions
+            return [{"action": "start_game"}, {"action": "counter"}]
+        # Second defender: if first defender passed, allow call
+        first_passed = any(v == "pass" for v in round.whist_declarations.values())
+        if first_passed:
+            return [{"action": "follow"}, {"action": "pass"}, {"action": "call"}]
+        return [{"action": "follow"}, {"action": "pass"}]
 
     def declare_whist(self, player_id: int, action: str):
-        """Process a defender's initial whist declaration (follow/pass/counter/call)."""
+        """Record a defender's whist declaration (follow, pass, or call)."""
         round = self.game.current_round
         if round.phase != RoundPhase.WHISTING:
-            raise InvalidPhaseError("Not in whisting phase")
-        if round.whist_current_id != player_id:
-            raise InvalidMoveError(f"Not player {player_id}'s turn to declare")
-        if round.whist_declaring_done:
-            raise InvalidMoveError("Declaration phase already complete")
-
-        round.whist_declarations[player_id] = action
-        round.whist_pending.remove(player_id)
-
-        if action in ("follow", "call"):
-            round.whist_followers.append(player_id)
-        elif action == "counter":
-            round.whist_followers.append(player_id)
-            round.has_counter = True
-            round.counter_player_id = player_id
-
+            return
+        if action == "follow":
+            round.whist_declarations[player_id] = "follow"
+            if player_id not in round.whist_followers:
+                round.whist_followers.append(player_id)
+        elif action == "call":
+            round.whist_declarations[player_id] = "call"
+            if player_id not in round.whist_followers:
+                round.whist_followers.append(player_id)
+        else:
+            round.whist_declarations[player_id] = "pass"
+        # Advance to next pending defender or finalize
+        if player_id in round.whist_pending:
+            round.whist_pending.remove(player_id)
         if round.whist_pending:
             round.whist_current_id = round.whist_pending[0]
         else:
-            # All defenders have declared
+            round.whist_current_id = None
             round.whist_declaring_done = True
-            if round.whist_followers:
-                contract = round.contract
-                skip_counter_phase = False
-                if len(round.whist_followers) == 1:
-                    # Skip counter sub-phase for BETL/SANS single follower
-                    if contract.type in (ContractType.BETL, ContractType.SANS):
-                        skip_counter_phase = True
-                    else:
-                        # Skip if the single follower was NOT the first to declare:
-                        # they already had Call/Counter options and chose Follow
-                        first_declarant_id = next(iter(round.whist_declarations))
-                        if first_declarant_id != round.whist_followers[0]:
-                            skip_counter_phase = True
-                if skip_counter_phase:
-                    self._start_playing_after_whist()
-                else:
-                    # Counter sub-phase: all followers decide start_game or counter
-                    round.whist_pending = list(round.whist_followers)
-                    round.whist_current_id = round.whist_pending[0]
-            else:
-                # No one followed — go directly to playing/scoring
-                self._start_playing_after_whist()
+            self.finalize_whist()
 
     def declare_counter_action(self, player_id: int, action: str):
-        """Process a counter sub-phase action (start_game/counter/double_counter)."""
+        """Record a counter/double-counter action during whist phase."""
         round = self.game.current_round
-        if round.phase != RoundPhase.WHISTING:
-            raise InvalidPhaseError("Not in whisting phase")
-        if round.whist_current_id != player_id:
-            raise InvalidMoveError(f"Not player {player_id}'s turn")
+        if action == "counter":
+            round.has_counter = True
+            round.counter_player_id = player_id
+        elif action == "double_counter":
+            round.has_double_counter = True
+        self.finalize_whist()
 
-        if round.declarer_responding:
-            # Declarer accepted or doubled the counter
-            if action == "double_counter":
-                round.has_double_counter = True
-            self._start_playing_after_whist()
-        else:
-            round.whist_pending.remove(player_id)
-            if action == "counter":
-                round.has_counter = True
-                round.counter_player_id = player_id
-                # Declarer gets to respond
-                round.declarer_responding = True
-                round.whist_pending = [round.declarer_id]
-                round.whist_current_id = round.declarer_id
-            else:
-                # start_game: advance to next follower or start play
-                if round.whist_pending:
-                    round.whist_current_id = round.whist_pending[0]
-                else:
-                    self._start_playing_after_whist()
+    def finalize_whist(self):
+        """Transition from WHISTING to PLAYING or SCORING.
 
-    def _start_playing_after_whist(self):
-        """Transition from WHISTING to PLAYING (or SCORING if no followers)."""
+        Called by the SM service after all whist declarations are recorded.
+        No decision logic here — just interprets the accumulated state.
+        """
         round = self.game.current_round
 
         # No followers: declarer wins automatically, go to scoring
         if not round.whist_followers:
             self._end_round()
             return
+
+        # Counter/double counter/call: all defenders must play
+        has_call = any(v == "call" for v in round.whist_declarations.values())
+        if round.has_counter or round.has_double_counter or has_call:
+            for p in self.game.players:
+                if p.id != round.declarer_id and p.id not in round.whist_followers:
+                    round.whist_followers.append(p.id)
+                    round.whist_declarations[p.id] = 'called'
+                    p.has_dropped_out = False
+        else:
+            # Mark non-follower defenders as dropped out
+            for p in self.game.players:
+                if p.id != round.declarer_id and p.id not in round.whist_followers:
+                    p.has_dropped_out = True
 
         round.phase = RoundPhase.PLAYING
         first_lead_id = self._get_first_lead_player_id(round.declarer_id, round.contract.type)
@@ -970,8 +899,9 @@ class GameEngine:
 
         result = {"card": card.to_dict(), "trick_complete": False}
 
-        # Check if trick is complete (3 cards played)
-        if len(trick.cards) == 3:
+        # Check if trick is complete (all active players have played)
+        active_count = sum(1 for p in self.game.players if not p.has_dropped_out)
+        if len(trick.cards) == active_count:
             trump = round.contract.trump_suit if round.contract.type == ContractType.SUIT else None
             print(f"[play_card] Trick complete! Cards: {[(pid, c.id) for pid, c in trick.cards]}")
             print(f"[play_card] Trump suit: {trump}, Contract type: {round.contract.type}")
@@ -983,8 +913,26 @@ class GameEngine:
             result["trick_complete"] = True
             result["trick_winner_id"] = winner_id
 
-            # Check if round is complete (10 tricks)
-            if len(round.tricks) == 10:
+            # Check early termination conditions
+            round_over = False
+
+            # Betl: if declarer wins any trick, round is over (declarer loses)
+            if round.contract.type == ContractType.BETL:
+                if winner_id == round.declarer_id:
+                    round_over = True
+
+            # Non-betl: if followers combined win 5 tricks, round is over
+            if not round_over and round.contract.type != ContractType.BETL:
+                declarer = self._get_player(round.declarer_id)
+                follower_tricks = sum(
+                    p.tricks_won for p in self.game.players
+                    if p.id != round.declarer_id and not p.has_dropped_out
+                )
+                if follower_tricks >= 5:
+                    round_over = True
+
+            # Check if round is complete (10 tricks or early termination)
+            if round_over or len(round.tricks) == 10:
                 self._end_round()
                 result["round_complete"] = True
             else:
@@ -1028,10 +976,10 @@ class GameEngine:
         lead_player = self._get_player(trick.lead_player_id)
 
         for i in range(1, 4):
-            # Counter-clockwise order: position 1→3→2→1 (same as bidding)
-            next_position = ((lead_player.position + i) % 3) + 1
+            # Clockwise order: position 1→2→3→1 (same as bidding)
+            next_position = ((lead_player.position - 1 + i) % 3) + 1
             next_player = self._get_player_by_position(next_position)
-            if next_player.id not in played_ids:
+            if next_player.id not in played_ids and not next_player.has_dropped_out:
                 return next_player.id
 
         raise GameError("Could not determine next player")
@@ -1192,7 +1140,7 @@ class GameEngine:
                     if action == "call":
                         caller_id = d_id
                         for d in defenders:
-                            if d.id != caller_id and round.whist_declarations.get(d.id) == "pass":
+                            if d.id != caller_id and round.whist_declarations.get(d.id) in ("pass", "called"):
                                 called_id = d.id
                         break
 
@@ -1229,10 +1177,9 @@ class GameEngine:
                 elif len(followers) == 2:
                     # Both following
                     combined = sum(d.tricks_won for d in followers)
-                    scored_combined = min(combined, 5)
                     if combined >= 4:
                         for d in followers:
-                            sc = d.tricks_won * scored_combined / combined * game_value
+                            sc = d.tricks_won * game_value
                             d.score += sc
                             results["defender_results"].append({
                                 "player_id": d.id, "tricks": d.tricks_won,
@@ -1270,6 +1217,14 @@ class GameEngine:
                                 "player_id": d.id, "tricks": d.tricks_won,
                                 "score_change": 0,
                             })
+
+        # Tricks-lost penalty for suit and sans: declarer loses points for tricks lost
+        if contract.type in (ContractType.SUIT, ContractType.SANS):
+            tricks_lost = min(10 - declarer_tricks, 5)
+            if tricks_lost > 0:
+                penalty = tricks_lost * game_value
+                declarer.score -= penalty
+                results["tricks_lost_penalty"] = penalty
 
         # Zero-sum adjustment: redistribute so round scores sum to zero
         round_total = sum(p.score - scores_before[p.id] for p in self.game.players)
@@ -1346,8 +1301,15 @@ class GameEngine:
 
         if contract_type == ContractType.SANS:
             # For Sans, the player before the declarer leads the first trick
+            # If that player dropped out, use the other defender
             prev_position = ((declarer.position - 2) % 3) + 1
-            return self._get_player_by_position(prev_position).id
+            prev_player = self._get_player_by_position(prev_position)
+            if not prev_player.has_dropped_out:
+                return prev_player.id
+            # Fallback to the other defender
+            for p in self.game.players:
+                if p.id != declarer_id and not p.has_dropped_out:
+                    return p.id
 
         # Active players: declarer + followers
         active_ids = {declarer_id} | set(round.whist_followers)
@@ -1387,7 +1349,7 @@ class GameEngine:
         if auction.phase == AuctionPhase.INITIAL:
             # Initial phase: pass, game 2, in_hand, betl, sans
             legal_bids.append({"bid_type": "game", "value": 2, "label": "2"})
-            legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+            legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "Hand"})
             legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
             legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
@@ -1411,7 +1373,7 @@ class GameEngine:
 
             # If this is player's first bid, they can also bid in_hand/betl/sans
             if not player_has_bid:
-                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "Hand"})
                 legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
                 legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
             else:
@@ -1436,7 +1398,7 @@ class GameEngine:
                 legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
             else:
                 # Undeclared in_hand - can pass, in_hand, betl, or sans
-                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "In Hand"})
+                legal_bids.append({"bid_type": "in_hand", "value": 0, "label": "Hand"})
                 legal_bids.append({"bid_type": "betl", "value": 6, "label": "Betl"})
                 legal_bids.append({"bid_type": "sans", "value": 7, "label": "Sans"})
 
@@ -1552,12 +1514,6 @@ class GameEngine:
                 # Always include legal_bids for the current bidder
                 if current_bidder_id:
                     state["legal_bids"] = self.get_legal_bids(current_bidder_id)
-
-            elif round.phase == RoundPhase.WHISTING:
-                wid = round.whist_current_id
-                if wid:
-                    state["whist_current_id"] = wid
-                    state["whist_actions"] = self.get_legal_whist_actions(wid)
 
             elif round.phase == RoundPhase.PLAYING:
                 trick = round.current_trick

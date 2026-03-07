@@ -30,6 +30,7 @@ function _sort_cards(cardIds) {
 let state = null;
 let exchangeSelected = [];
 let aiTimer = null;
+let handProbs = {};  // {playerPosition: {w2, w1, wh, f, b, s}}
 
 // ── helpers ─────────────────────────────────────────────────────────
 
@@ -77,39 +78,33 @@ function formatCardsHtml(cards, discardedSet, talonSet) {
         if (!bySuit[suit]) bySuit[suit] = [];
         bySuit[suit].push({ rank, suit, id });
     }
-    const suitParts = [];
+    const parts = [];
     for (const suit of SUIT_ORDER) {
         if (!bySuit[suit]) continue;
         const sym = SUIT[suit];
         const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
-        const ranks = bySuit[suit].map(c => {
+        const cols = bySuit[suit].map(c => {
             const isDiscarded = discardedSet && discardedSet.has(c.id);
             const isTalon = talonSet && talonSet.has(c.id);
             let cls = '';
-            if (isDiscarded) cls = 'card-discarded';
-            else if (isTalon) cls = 'card-talon';
-            return '<span style="color:' + color + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + c.rank + sym + '</span>';
-        }).join('<span class="card-gap"></span>');
-        suitParts.push({ html: ranks, count: bySuit[suit].length });
+            if (isDiscarded) cls = ' card-discarded';
+            else if (isTalon) cls = ' card-talon';
+            return '<span class="card-col' + cls + '" style="color:' + color + '">'
+                + '<span class="card-rank">' + c.rank + '</span>'
+                + '<span class="card-suit">' + sym + '</span></span>';
+        }).join('');
+        parts.push('<span class="card-suit-group">' + cols + '</span>');
     }
-    // Split into two rows if first two suits have 3-7 cards total
-    const gap = '<span class="suit-gap"></span>';
-    if (suitParts.length >= 3) {
-        const firstTwoCount = suitParts[0].count + (suitParts[1] ? suitParts[1].count : 0);
-        if (firstTwoCount >= 3 && firstTwoCount <= 7) {
-            const row1 = suitParts.slice(0, 2).map(p => p.html).join(gap);
-            const row2 = suitParts.slice(2).map(p => p.html).join(gap);
-            return row1 + '<br>' + row2;
-        }
-    }
-    return suitParts.map(p => p.html).join(gap);
+    return parts.join('<span class="suit-gap-2row"></span>');
 }
 
 function cardHtml(cardId) {
     const [rank, suit] = cardId.split('_');
     const sym = SUIT[suit];
     const color = (suit === 'diamonds' || suit === 'hearts') ? '#f55' : '#fff';
-    return '<span style="color:' + color + '">' + rank + sym + '</span>';
+    return '<span class="card-col" style="color:' + color + '">'
+        + '<span class="card-rank">' + rank + '</span>'
+        + '<span class="card-suit">' + sym + '</span></span>';
 }
 
 function sep() {
@@ -219,15 +214,15 @@ function renderGameState() {
                     renderHandLineClickable(el, pname, humanHand, {
                         legalCards: state.commands || [],
                         onCardClick: (cardId) => playCard(human, cardId),
-                    });
+                    }, p);
                 } else if (phase === 'exchange_cards' && state.declarer === human) {
                     renderHandLineClickable(el, pname, humanHand, {
                         selectedCards: exchangeSelected,
                         onCardClick: (cardId) => toggleExchange(cardId),
                         discardScores: state.discard_scores,
-                    });
+                    }, p);
                 } else {
-                    renderHandLine(el, pname, humanHand.length, humanHand);
+                    renderHandLine(el, pname, humanHand.length, humanHand, false, p);
                 }
             }
         } else {
@@ -235,12 +230,12 @@ function renderGameState() {
             const hand = state.hands[String(p)];
             if (state.debug) {
                 if (Array.isArray(hand) && hand.length > 0) {
-                    renderHandLine(el, pname, hand.length, hand, true);
+                    renderHandLine(el, pname, hand.length, hand, true, p);
                 }
             } else {
                 if (hand != null) {
                     const n = Array.isArray(hand) ? hand.length : hand;
-                    renderHandLineHidden(el, pname, n);
+                    renderHandLineHidden(el, pname, n, p);
                 }
             }
         }
@@ -258,17 +253,16 @@ function renderGameState() {
                 if (orderIdx === 0) el.classList.add('move-first');
                 if (orderIdx === 1) el.classList.add('move-second');
             }
-            // Leader bar (trick_lead)
-            if (state.trick_lead === p) {
-                el.classList.add('leader');
-            }
         } else {
             appendLastAction(el, lastActions[String(p)]);
         }
 
-        // Declarer highlight (after rendering so className isn't overwritten)
+        // Role highlights
         if (state.declarer && state.declarer === p) {
             el.classList.add('declarer');
+        }
+        if (state.followers && state.followers.includes(p)) {
+            el.classList.add('follower');
         }
     }
 
@@ -400,12 +394,22 @@ function nameLabel(name) {
     return span;
 }
 
-function _makePlayerRows(el, name, dim) {
+function _makePlayerRows(el, name, dim, playerPos) {
     el.className = 'player-block' + (dim ? ' dim' : '');
     el.innerHTML = '';
     const infoRow = document.createElement('div');
     infoRow.className = 'player-info-row';
     infoRow.appendChild(nameLabel(name));
+    // Hand probabilities on the right
+    if (playerPos && handProbs[playerPos]) {
+        const hp = handProbs[playerPos];
+        const pct = v => (v * 100).toFixed(0);
+        const probSpan = document.createElement('span');
+        probSpan.className = 'hand-probs';
+        probSpan.textContent = 'w2=' + pct(hp.w2) + ' w1=' + pct(hp.w1) + ' wh=' + pct(hp.wh)
+            + ' f=' + pct(hp.f) + ' b=' + pct(hp.b) + ' s=' + pct(hp.s);
+        infoRow.appendChild(probSpan);
+    }
     el.appendChild(infoRow);
     const cardsRow = document.createElement('div');
     cardsRow.className = 'player-cards-row';
@@ -413,20 +417,20 @@ function _makePlayerRows(el, name, dim) {
     return { infoRow, cardsRow };
 }
 
-function renderHandLine(el, name, count, cards, dim) {
-    const { cardsRow } = _makePlayerRows(el, name, dim);
+function renderHandLine(el, name, count, cards, dim, playerPos) {
+    const { cardsRow } = _makePlayerRows(el, name, dim, playerPos);
     const span = document.createElement('span');
     span.className = 'cards';
     span.innerHTML = formatCardsHtml(cards);
     cardsRow.appendChild(span);
 }
 
-function renderHandLineHidden(el, name, count) {
-    const { cardsRow } = _makePlayerRows(el, name, true);
+function renderHandLineHidden(el, name, count, playerPos) {
+    const { cardsRow } = _makePlayerRows(el, name, true, playerPos);
     cardsRow.appendChild(document.createTextNode(count + ' cards (hidden)'));
 }
 
-function renderHandLineClickable(el, name, cards, options) {
+function renderHandLineClickable(el, name, cards, options, playerPos) {
     // options: { legalCards?, onCardClick, selectedCards?, discardScores? }
 
     // Build underline set from discard scores (suit scores used by default)
@@ -448,7 +452,7 @@ function renderHandLineClickable(el, name, cards, options) {
         bySuit[suit].push({ id, rank, suit });
     }
 
-    const { cardsRow } = _makePlayerRows(el, name, false);
+    const { cardsRow } = _makePlayerRows(el, name, false, playerPos);
     let first = true;
     for (const suit of SUIT_ORDER) {
         if (!bySuit[suit]) continue;
@@ -464,7 +468,7 @@ function renderHandLineClickable(el, name, cards, options) {
             btn.className = 'card-btn';
             const sym = SUIT[card.suit];
             const color = (card.suit === 'diamonds' || card.suit === 'hearts') ? '#f55' : '#fff';
-            btn.innerHTML = card.rank + sym;
+            btn.innerHTML = '<span class="card-rank">' + card.rank + '</span><span class="card-suit">' + sym + '</span>';
             btn.style.color = color;
 
             if (ulRed.has(card.id)) {
@@ -619,11 +623,45 @@ async function newGame(debug = false) {
         const names = state.players || {};
         log(names['1'] + ' (P1) vs ' + names['2'] + ' (P2) vs ' + names['3'] + ' (P3)', 'green');
 
+        // Fetch hand probabilities for human player (and AI in debug mode)
+        handProbs = {};
+        if (state.hands) {
+            for (const p of [1, 2, 3]) {
+                if (p === state.human || state.debug) {
+                    const cards = state.hands[String(p)];
+                    if (Array.isArray(cards) && cards.length === 10) {
+                        _fetchHandProbabilities(p, cards);
+                    }
+                }
+            }
+        }
+
         sep();
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
     }
+}
+
+async function _fetchHandProbabilities(playerPos, cardIds, discardedIds) {
+    try {
+        let url = '/api/hand-probability?cards=' + cardIds.join(',');
+        if (discardedIds && discardedIds.length > 0) {
+            url += '&discarded=' + discardedIds.join(',');
+        }
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.error) return;
+        handProbs[playerPos] = {
+            w2: data.strongest_suit_win_prob_all_follow_P1,
+            w1: data.strongest_suit_win_prob_single_follow,
+            wh: data.in_hand_win_prob,
+            f: data.strongest_suit_follow_prob,
+            b: data.betl_win_prob,
+            s: data.sans_win_prob,
+        };
+        renderGameState();
+    } catch (e) { /* ignore */ }
 }
 
 function render() {
@@ -712,6 +750,13 @@ function toggleExchange(card) {
     else if (exchangeSelected.length < 2) exchangeSelected.push(card);
     renderCommandBar([{label: 'CONFIRM (' + exchangeSelected.length + '/2)', action: confirmExchange}]);
     renderGameState();
+
+    // When 2 cards selected, recompute probabilities with discard
+    if (exchangeSelected.length === 2 && state.exchange_cards) {
+        const discarded = new Set(exchangeSelected);
+        const remaining = state.exchange_cards.filter(c => !discarded.has(c));
+        _fetchHandProbabilities(state.human, remaining, exchangeSelected);
+    }
 }
 
 async function confirmExchange() {
@@ -818,9 +863,9 @@ function renderInitialHands() {
             // Merge talon into declarer's hand, show discards with strikethrough
             const merged = _sort_cards(cards.concat(it));
             const talonSet = new Set(it);
-            renderHandLineWithDiscards(el, playerName(p), merged, discardedSet, talonSet);
+            renderHandLineWithDiscards(el, playerName(p), merged, discardedSet, talonSet, p);
         } else {
-            renderHandLine(el, playerName(p), cards.length, cards);
+            renderHandLine(el, playerName(p), cards.length, cards, false, p);
         }
         if (decl && decl === p) el.classList.add('declarer');
     }
@@ -835,8 +880,8 @@ function renderInitialHands() {
     }
 }
 
-function renderHandLineWithDiscards(el, name, cards, discardedSet, talonSet) {
-    const { cardsRow } = _makePlayerRows(el, name, false);
+function renderHandLineWithDiscards(el, name, cards, discardedSet, talonSet, playerPos) {
+    const { cardsRow } = _makePlayerRows(el, name, false, playerPos);
     const span = document.createElement('span');
     span.className = 'cards';
     span.innerHTML = formatCardsHtml(cards, discardedSet, talonSet);

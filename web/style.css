@@ -14,11 +14,13 @@ body {
     overflow: hidden;
 }
 
-#terminal {
+#page-container {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
+
+/* ── Toolbar ──────────────────────────────────────────────────── */
 
 #toolbar {
     display: flex;
@@ -36,7 +38,7 @@ body {
     font-size: 14px;
 }
 
-#new-game-btn, #debug-game-btn {
+#new-game-btn {
     padding: 2px 12px;
     font-family: 'Courier New', Courier, monospace;
     font-size: 12px;
@@ -46,20 +48,319 @@ body {
     cursor: pointer;
 }
 
-#debug-game-btn {
-    color: #f55;
-    border-color: #f55;
-}
-
 #new-game-btn:hover {
     background: #5f5;
     color: #000;
 }
 
-#debug-game-btn:hover {
-    background: #f55;
-    color: #000;
+/* ── Command Bar ──────────────────────────────────────────────── */
+
+#command-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: #111;
+    flex-shrink: 0;
+    height: auto;
+    min-height: 40px;
+    border-bottom: 1px solid #333;
+    overflow-x: auto;
 }
+
+#command-bar button {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 18px;
+    padding: 4px 10px;
+    white-space: nowrap;
+    background: #222;
+    color: #5ff;
+    border: 1px solid #333;
+    cursor: pointer;
+}
+
+#command-bar button:hover {
+    background: #333;
+}
+
+#command-bar button.active {
+    color: #f55;
+    border-color: #f55;
+}
+
+/* ── Game State ───────────────────────────────────────────────── */
+
+#game-state {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 4px 12px;
+    background: #0f0f0f;
+    border-bottom: 1px solid #222;
+}
+
+#game-state:empty {
+    display: none;
+}
+
+/* ── Player block (two-row layout) ───────────────────────────── */
+
+.player-block {
+    padding: 2px 0;
+    color: #e0e0e0;
+    border-bottom: 1px dashed #333;
+}
+
+.player-block:empty {
+    display: none;
+}
+
+.player-info-row {
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+    font-size: 14px;
+}
+
+.hand-probs {
+    margin-left: 8px;
+    font-size: 11px;
+    color: #aa8;
+    white-space: nowrap;
+}
+
+.player-cards-row {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    line-height: 1.2;
+    padding: 1px 0 2px;
+    min-height: 36px;
+}
+
+.player-cards-row .cards {
+    line-height: 1;
+    vertical-align: top;
+}
+
+.player-block.dim .player-info-row,
+.player-block.dim .player-cards-row {
+    color: #ccc;
+}
+
+/* Declarer (contract winner) — pink bar */
+.player-block.declarer {
+    border-left: 6px solid #f5a;
+    padding-left: 8px;
+    background: #1a0a15;
+}
+
+/* Follower (whisting defender) — green bar */
+.player-block.follower {
+    border-left: 6px solid #8e8;
+    padding-left: 8px;
+}
+
+/* First played card in trick — white bar */
+.player-block.move-first {
+    border-left: 6px solid #fff;
+    padding-left: 8px;
+}
+
+/* Second played card in trick — light gray bar */
+.player-block.move-second {
+    border-left: 6px solid #888;
+    padding-left: 8px;
+}
+
+/* Role + played combinations: role bar outer, played bar inset */
+.player-block.declarer.move-first {
+    border-left: 6px solid #f5a;
+    box-shadow: inset 6px 0 0 0 #fff;
+    padding-left: 14px;
+    background: #1a0a15;
+}
+.player-block.declarer.move-second {
+    border-left: 6px solid #f5a;
+    box-shadow: inset 6px 0 0 0 #888;
+    padding-left: 14px;
+    background: #1a0a15;
+}
+.player-block.follower.move-first {
+    border-left: 6px solid #8e8;
+    box-shadow: inset 6px 0 0 0 #fff;
+    padding-left: 14px;
+}
+.player-block.follower.move-second {
+    border-left: 6px solid #8e8;
+    box-shadow: inset 6px 0 0 0 #888;
+    padding-left: 14px;
+}
+
+.player-name {
+    display: inline-block;
+    white-space: pre;
+    overflow: hidden;
+    vertical-align: middle;
+    margin-right: 1ch;
+}
+
+/* ── Talon / remaining / hand-line (non-player rows) ─────────── */
+
+.hand-line {
+    line-height: 1.6;
+    padding: 1px 0;
+    color: #e0e0e0;
+    min-height: 42px;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.hand-line:empty {
+    height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.hand-line.dim {
+    color: #ccc;
+}
+
+.hand-line .cards {
+    line-height: 1;
+    vertical-align: top;
+}
+
+/* ── Trick cards spacing on talon line ────────────────────────── */
+
+#talon-line .cards {
+    margin: 0 4px;
+}
+
+/* ── Previous trick (inline on talon line) ───────────────────── */
+
+.prev-trick-sep {
+    margin: 0 16px;
+    color: #444;
+    font-size: 14px;
+    vertical-align: middle;
+}
+
+.prev-trick-label {
+    color: #666;
+    font-size: 12px;
+    vertical-align: middle;
+}
+
+#remaining-line .cards {
+    opacity: 0.6;
+}
+
+#remaining-line .card-rank {
+    font-size: 14px;
+}
+
+#remaining-line .card-suit {
+    font-size: 11px;
+}
+
+.dim-cards {
+    opacity: 0.5;
+}
+
+/* ── Talon / discarded card markers in scoring hand ──────────── */
+
+.card-talon {
+    border: 1px solid #5ff;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.card-discarded {
+    text-decoration: line-through;
+    opacity: 0.4;
+    border: 1px solid #f55;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+/* ── Clickable card buttons in hand ───────────────────────────── */
+
+.card-btn {
+    font-family: 'Courier New', Courier, monospace;
+    background: #1a1a1a;
+    border: 2px solid #333;
+    cursor: pointer;
+    padding: 2px 3px;
+    margin: 0 1px;
+    border-radius: 4px;
+    vertical-align: top;
+    transition: background 0.1s, border-color 0.1s;
+    box-sizing: border-box;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 20px;
+}
+
+.card-btn .card-rank {
+    font-size: 22px;
+    height: 22px;
+}
+
+.card-btn .card-suit {
+    font-size: 16px;
+}
+
+.card-btn:hover:not(.disabled) {
+    background: #2a2a2a;
+    border-color: #5ff;
+}
+
+.card-btn.disabled {
+    opacity: 0.25;
+    cursor: default;
+    border-color: transparent;
+    background: transparent;
+}
+
+.card-btn.selected {
+    border-color: #f55;
+    background: #2a1515;
+}
+
+/* ── Last action label next to hand ──────────────────────────── */
+
+.last-action {
+    font-size: 14px;
+    color: #8be;
+    margin-left: auto;
+    vertical-align: middle;
+}
+
+/* Declarer highlight */
+.hand-line.declarer {
+    border-left: 6px solid #f5a;
+    padding-left: 8px;
+    background: #1a0a15;
+}
+
+
+.game-info-line {
+    line-height: 1.4;
+    padding: 3px 0 0;
+    color: #bbb;
+    font-size: 12px;
+}
+
+.game-info-line:empty {
+    display: none;
+}
+
+/* ── Log Output ───────────────────────────────────────────────── */
 
 #output {
     flex: 1;
@@ -67,6 +368,7 @@ body {
     padding: 8px 12px;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 .line {
@@ -109,7 +411,191 @@ body {
 }
 
 .cards {
-    font-size: 28px;
-    line-height: 1.2;
-    vertical-align: middle;
+    line-height: 1;
+    vertical-align: top;
+}
+
+.card-suit-group {
+    display: inline-flex;
+    vertical-align: top;
+}
+
+.card-col {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 16px;
+    text-align: center;
+}
+
+.card-rank {
+    font-size: 36px;
+    line-height: 1;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-suit {
+    font-size: 26px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.suit-gap-2row {
+    display: inline-block;
+    width: 10px;
+}
+
+.card-gap {
+    display: inline-block;
+    width: 3px;
+}
+
+.suit-gap {
+    display: inline-block;
+    width: 14px;
+}
+
+/* ── Agent Panel (collapsible) ────────────────────────────────── */
+
+#agent-panel {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid #333;
+    background: #0a0a0a;
+    flex-shrink: 0;
+    transition: flex 0.2s ease;
+}
+
+#agent-panel:not(.collapsed) {
+    flex: 2;
+    min-height: 0;
+}
+
+#agent-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #222;
+    flex-shrink: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.agent-title {
+    color: #a78bfa;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+#agent-status {
+    color: #666;
+    font-size: 12px;
+    font-style: italic;
+    flex: 1;
+}
+
+#agent-status.active {
+    color: #f5a;
+}
+
+#agent-load-btn {
+    font-size: 14px;
+    background: none;
+    border: 1px solid #444;
+    color: #888;
+    cursor: pointer;
+    padding: 0 5px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    line-height: 1.4;
+}
+
+#agent-load-btn:hover {
+    color: #a78bfa;
+    border-color: #a78bfa;
+}
+
+#agent-toggle {
+    color: #666;
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+#agent-panel:not(.collapsed) #agent-toggle {
+    transform: rotate(180deg);
+}
+
+#agent-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b0b0b0;
+}
+
+#agent-panel.collapsed #agent-output {
+    display: none;
+}
+
+#agent-output .agent-msg {
+    padding: 4px 0;
+    border-bottom: 1px solid #1a1a1a;
+}
+
+#agent-output .agent-msg.user {
+    color: #5ff;
+}
+
+#agent-output .agent-msg.assistant {
+    color: #d0d0d0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#agent-output .agent-msg.status {
+    color: #666;
+    font-style: italic;
+    font-size: 12px;
+}
+
+#agent-output .agent-msg.error {
+    color: #f55;
+}
+
+#agent-input-bar {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 12px;
+    background: #111;
+    border-top: 1px solid #222;
+    flex-shrink: 0;
+}
+
+.agent-prompt {
+    color: #a78bfa;
+    margin-right: 8px;
+    font-weight: bold;
+    padding-top: 2px;
+}
+
+#agent-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #e0e0e0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    resize: none;
+    line-height: 1.4;
+}
+
+#agent-input::placeholder {
+    color: #444;
 }

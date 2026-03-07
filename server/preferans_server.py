@@ -11,7 +11,7 @@ WEB_DIR = os.path.join(BASE_DIR, 'web')
 # Import player strategy classes
 import sys as _sys
 _sys.path.insert(0, BASE_DIR)
-from PrefTestSingleGame import PlayerAlice, PlayerBob, PlayerCarol, NeuralPlayer, Sim3000, CardPlayContext, BasePlayer
+from PrefTestSingleGame import PlayerAlice, PlayerBob, PlayerCarol, NeuralPlayer, Sim3000, make_simsim_cls, CardPlayContext, BasePlayer
 from models import Card as _Card, NAME_TO_SUIT as _NAME_TO_SUIT
 
 PLAYER_CLASSES = {
@@ -335,7 +335,7 @@ def _fetch_scoring():
         session['scoring_data'] = scoring
 
 
-AI_NAMES = ['Sim10-Alice', 'Sim50-Alice']
+AI_NAMES = ['S50S20a-A', 'S20S10a-A', 'Alice', 'Sim50-Alice', 'Sim10-Alice']
 
 
 @app.route('/api/game/new', methods=['POST'])
@@ -360,7 +360,15 @@ def new_game():
     for pos, name in players.items():
         if pos == human:
             continue
-        if name == 'Sim10-Alice':
+        if name == 'S50S20a-A':
+            helper_cls = make_simsim_cls(num_simulations=20, helper_cls=PlayerAlice, adaptive=True)
+            strategies[pos] = Sim3000(name, num_simulations=50, helper_cls=helper_cls, adaptive=True)
+        elif name == 'S20S10a-A':
+            helper_cls = make_simsim_cls(num_simulations=10, helper_cls=PlayerAlice, adaptive=True)
+            strategies[pos] = Sim3000(name, num_simulations=20, helper_cls=helper_cls, adaptive=True)
+        elif name == 'Alice':
+            strategies[pos] = PlayerAlice(name)
+        elif name == 'Sim10-Alice':
             strategies[pos] = Sim3000(name, num_simulations=10, helper_cls=PlayerAlice)
         elif name == 'Sim50-Alice':
             strategies[pos] = Sim3000(name, num_simulations=50, helper_cls=PlayerAlice)
@@ -1171,6 +1179,82 @@ def agent_status():
         return jsonify(_safe_json(r)), r.status_code
     except Exception as e:
         return jsonify({'error': f'Agent service unavailable: {e}'}), 503
+
+
+# ── Hand probability ──────────────────────────────────────────────────
+
+_CANONICAL_SUITS = ['spades', 'diamonds', 'hearts', 'clubs']
+
+def _cards_to_canonical(card_ids):
+    """Convert card IDs to canonical encoding + suit mapping.
+
+    Returns (encoding, suit_map) where suit_map maps real suit -> canonical suit.
+    """
+    RANK_CH = {'7': 'x', '8': 'x', '9': 'x', '10': 'x',
+               'J': 'J', 'Q': 'D', 'K': 'K', 'A': 'A'}
+    CARD_ORDER = {'A': 0, 'K': 1, 'D': 2, 'J': 3, 'x': 4}
+
+    suits = {}
+    for cid in card_ids:
+        rank, suit = cid.split('_')
+        suits.setdefault(suit, []).append(RANK_CH[rank])
+    for s in suits:
+        suits[s].sort(key=lambda c: CARD_ORDER[c])
+
+    # Build (real_suit, pattern) pairs, sort canonically
+    pairs = [(s, ''.join(suits[s])) for s in suits]
+    # Add empty suits for suits not in hand
+    all_suits = set(suits.keys())
+    for s in ['spades', 'diamonds', 'hearts', 'clubs']:
+        if s not in all_suits:
+            pairs.append((s, ''))
+
+    def sort_key(pair):
+        pat = pair[1]
+        return (-len(pat), [CARD_ORDER[c] for c in pat])
+    pairs.sort(key=sort_key)
+
+    # suit_map: real suit -> canonical suit
+    suit_map = {}
+    for i, (real_suit, _) in enumerate(pairs):
+        suit_map[real_suit] = _CANONICAL_SUITS[i]
+
+    encoding = '-'.join(pat for _, pat in pairs if pat)
+    return encoding, suit_map
+
+
+def _remap_card(card_id, suit_map):
+    """Remap a card ID to canonical suit."""
+    rank, suit = card_id.split('_')
+    return rank + '_' + suit_map[suit]
+
+
+@app.route('/api/hand-probability')
+def hand_probability():
+    cards_param = request.args.get('cards', '')
+    if not cards_param:
+        return jsonify({'error': 'cards parameter required'}), 400
+    card_ids = [c.strip() for c in cards_param.split(',') if c.strip()]
+    if len(card_ids) != 10:
+        return jsonify({'error': f'expected 10 cards, got {len(card_ids)}'}), 400
+
+    discarded_param = request.args.get('discarded', '')
+    discard_ids = [c.strip() for c in discarded_param.split(',') if c.strip()] if discarded_param else []
+
+    encoding, suit_map = _cards_to_canonical(card_ids)
+
+    if discard_ids:
+        from compute_probabilities import simulate_with_known_cards
+        canonical_hand = [_remap_card(c, suit_map) for c in card_ids]
+        canonical_discard = [_remap_card(c, suit_map) for c in discard_ids]
+        seed = hash(tuple(sorted(canonical_hand + canonical_discard))) & 0x7FFFFFFF
+        result = simulate_with_known_cards(canonical_hand, canonical_discard, seed=seed)
+    else:
+        from compute_probabilities import simulate_combination
+        result = simulate_combination(encoding, seed=hash(encoding) & 0x7FFFFFFF)
+
+    result['encoding'] = encoding
+    return jsonify(result)
 
 
 if __name__ == '__main__':

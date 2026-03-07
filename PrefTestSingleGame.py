@@ -2380,9 +2380,23 @@ class PlayerAlice(WeightedRandomPlayer):
     - 0A high-card dense bid rate 38→42%: captures more marginal 0A bids.
     """
 
-    def __init__(self, seed: int | None = None):
-        super().__init__("Alice", seed=seed,
+    # Default probability thresholds for bid_intent
+    _DEFAULT_BETL_THRESHOLD = 0.80
+    _DEFAULT_IN_HAND_THRESHOLD = 0.80
+    _DEFAULT_SANS_THRESHOLD = 0.70
+    _DEFAULT_SUIT_THRESHOLD = 0.60
+
+    def __init__(self, seed: int | None = None, name: str = "Alice", *,
+                 betl_threshold: float | None = None,
+                 in_hand_threshold: float | None = None,
+                 sans_threshold: float | None = None,
+                 suit_threshold: float | None = None):
+        super().__init__(name, seed=seed,
                          w_pass=45, w_game=45, w_in_hand=5, w_betl=1, w_sans=1)
+        self.BETL_THRESHOLD = betl_threshold if betl_threshold is not None else self._DEFAULT_BETL_THRESHOLD
+        self.IN_HAND_THRESHOLD = in_hand_threshold if in_hand_threshold is not None else self._DEFAULT_IN_HAND_THRESHOLD
+        self.SANS_THRESHOLD = sans_threshold if sans_threshold is not None else self._DEFAULT_SANS_THRESHOLD
+        self.SUIT_THRESHOLD = suit_threshold if suit_threshold is not None else self._DEFAULT_SUIT_THRESHOLD
         self._cards_played = 0
         self._total_hand_size = 10
         self._is_declarer = False
@@ -2392,6 +2406,8 @@ class PlayerAlice(WeightedRandomPlayer):
         self._whist_call_count = 0    # how many times we called whist this round
         self._trump_leads = 0         # track trump leads as declarer for smart management
         self._ctx = None              # CardPlayContext set before choose_card
+        self._bid_intent_type = None  # set by bid_intent: 'betl','in_hand','sans','suit', or None
+        self._strongest_suit = None   # real Suit enum of strongest suit
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -2860,15 +2876,88 @@ class PlayerAlice(WeightedRandomPlayer):
         high = self._count_high_cards(hand)
         return (aces >= 4 and high >= 6) or (aces >= 3 and high >= 7)
 
+    def _compute_hand_probabilities(self, hand):
+        """Compute win probabilities and determine strongest suit via simulation.
+
+        Returns (probs_dict, strongest_real_suit_enum) or (None, None) on failure.
+        """
+        from compute_probabilities import simulate_combination
+
+        card_ids = [c.id for c in hand]
+
+        # Canonical encoding (same logic as preferans_server._cards_to_canonical)
+        RANK_CH = {'7': 'x', '8': 'x', '9': 'x', '10': 'x',
+                   'J': 'J', 'Q': 'D', 'K': 'K', 'A': 'A'}
+        CARD_ORDER = {'A': 0, 'K': 1, 'D': 2, 'J': 3, 'x': 4}
+
+        suits = {}
+        for cid in card_ids:
+            rank, suit = cid.split('_')
+            suits.setdefault(suit, []).append(RANK_CH[rank])
+        for s in suits:
+            suits[s].sort(key=lambda c: CARD_ORDER[c])
+
+        pairs = [(s, ''.join(suits[s])) for s in suits]
+        for s in ['spades', 'diamonds', 'hearts', 'clubs']:
+            if s not in suits:
+                pairs.append((s, ''))
+
+        pairs.sort(key=lambda p: (-len(p[1]), [CARD_ORDER[c] for c in p[1]]))
+
+        # First suit in canonical order = strongest suit
+        strongest_suit_name = pairs[0][0]
+        _NAME_TO_SUIT = {v: k for k, v in SUIT_NAMES.items()}
+        strongest_suit = _NAME_TO_SUIT.get(strongest_suit_name)
+
+        encoding = '-'.join(pat for _, pat in pairs if pat)
+        seed = hash(encoding) & 0x7FFFFFFF
+        probs = simulate_combination(encoding, seed=seed)
+
+        return probs, strongest_suit
+
     # ------------------------------------------------------------------
-    # Bidding — hand-strength aware, conservative on high bids
+    # Bidding — probability-driven
     # ------------------------------------------------------------------
+
+    _SUIT_TO_IN_HAND_VALUE = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
 
     def bid_intent(self, hand, legal_bids):
         bid_types = {b["bid_type"] for b in legal_bids}
 
         if bid_types == {"pass"}:
             return {"bid": legal_bids[0], "intent": "forced pass (no other options)"}
+
+        # IN_HAND_DECLARING phase: all bids are in_hand with value > 0
+        # Pick the value matching our strongest suit
+        in_hand_declaring = all(
+            b["bid_type"] == "in_hand" and b.get("value", 0) > 0
+            for b in legal_bids if b["bid_type"] != "pass"
+        ) and any(b["bid_type"] == "in_hand" and b.get("value", 0) > 0 for b in legal_bids)
+
+        if in_hand_declaring:
+            # Compute strongest suit if not already known
+            if not self._strongest_suit and hand:
+                _, strongest_suit = self._compute_hand_probabilities(hand)
+                self._strongest_suit = strongest_suit
+
+            target_value = self._SUIT_TO_IN_HAND_VALUE.get(self._strongest_suit, 2)
+            # Find the bid with our target value, or the lowest available
+            best_bid = None
+            for b in legal_bids:
+                if b["bid_type"] == "in_hand" and b.get("value") == target_value:
+                    best_bid = b
+                    break
+            if not best_bid:
+                # Target suit not available (too low); pick lowest available
+                ih_bids = [b for b in legal_bids if b["bid_type"] == "in_hand" and b.get("value", 0) > 0]
+                if ih_bids:
+                    best_bid = ih_bids[0]
+                else:
+                    # Only pass available
+                    best_bid = next(b for b in legal_bids if b["bid_type"] == "pass")
+            suit_name = {2: 'spades', 3: 'diamonds', 4: 'hearts', 5: 'clubs'}.get(best_bid.get("value"), '?')
+            return {"bid": best_bid,
+                    "intent": f"in_hand declaring {suit_name} (strongest={SUIT_NAMES.get(self._strongest_suit, '?')})"}
 
         # Reset per-round state on first bid call
         self._cards_played = 0
@@ -2878,342 +2967,79 @@ class PlayerAlice(WeightedRandomPlayer):
         self._betl_intent = False
         self._whist_call_count = 0
         self._trump_leads = 0
+        self._bid_intent_type = None
+        self._strongest_suit = None
 
-        # Track auction escalation for whisting decisions
-        # BUG FIX: removed sans/betl/in_hand inflation — these are always available
-        # to the first bidder, incorrectly setting is_high_level=True for ALL games.
-        # _highest_bid_seen should only track actual game bid escalation.
+        # Track auction escalation
         game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
         if game_bids:
             min_val = min(b.get("value", 2) for b in game_bids)
             self._highest_bid_seen = max(self._highest_bid_seen, min_val - 1)
 
-        aces = self._count_aces(hand) if hand else 0
-        high = self._count_high_cards(hand) if hand else 0
-
-        # Estimate hand strength using best trump suit
-        best_suit = None
-        est_tricks = 0.0
-        if hand:
-            best_suit, _ = self._best_trump_suit(hand)
-            if best_suit:
-                est_tricks = self._hand_strength_for_suit(hand, best_suit)
-
-        if game_bids:
-            game_val = game_bids[0].get("value", 2)
-            if game_val <= 2:
-                # AGGRESSIVE: lower thresholds to declare more often.
-                # Talon adds ~1.5 tricks, need 6 to win → need ~4.5 post-exchange.
-                groups = self._suit_groups(hand) if hand else {}
-                max_suit_len = max((len(cards) for cards in groups.values()), default=0)
-
-                # No trump control gate: when best trump suit has no A or K,
-                # opponents hold 3+ cards above every trump. Declaring is very
-                # risky unless side strength is exceptional.
-                # Game 46 iter3: J-high 4♠ + A♦K♦K♣K♥ est=2.95 → declared, 4/6 → -33.
-                # Game 41 iter3: Q-high 3♣ + A♦ est=0.80 → declared, 4/6 → -83.
-                best_trump_cards = groups.get(best_suit, []) if groups else []
-                _has_trump_honor = any(c.rank >= 7 for c in best_trump_cards)
-                if not _has_trump_honor and est_tricks < 4.0:
-                    intent = f"pass — no trump honor in {SUIT_NAMES.get(best_suit, '?')} (tricks={est_tricks:.1f}, trump_len={len(best_trump_cards)})"
-                    pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
-                    if pass_bid:
-                        return {"bid": pass_bid, "intent": intent}
-
-                # 3+ aces: always bid — 3 guaranteed tricks + talon is enough
-                if aces >= 3:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 2 — 3+ aces auto-bid (tricks={est_tricks:.1f}, aces={aces})"}
-                if est_tricks >= 3.0:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 2 — strong hand (tricks={est_tricks:.1f}, aces={aces}, high={high})"}
-                if aces >= 2 and max_suit_len >= 4 and est_tricks >= 3.0:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 2 — 2+ aces with shape (tricks={est_tricks:.1f}, longest={max_suit_len})"}
-                # 1 ace + 5-card suit: strong declaring shape. G2 iter11: Alice
-                # had [[A,D,J,9,7],[J,10],[J,9],[7]] — 5 spades with ace, passed.
-                # 5-card ace suit + talon = reliable 6 tricks.
-                if aces >= 1 and max_suit_len >= 5:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 2 — ace + 5-card suit (tricks={est_tricks:.1f}, longest={max_suit_len})"}
-                # 1 ace + 4-card suit + void: strong shape compensates for fewer trumps.
-                # G5 iter16: [[A,D,10,8],[J,10,8,7],[K,10],[]] — 1A + 4 spades + void
-                # in clubs, passed. Void = guaranteed ruffing, 4-card suit with ace is solid.
-                num_suits = len(groups)
-                if aces >= 1 and max_suit_len >= 4 and num_suits <= 3:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 2 — ace + 4-card suit + void (tricks={est_tricks:.1f}, suits={num_suits})"}
-                # 1 ace + 4-card suit + est >= 2.0: strong enough to declare.
-                # Gate: when ace is in the best trump suit with no side aces,
-                # ALL tricks come from one suit — fragile. Talon rarely provides
-                # 2+ side winners. Game 33: A♣K♣Q♣10♣ + junk → 4/6 → -83.
-                if aces >= 1 and max_suit_len >= 4 and est_tricks >= 2.0:
-                    _side_aces_bid = sum(1 for c in hand if c.rank == 8 and c.suit != best_suit)
-                    _1a4_rate = 0.85
-                    if _side_aces_bid == 0 and est_tricks < 3.5:
-                        _1a4_rate = 0.55  # concentrated strength — risky
-                    # Trump gap penalty: A but no K/Q in best trump means
-                    # filler trumps (J/10/9/8/7) lose to opponents' K/Q.
-                    # Game 7: A-J-8-7♥ + A♦ est=2.90, declared → 3/6 → -66.
-                    _best_tc_bid = groups.get(best_suit, [])
-                    _bid_gap = (any(c.rank == 8 for c in _best_tc_bid)
-                                and not any(c.rank == 7 for c in _best_tc_bid)
-                                and not any(c.rank == 6 for c in _best_tc_bid))
-                    if _bid_gap and est_tricks < 3.5:
-                        _1a4_rate *= 0.55  # gap makes hand fragile
-                    if self.rng.random() < _1a4_rate:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 2 — ace + 4-card suit strong (tricks={est_tricks:.1f}, longest={max_suit_len}, side_aces={_side_aces_bid})"}
-                if aces >= 2 and max_suit_len < 4:
-                    # Flat 2-ace hand. G19 iter7: [[A,J,7],[A,9,7],[D,J,7],[D]] — 2A
-                    # flat, zero kings. Queens can't promote without kings. Lost -50.
-                    # Gate on kings: 0 kings → 60%, 1+ kings → 80%.
-                    has_kings = any(c.rank == 7 for c in hand) if hand else False
-                    flat_2a_rate = 0.80 if has_kings else 0.60
-                    if self.rng.random() < flat_2a_rate:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 2 — 2 aces but flat (tricks={est_tricks:.1f}, longest={max_suit_len}, kings={'yes' if has_kings else 'no'})"}
-                # Marginal hands: 95% for shaped, 65% for flat.
-                # Bumped shaped 90%→95%: declaring wins are excellent (460 from 5 wins iter10).
-                # Bumped flat 60%→65%: 12/18 at 0 too passive, need more declaration.
-                if est_tricks >= 1.5 and aces >= 1:
-                    doubletons = sum(1 for cards in groups.values() if len(cards) == 2)
-                    # G5 iter2: 3-3-3-1 hand with 1A had 0 doubletons → treated as
-                    # shaped (95%). But max_suit_len=3 means no dominant trump — flat.
-                    is_flat = (max_suit_len <= 3) or (max_suit_len <= 4 and doubletons >= 2)
-                    # G10 iter5: flat 3-3-2-2 1A est ~2.05 → declared and lost -33.
-                    # G12 iter7: flat 3-3-2-2 1A est ~1.9 → lost -66. Weakest flat
-                    # hands (est < 2.0) need further reduction: 65→55%.
-                    if is_flat:
-                        marginal_rate = 0.55 if est_tricks < 2.0 else 0.65
-                    else:
-                        marginal_rate = 0.95
-                    # Unsupported kings vulnerability: kings without aces in
-                    # their suits face ~40-50% chance of losing to opponent ace.
-                    # Game 21: 1A + K♠K♦ (no A♠A♦), est=2.95, declared → 3/6 → -83.
-                    # Each unsupported king overestimates by ~0.30 tricks.
-                    _unsup_k_bid = sum(
-                        1 for suit2, cards2 in groups.items()
-                        if any(c.rank == 7 for c in cards2) and not any(c.rank == 8 for c in cards2)
-                    )
-                    if _unsup_k_bid >= 2 and est_tricks < 3.5:
-                        marginal_rate *= 0.55
-                    # Trump gap: A but no K/Q in best trump — filler trumps
-                    # lose to opponent honors. Game 7: AJ87♥ est=2.90 → 3/6.
-                    _best_tc_m = groups.get(best_suit, [])
-                    _m_gap = (any(c.rank == 8 for c in _best_tc_m)
-                              and not any(c.rank == 7 for c in _best_tc_m)
-                              and not any(c.rank == 6 for c in _best_tc_m))
-                    if _m_gap and est_tricks < 3.5:
-                        marginal_rate *= 0.55
-                    if self.rng.random() < marginal_rate:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 2 — marginal {'flat ' if is_flat else ''}aggressive (tricks={est_tricks:.1f}, aces={aces})"}
-                # 0-ace hands with 5-card K-headed suit + many high cards: strong shape.
-                # G1 iter10: [[K,D,10,9,8],[K,D,J],[8],[7]] — 0A, 5-card suit with
-                # K,D,10,9,8 + 3 hearts KDJ = 5 high cards. Talon adds ~1.5 tricks,
-                # and K becomes near-ace when opponents draw aces early.
-                if aces == 0 and max_suit_len >= 5 and high >= 5:
-                    # Check if longest suit has K
-                    best_suit_cards = groups.get(best_suit, [])
-                    has_king_in_best = any(c.rank == 7 for c in best_suit_cards) if hand else False
-                    if has_king_in_best:
-                        if self.rng.random() < 0.65:
-                            return {"bid": game_bids[0],
-                                    "intent": f"game 2 — 0A K-headed 5+suit (tricks={est_tricks:.1f}, high={high})"}
-                # High-card-dense hands without aces: bid with lots of high cards
-                # G11 iter6: 0A [[K,D,J,8,7],[D,10],[D,8],[9]] declared at 58%, lost -50.
-                # 0-ace hands are fragile — kings/queens need aces played first to promote.
-                # Tier by aces: 1A+ keeps 58%, 0A reduced to 38%.
-                if est_tricks >= 1.5 and high >= 4:
-                    dense_rate = 0.58 if aces >= 1 else 0.42
-                    if self.rng.random() < dense_rate:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 2 — high-card dense (tricks={est_tricks:.1f}, high={high}, aces={aces})"}
-                intent = f"pass — weak hand for game 2 (tricks={est_tricks:.1f}, aces={aces}, high={high})"
-            elif game_val == 3:
-                # Game 3: competitive auction — opponents who passed on game 2 are
-                # strong enough to bid, so they'll whist aggressively. G4/G6 iter9:
-                # Alice outbid Bob then Bob called twice → -60 each.
-                # Require est >= 4.5 or (2+ aces AND shape). Plain 2-ace no longer auto-bids.
-                groups = self._suit_groups(hand) if hand else {}
-                max_suit_len = max((len(cards) for cards in groups.values()), default=0)
-                # Iter83: est_tricks was computed for best overall suit (spades=6.05)
-                # but spades (bid_val=2) is unavailable at game 3+. Same bug as
-                # iter72 speculative gate. Use avail_est for all game 3 gates.
-                avail_est_g3 = self._best_available_est(hand, game_val)
-                # Fix: filter max_suit_len to only count suits available at this
-                # game level. Game 35: 4 spades (bid_val=2, unavailable at game 3)
-                # inflated max_suit_len=4, triggering 80% bid gate. Alice declared
-                # with 2 diamonds as trump → only 3 tricks → -50. Spades length
-                # is irrelevant when spades can't be chosen as trump.
-                avail_suits_g3 = {s for s, v in _SUIT_BID_VALUE.items() if v >= game_val}
-                avail_max_suit_len = max(
-                    (len(cards) for s, cards in groups.items() if s in avail_suits_g3),
-                    default=0
-                )
-                if avail_est_g3 >= 4.5:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 3 — very strong (tricks={est_tricks:.1f}, aces={aces})"}
-                if aces >= 2 and avail_max_suit_len >= 4 and avail_est_g3 >= 4.0:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 3 — 2+ aces with shape (avail={avail_est_g3:.1f}, longest={avail_max_suit_len})"}
-                # Iter52 G1: 2A hand [[AKQ],[AQ9],[KQ],[87]] est~4.4, max_suit_len=3.
-                # Fell through to 25% speculative gate, passed. Neural bid to game 5,
-                # nobody whisted → +66.67 vs Alice's +40 from whisting. Strong 2-ace
-                # hands (est>=4.0) should bid game 3 even without a 4-card suit.
-                if aces >= 2 and avail_est_g3 >= 4.0:
-                    if self.rng.random() < 0.80:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 2+ aces strong flat (avail={avail_est_g3:.1f}, longest={avail_max_suit_len})"}
-                # Iter32: 2A + 4-card suit + est 3.5-3.9 fell to 25% generic gate.
-                # Hand A♠J♠10♠7♠, A♥7♥ (est=3.7) passed at 25%. Carol/Neural bid,
-                # picked up J♥9♥ from talon → hearts level 4 → won 7-8 tricks (+45-48).
-                # 2A + concentrated shape is stronger than generic 1A in this range.
-                # Iter56: 2A + 4♠(AQ87) + 5 high cards (est=3.7), rolled >60% → passed.
-                # All substitutes bid, declared, won +53.33 vs Alice -6.67. Delta: 60 pts.
-                # Honor-dense 2A hands (5+ high cards) are much more reliable — 80%.
-                if aces >= 2 and avail_max_suit_len >= 4 and avail_est_g3 >= 3.5 and high >= 5:
-                    if self.rng.random() < 0.80:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 2A shaped honor-dense 80% (avail={avail_est_g3:.1f}, longest={avail_max_suit_len}, high={high})"}
-                if aces >= 2 and avail_max_suit_len >= 4 and avail_est_g3 >= 3.5:
-                    if self.rng.random() < 0.60:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 2A shaped borderline 60% (avail={avail_est_g3:.1f}, longest={avail_max_suit_len})"}
-                # Iter39: 1A + 5-card AKQ♦ suit (est=4.25) fell to 25% generic gate,
-                # passed. Carol/Neural bid game 3, declared level 3, won by default → +40.
-                # Alice scored -74.67. 5-card ace-headed suit + est>=4.0 is very reliable
-                # at game 3: talon adds ~1.5 → post-exchange ~5.5+, comfortably wins.
-                # Iter71: 1A + 5♦(AK987) + void in hearts. est=4.0 hit 70% gate,
-                # rolled >70% → passed. Neural declared game 5 → +66.67 vs Alice -10.67.
-                # Void makes hand much more reliable: guaranteed ruffing, no wasted cards.
-                # 85% sub-gate for void-enhanced hands.
-                num_suits_g3 = len(groups)
-                if aces >= 1 and avail_max_suit_len >= 5 and avail_est_g3 >= 4.0 and num_suits_g3 <= 3:
-                    if self.rng.random() < 0.85:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 1A 5-card suit + void 85% (tricks={est_tricks:.1f}, longest={avail_max_suit_len}, suits={num_suits_g3})"}
-                if aces >= 1 and avail_max_suit_len >= 5 and avail_est_g3 >= 4.0:
-                    if self.rng.random() < 0.70:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 1A 5-card suit strong (avail={avail_est_g3:.1f}, longest={avail_max_suit_len})"}
-                # Iter94: 1A + 4-card AKQ♥ + void in spades, avail_est=4.0.
-                # Fell to 25% speculative gate, passed. Neural declared, won 9 tricks
-                # → +96.67 vs Alice -2.67. Delta: 99 pts. 4-card suit + void + est≥4.0
-                # is very reliable: void guarantees ruffing, AKQ trump draws opponents.
-                if aces >= 1 and avail_max_suit_len >= 4 and avail_est_g3 >= 4.0 and num_suits_g3 <= 3:
-                    if self.rng.random() < 0.60:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 3 — 1A 4-card suit + void 60% (avail={avail_est_g3:.1f}, suits={num_suits_g3})"}
-                # Iter72: est_tricks ≈ 3.9 (spades) but spades unavailable at game 3.
-                # Alice counter-bid, pushed sans from level 3→4, cost 6.67 pts.
-                # Use avail_est to prevent bidding based on unavailable suits.
-                avail_est_g3 = self._best_available_est(hand, game_val)
-                if avail_est_g3 >= 3.5 and aces >= 1 and self.rng.random() < 0.25:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 3 — aggressive gamble (avail={avail_est_g3:.1f}, tricks={est_tricks:.1f}, aces={aces})"}
-                intent = f"pass — too weak for game 3 (tricks={est_tricks:.1f}, aces={aces}, high={high})"
-            elif game_val == 4:
-                # Game 4: hearts(4) or clubs(5) only. Must check if best
-                # AVAILABLE suit is viable — not overall best suit.
-                # Iter56 (seed=379446356): 1A [[AKJT9]♦,[K,10,7]♥,[Q]♣,[9]♠]
-                # est=5.15 for diamonds, but diamonds unavailable at game 4.
-                # Best available: hearts(K,10,7)=~2.45. Bid game 4→5, forced
-                # clubs(Q,9)=~0.5, took 1 trick, -83.33. Carol passed → 0.0.
-                avail_est = self._best_available_est(hand, game_val)
-                # Iter83: 3A auto-bid at game 4 must check avail_est. Hand with
-                # 3A + 5-card spades but only A♣10♣7♣ for clubs pushed to game 4,
-                # declared with thin trump → lost. 3A needs avail_est >= 4.5.
-                if avail_est >= 5.0 or (aces >= 3 and avail_est >= 4.5):
-                    return {"bid": game_bids[0],
-                            "intent": f"game 4 — very strong available (avail={avail_est:.1f}, best={est_tricks:.1f}, aces={aces})"}
-                # Iter52: neural pushed to game 5 with 2A est~4.4 and won +66.67.
-                # Iter53: 2A [[AK108],[A987],[8],[7]] est=4.15, 4-4-1-1 shape.
-                # Passed at game 4 (gate was 4.5) → -33.33. Neural declared game 5
-                # and won +53.33. Two singletons = great ruffing potential with talon.
-                # Use avail_est (not est_tricks) to prevent suit mismatch disasters.
-                # Iter58: 2A + avail_est=4.90 (hearts AKJJ7) rolled >50% → passed.
-                # N-aggressive won, picked up talon A♠ → 3A sans, scored +90.
-                # Alice scored -93.33. Delta: 183 pts. avail_est≥4.5 is strong.
-                if aces >= 2 and avail_est >= 4.5:
-                    if self.rng.random() < 0.70:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 4 — 2A strong avail 70% (avail={avail_est:.1f}, best={est_tricks:.1f}, aces={aces})"}
-                if aces >= 2 and avail_est >= 4.0:
-                    if self.rng.random() < 0.50:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 4 — 2A speculative (avail={avail_est:.1f}, best={est_tricks:.1f}, aces={aces})"}
-                # Iter50: 1A + 3K + Q + 5-card hearts (avail_est=4.65), passed game 4.
-                # Neural picked up talon (7♣,10♣) → 5 clubs trump + 5 hearts → 8 tricks → +93.
-                # Alice scored -46.67 as passive. Delta: 140 points.
-                # 1A with avail_est>=4.5 and many honor cards = strong shape worth a shot.
-                if aces >= 1 and avail_est >= 4.5 and high >= 4:
-                    if self.rng.random() < 0.50:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 4 — 1A strong shape 50% (avail={avail_est:.1f}, high={high})"}
-                intent = f"pass — game 4 too risky (avail={avail_est:.1f}, best={est_tricks:.1f}, aces={aces})"
-            elif game_val == 5:
-                # Game 5 (clubs only). Must evaluate clubs specifically.
-                # Iter56: forced clubs with Q♣,9♣ → 1 trick, -83.33.
-                avail_est = self._best_available_est(hand, game_val)
-                # 3+ aces is a powerhouse — but at game 5, clubs is the ONLY option.
-                # Iter83: 3A hand [[A,J,10,9,8]♠,[A,10,7]♣,[A]♥,[8]♦] pushed to
-                # game 5 clubs with only A♣10♣ → 5/6 tricks → -83.33. Carol passed,
-                # whisted → +36.67. Must check clubs viability even with 3A.
-                # Iter2: Raised thresholds — games 12,30 had 3-4 clubs with side
-                # aces overvalued (opponents ruffed). Need strong CLUBS specifically.
-                if aces >= 3 and avail_est >= 5.5:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 5 — 3+ aces powerhouse (avail={avail_est:.1f}, aces={aces})"}
-                if avail_est >= 6.0:
-                    return {"bid": game_bids[0],
-                            "intent": f"game 5 — very strong available (avail={avail_est:.1f}, aces={aces})"}
-                if aces >= 2 and avail_est >= 5.0:
-                    if self.rng.random() < 0.40:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 5 — 2A speculative (avail={avail_est:.1f}, aces={aces})"}
-                # Iter92: 1A + 5-card AKQ109♣ (avail_est=4.60) passed game 5.
-                # Neural declared, picked up 7♣ → 6 clubs, won 7 tricks → +90.
-                # Alice whisted → -13.33. Delta: 103 pts. 5 guaranteed trump tricks
-                # from AKQ drawing opponents + 10/9 masters. Post-talon ~6+ tricks.
-                # EV ≈ 0.75*90 + 0.25*(-83) ≈ +47, far better than whisting.
-                if aces >= 1 and avail_est >= 5.0 and high >= 4:
-                    if self.rng.random() < 0.25:
-                        return {"bid": game_bids[0],
-                                "intent": f"game 5 — 1A strong shape 25% (avail={avail_est:.1f}, high={high})"}
-                intent = f"pass — game 5 too risky (avail={avail_est:.1f}, best={est_tricks:.1f}, aces={aces})"
-            else:
-                intent = f"pass — game {game_val}+ too risky (tricks={est_tricks:.1f}, aces={aces})"
+        if not hand:
             pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
             if pass_bid:
-                return {"bid": pass_bid, "intent": intent}
+                return {"bid": pass_bid, "intent": "pass — no hand"}
+            return super().bid_intent(hand, legal_bids)
 
-        # Check for sans/betl/in_hand with hand evaluation
-        if hand:
-            sans_bids = [b for b in legal_bids if b["bid_type"] == "sans"]
-            if sans_bids and self._is_good_sans_hand(hand):
-                return {"bid": sans_bids[0], "intent": f"sans — dominant high cards (aces={aces})"}
-            # Betl in auction = in-hand betl (no exchange), so use strict check
+        # Compute probabilities via simulation
+        probs, strongest_suit = self._compute_hand_probabilities(hand)
+        self._strongest_suit = strongest_suit
+
+        if probs is None:
+            pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
+            if pass_bid:
+                return {"bid": pass_bid, "intent": "pass — probability computation failed"}
+            return super().bid_intent(hand, legal_bids)
+
+        p_betl = probs.get('betl_win_prob', 0)
+        p_in_hand = probs.get('in_hand_win_prob', 0)
+        p_sans = probs.get('sans_win_prob', 0)
+        p_suit = probs.get('strongest_suit_win_prob_all_follow_P1', 0)
+
+        prob_str = (f"suit={p_suit:.0%} inH={p_in_hand:.0%} "
+                    f"betl={p_betl:.0%} sans={p_sans:.0%}")
+
+        # Check thresholds in priority order
+        if p_betl >= self.BETL_THRESHOLD:
+            self._bid_intent_type = 'betl'
             betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
-            if betl_bids and self._is_good_betl_hand_in_hand(hand):
-                a = betl_hand_analysis(hand)
-                return {"bid": betl_bids[0],
-                        "intent": f"betl — zero danger in-hand (safe_suits={a['safe_suits']})"}
-            # In-hand bid with betl intent
             in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
-            if in_hand_bids and self._is_good_betl_hand_in_hand(hand):
+            if betl_bids:
+                return {"bid": betl_bids[0],
+                        "intent": f"betl — prob {p_betl:.0%} >= {self.BETL_THRESHOLD:.0%} ({prob_str})"}
+            if in_hand_bids:
                 self._betl_intent = True
-                a = betl_hand_analysis(hand)
                 return {"bid": in_hand_bids[0],
-                        "intent": f"in_hand (betl intent) — zero danger, safe_suits={a['safe_suits']}"}
+                        "intent": f"in_hand (betl intent) — prob {p_betl:.0%} >= {self.BETL_THRESHOLD:.0%} ({prob_str})"}
 
+        if p_in_hand >= self.IN_HAND_THRESHOLD:
+            self._bid_intent_type = 'in_hand'
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids:
+                return {"bid": in_hand_bids[0],
+                        "intent": f"in_hand — prob {p_in_hand:.0%} >= {self.IN_HAND_THRESHOLD:.0%} ({prob_str})"}
+
+        if p_sans >= self.SANS_THRESHOLD:
+            self._bid_intent_type = 'sans'
+            sans_bids = [b for b in legal_bids if b["bid_type"] == "sans"]
+            if sans_bids:
+                return {"bid": sans_bids[0],
+                        "intent": f"sans — prob {p_sans:.0%} >= {self.SANS_THRESHOLD:.0%} ({prob_str})"}
+
+        if p_suit >= self.SUIT_THRESHOLD:
+            self._bid_intent_type = 'suit'
+            if game_bids:
+                return {"bid": game_bids[0],
+                        "intent": f"game — suit prob {p_suit:.0%} >= {self.SUIT_THRESHOLD:.0%} ({prob_str})"}
+
+        # Below all thresholds — pass
+        self._bid_intent_type = None
         pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
         if pass_bid:
             return {"bid": pass_bid,
-                    "intent": f"pass — no good options (tricks={est_tricks:.1f}, aces={aces}, high={high})"}
+                    "intent": f"pass — below thresholds ({prob_str})"}
 
-        # Fallback
         return super().bid_intent(hand, legal_bids)
 
     # ------------------------------------------------------------------
@@ -3221,60 +3047,23 @@ class PlayerAlice(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def discard_decision(self, hand_card_ids, talon_card_ids):
-        """Keep best trump suit cards and aces; discard weakest. Try to create voids.
-        If betl looks promising, discard highest/most dangerous cards instead."""
+        """Discard 2 cards from 12 using BasePlayer.score_discard_cards.
+        Uses betl scoring if bid_intent was betl, otherwise suit scoring
+        with the strongest suit as trump."""
         all_ids = hand_card_ids + talon_card_ids
-        rank_order = {"7": 1, "8": 2, "9": 3, "10": 4, "J": 5, "Q": 6, "K": 7, "A": 8}
 
-        def card_rank(cid):
-            return rank_order.get(cid.split("_")[0], 0)
+        if self._bid_intent_type == 'betl':
+            scores = self.score_discard_cards(all_ids, 'betl')
+            contract_label = 'betl'
+            trump_name = None
+        else:
+            trump_name = SUIT_NAMES.get(self._strongest_suit, 'spades')
+            scores = self.score_discard_cards(all_ids, 'suit', trump_suit=trump_name)
+            contract_label = f'suit ({trump_name})'
 
-        def card_suit(cid):
-            return cid.split("_")[1]
-
-        # Try betl-optimized discard: discard 2 highest-ranked cards,
-        # check if resulting 10-card hand is good for betl
-        betl_discard = self._try_betl_discard(all_ids, card_rank, card_suit)
-        if betl_discard:
-            return betl_discard
-
-        suit_counts = {}
-        suit_cards = {}
-        for cid in all_ids:
-            s = card_suit(cid)
-            suit_counts[s] = suit_counts.get(s, 0) + 1
-            suit_cards.setdefault(s, []).append(cid)
-
-        best_suit = max(suit_counts, key=suit_counts.get)
-
-        # Try to void an entire short off-suit (don't discard Kings or Aces)
-        voidable = []
-        for s in suit_cards:
-            if s == best_suit:
-                continue
-            cards = suit_cards[s]
-            if len(cards) == 2 and all(card_rank(c) < 7 for c in cards):
-                total_rank = sum(card_rank(c) for c in cards)
-                voidable.append((total_rank, cards))
-        if voidable:
-            voidable.sort()
-            return {"discard": voidable[0][1],
-                    "intent": f"void weakest off-suit (trump={best_suit})"}
-
-        def keep_score(cid):
-            score = card_rank(cid) * 10
-            s = card_suit(cid)
-            if s == best_suit:
-                score += 100
-            if card_rank(cid) == 8:
-                score += 50
-            if s != best_suit and suit_counts[s] <= 2:
-                score -= 40
-            return score
-
-        sorted_cards = sorted(all_ids, key=keep_score)
+        sorted_cards = sorted(all_ids, key=lambda c: scores[c], reverse=True)
         return {"discard": sorted_cards[:2],
-                "intent": f"discard weakest cards (trump={best_suit})"}
+                "intent": f"discard by score — {contract_label}"}
 
     def _try_betl_discard(self, all_ids, card_rank, card_suit):
         """Try discarding for betl. Returns discard decision if resulting hand
@@ -3333,11 +3122,6 @@ class PlayerAlice(WeightedRandomPlayer):
 
     def choose_discard(self, hand_card_ids, talon_card_ids):
         self._is_declarer = True
-        winner_bid = getattr(self, '_winner_bid', None)
-        if winner_bid:
-            result = self._evaluate_12_card_contracts(hand_card_ids, talon_card_ids, winner_bid)
-            self._pre_chosen_contract = result["contract"]
-            return result["discard"]
         decision = self.discard_decision(hand_card_ids, talon_card_ids)
         return decision["discard"]
 
@@ -3485,61 +3269,46 @@ class PlayerAlice(WeightedRandomPlayer):
     # ------------------------------------------------------------------
 
     def bid_decision(self, hand, legal_levels, winner_bid):
-        """Pick safest contract. Prefer cheaper suits (lower game_value) when tied."""
-        # Use pre-evaluated contract from 12-card analysis if available
-        pre = getattr(self, '_pre_chosen_contract', None)
-        if pre:
-            self._pre_chosen_contract = None
-            ctype, trump, level = pre
-            if ctype == "suit" and trump:
-                self._trump_suit_val = {v: k for k, v in SUIT_NAMES.items()}.get(trump)
-            return {"contract_type": ctype, "trump": trump, "level": level,
-                    "intent": f"{ctype} — 12-card evaluation"}
-
-        # In-hand betl: if we bid in_hand with betl intent, choose betl
+        """Return contract matching bid_intent."""
+        # In-hand betl intent
         if self._betl_intent and 6 in legal_levels:
             return {"contract_type": "betl", "trump": None, "level": 6,
-                    "intent": "betl — in-hand betl intent"}
-        # Post-exchange betl (aggressive): zero danger + extra low-card heuristics
-        if 6 in legal_levels:
-            a = betl_hand_analysis(hand)
-            # Zero danger — always bid betl
-            if a["danger_count"] == 0:
-                return {"contract_type": "betl", "trump": None, "level": 6,
-                        "intent": f"betl — zero danger (safe_suits={a['safe_suits']})"}
-            # All low cards: max rank ≤ Jack (5), no Aces → every card has 3+
-            # opponent cards above it. Very safe for betl.
-            if not a["has_ace"] and a["max_rank"] <= 5:
-                return {"contract_type": "betl", "trump": None, "level": 6,
-                        "intent": f"betl — all low (max_rank={a['max_rank']}, no aces)"}
-            # Mostly low + spread: max rank ≤ Queen (6), no Aces, no long suits
-            # (≤3). Spread shape reduces chance of being stuck in any one suit.
-            if not a["has_ace"] and a["max_rank"] <= 6 and a["max_suit_len"] <= 3:
-                return {"contract_type": "betl", "trump": None, "level": 6,
-                        "intent": f"betl — low+spread (max_rank={a['max_rank']}, longest={a['max_suit_len']})"}
+                    "intent": "betl — bid_intent"}
 
-        if 7 in legal_levels and self._is_good_sans_hand(hand):
+        if self._bid_intent_type == 'betl' and 6 in legal_levels:
+            return {"contract_type": "betl", "trump": None, "level": 6,
+                    "intent": "betl — bid_intent"}
+
+        if self._bid_intent_type == 'sans' and 7 in legal_levels:
             return {"contract_type": "sans", "trump": None, "level": 7,
-                    "intent": "sans — dominant high cards"}
+                    "intent": "sans — bid_intent"}
 
+        # Suit contract (default): use strongest suit
         min_bid = winner_bid.effective_value if winner_bid else 0
         suit_bid = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
-        groups = self._suit_groups(hand)
 
-        best_suit = None
-        best_score = -1
-        for suit, cards in groups.items():
-            if suit_bid.get(suit, 0) < min_bid:
-                continue
-            score = len(cards) * 100 + sum(c.rank for c in cards)
-            cost_penalty = (suit_bid[suit] - 2) * 10
-            score -= cost_penalty
-            if score > best_score:
-                best_score = score
-                best_suit = suit
+        # Prefer the strongest suit from probability computation if available
+        best_suit = self._strongest_suit
+        if best_suit and suit_bid.get(best_suit, 0) < min_bid:
+            best_suit = None
 
+        # Fallback: find best available suit by length + rank
         if best_suit is None:
-            best_suit = min((s for s, v in suit_bid.items() if v >= min_bid), key=lambda s: suit_bid[s])
+            groups = self._suit_groups(hand)
+            best_score = -1
+            for suit, cards in groups.items():
+                if suit_bid.get(suit, 0) < min_bid:
+                    continue
+                score = len(cards) * 100 + sum(c.rank for c in cards)
+                cost_penalty = (suit_bid[suit] - 2) * 10
+                score -= cost_penalty
+                if score > best_score:
+                    best_score = score
+                    best_suit = suit
+            if best_suit is None:
+                best_suit = min((s for s, v in suit_bid.items() if v >= min_bid),
+                                key=lambda s: suit_bid[s])
+
         trump_name = SUIT_NAMES[best_suit] if best_suit else "spades"
         self._trump_suit_val = best_suit
 
@@ -3551,7 +3320,7 @@ class PlayerAlice(WeightedRandomPlayer):
         else:
             level = 2
         return {"contract_type": "suit", "trump": trump_name, "level": level,
-                "intent": f"suit {trump_name} level {level} — strongest valid suit"}
+                "intent": f"suit {trump_name} level {level} — bid_intent"}
 
     def choose_contract(self, legal_levels, hand, winner_bid):
         decision = self.bid_decision(hand, legal_levels, winner_bid)
@@ -6881,9 +6650,11 @@ class Sim3000(WeightedRandomPlayer):
     """
 
     def __init__(self, name: str, num_simulations: int = 10,
-                 helper_cls=None, seed: int | None = None):
+                 helper_cls=None, seed: int | None = None,
+                 adaptive: bool = False):
         super().__init__(name, seed=seed)
         self.num_simulations = num_simulations
+        self.adaptive = adaptive
         self.helper_cls = helper_cls or PlayerAlice
         # Create a helper instance for non-simulation decisions
         self._helper = self.helper_cls(name + "_helper")
@@ -6919,8 +6690,23 @@ class Sim3000(WeightedRandomPlayer):
         self._helper._trump_suit = getattr(self, '_trump_suit', None)
         return self._helper.choose_whist_action(legal_actions)
 
+    @staticmethod
+    def _all_connected(cards):
+        """Check if all cards are same suit with consecutive ranks."""
+        if len(cards) <= 1:
+            return True
+        suit = cards[0].suit
+        if any(c.suit != suit for c in cards):
+            return False
+        ranks = sorted(c.rank_value for c in cards)
+        return ranks[-1] - ranks[0] == len(ranks) - 1
+
     def choose_card(self, legal_cards):
         if len(legal_cards) == 1:
+            return legal_cards[0].id
+
+        # All connected cards are equivalent — skip simulation
+        if self._all_connected(legal_cards):
             return legal_cards[0].id
 
         ctx = getattr(self, '_ctx', None)
@@ -7008,11 +6794,17 @@ class Sim3000(WeightedRandomPlayer):
                 order = order[idx:] + order[:idx]
             return order
 
+        # Determine number of simulations (adaptive reduces as cards are played)
+        n_sims = self.num_simulations
+        if self.adaptive and len(unknown_ids) < 22:
+            n_sims = int((self.num_simulations - 5) * len(unknown_ids) / 22 + 5)
+            n_sims = max(n_sims, 1)
+
         # Simulate each legal card
         card_scores = {}
         for candidate in legal_cards:
             total_score = 0.0
-            for _ in range(self.num_simulations):
+            for _ in range(n_sims):
                 # Randomly assign unknown cards to opponents
                 shuffled = list(unknown_cards)
                 self._sim_rng.shuffle(shuffled)
@@ -7085,22 +6877,25 @@ class Sim3000(WeightedRandomPlayer):
                     else:
                         total_score += defender_tricks
 
-            card_scores[candidate.id] = total_score / self.num_simulations
+            card_scores[candidate.id] = total_score / n_sims
 
         # Pick best card
         best_id = max(card_scores, key=card_scores.get)
         return best_id
 
 
-def make_simsim_cls(num_simulations: int = 10, helper_cls=None):
+def make_simsim_cls(num_simulations: int = 10, helper_cls=None,
+                    adaptive: bool = False):
     """Create a SimSim class: a Sim3000 whose playout helper is itself a Sim3000."""
     _inner_n = num_simulations
     _inner_helper = helper_cls or PlayerAlice
+    _inner_adaptive = adaptive
 
     class _SimSimHelper(Sim3000):
         def __init__(self, name, seed=None):
             super().__init__(name, num_simulations=_inner_n,
-                             helper_cls=_inner_helper, seed=seed)
+                             helper_cls=_inner_helper, seed=seed,
+                             adaptive=_inner_adaptive)
 
     return _SimSimHelper
 

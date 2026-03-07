@@ -4,17 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preferans</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
-    <div id="terminal">
+    <div id="page-container">
+        <!-- 1. Toolbar -->
         <div id="toolbar">
             <span class="title">preferans</span>
             <button id="new-game-btn">New Game</button>
-            <button id="debug-game-btn">New Debug Game</button>
         </div>
+
+        <!-- 2. Command bar (fixed, always present) -->
+        <div id="command-bar"></div>
+
+        <!-- 3. Game state: hands + talon + info -->
+        <div id="game-state">
+            <div id="hand-p1" class="player-block"></div>
+            <div id="hand-p2" class="player-block"></div>
+            <div id="hand-p3" class="player-block"></div>
+            <div id="talon-line" class="hand-line"></div>
+            <div id="prev-trick-line" class="hand-line dim"></div>
+            <div id="remaining-line" class="hand-line dim"></div>
+            <div id="game-info" class="game-info-line"></div>
+        </div>
+
+        <!-- 4. Log output -->
         <div id="output"></div>
+
+        <!-- 5. Agent panel (collapsible) -->
+        <div id="agent-panel" class="collapsed">
+            <div id="agent-header">
+                <span class="agent-title">claude agent</span>
+                <span id="agent-status"></span>
+                <button id="agent-load-btn" title="Load last response">&#8635;</button>
+                <span id="agent-toggle">&#9650;</span>
+            </div>
+            <div id="agent-output"></div>
+            <div id="agent-input-bar">
+                <span class="agent-prompt">&gt;</span>
+                <textarea id="agent-input" placeholder="Ask about the game..." rows="3" autocomplete="off"></textarea>
+            </div>
+        </div>
     </div>
-    <script src="app.js?v=3"></script>
+    <script>
+        const IS_DEBUG = window.location.pathname.startsWith('/debug');
+        if (!IS_DEBUG) {
+            document.getElementById('agent-panel').style.display = 'none';
+        }
+    </script>
+    <script src="app.js?v=23"></script>
 </body>
 </html>
