@@ -38,7 +38,7 @@ function playerName(p) {
     let name = state.players[String(p)] || 'P' + p;
     const tags = [];
     if (state.dealer === p) tags.push('D');
-    if (state.phase === 'playing' && state.trick_lead === p) tags.push('L');
+    if (state.declarer === p) tags.push('L');
     if (tags.length) name += ' (' + tags.join(',') + ')';
     return name;
 }
@@ -138,11 +138,25 @@ function _logDiscardScores(cardIds, discardScores) {
 
 function contractStr(c) {
     if (!c) return 'none';
+    let str;
     if (c.type === 'suit') {
-        const sym = SUIT[c.trump] || c.trump;
-        return sym + ' ' + c.level;
+        const sym = SUIT[c.trump] || c.trump || '?';
+        str = sym + ' ' + c.level;
+    } else {
+        str = c.type;
     }
-    return c.type;
+    if (c.is_in_hand) str = 'hand ' + str;
+    return str;
+}
+
+function appendLastActionHtml(el, html) {
+    if (!html || el.innerHTML === '') return;
+    const infoRow = el.querySelector('.player-info-row');
+    const target = infoRow || el;
+    const span = document.createElement('span');
+    span.className = 'last-action';
+    span.innerHTML = html;
+    target.appendChild(span);
 }
 
 function appendLastAction(el, action) {
@@ -176,7 +190,7 @@ function renderCommandBar(buttons) {
 
 // ── game state panel ────────────────────────────────────────────────
 
-function renderGameState() {
+function renderGameState(showCompletedTrick) {
     for (const p of [1, 2, 3]) { handEls[p].innerHTML = ''; handEls[p].className = 'player-block'; }
     talonLine.innerHTML = '';
     remainingLine.innerHTML = '';
@@ -190,71 +204,130 @@ function renderGameState() {
     const lastActions = state.last_actions || {};
 
     // Render each player in position order (1, 2, 3) top-down
-    // Skip hand rendering during scoring — renderInitialHands handles it
     for (const p of [1, 2, 3]) {
         const el = handEls[p];
-
-        if (phase === 'scoring') continue;
-
-        // Build display name with tricks count during playing
         const tpp = state.tricks_per_player || {};
         const tricks = tpp[String(p)] || 0;
-        const pname = phase === 'playing' ? playerName(p) + ' [' + tricks + ']' : playerName(p);
 
-        if (p === human) {
-            // Human hand (use exchange_cards during discard phase to show all 12)
-            const humanHand = (phase === 'exchange_cards' && Array.isArray(state.exchange_cards) && state.exchange_cards.length > 0)
-                ? state.exchange_cards
-                : state.hands[String(human)];
-            if (Array.isArray(humanHand) && humanHand.length > 0) {
-                const isHumanMove = state.player_on_move === human;
-                if (isHumanMove && phase === 'playing') {
-                    renderHandLineClickable(el, pname, humanHand, {
-                        legalCards: state.commands || [],
-                        onCardClick: (cardId) => playCard(human, cardId),
-                    }, p);
-                } else if (phase === 'exchange_cards' && state.declarer === human) {
-                    renderHandLineClickable(el, pname, humanHand, {
-                        selectedCards: exchangeSelected,
-                        onCardClick: (cardId) => toggleExchange(cardId),
-                        discardScores: state.discard_scores,
-                    }, p);
+        if (phase === 'scoring' && !showCompletedTrick) {
+            // Scoring: show initial hands with role, tricks, and score
+            const pname = playerName(p);
+            const ih = state.initial_hands;
+            const it = state.initial_talon;
+            const discarded = state.discarded || [];
+            const discardedSet = new Set(discarded);
+            const hadExchange = state.declarer && Array.isArray(it) && it.length > 0 && discarded.length > 0;
+
+            if (ih && Array.isArray(ih[String(p)]) && ih[String(p)].length > 0) {
+                if (hadExchange && p === state.declarer) {
+                    const merged = _sort_cards(ih[String(p)].concat(it));
+                    const talonSet = new Set(it);
+                    renderHandLineWithDiscards(el, pname, merged, discardedSet, talonSet, p);
                 } else {
-                    renderHandLine(el, pname, humanHand.length, humanHand, false, p);
-                }
-            }
-        } else {
-            // Opponent hand
-            const hand = state.hands[String(p)];
-            if (state.debug) {
-                if (Array.isArray(hand) && hand.length > 0) {
-                    renderHandLine(el, pname, hand.length, hand, true, p);
+                    renderHandLine(el, pname, ih[String(p)].length, ih[String(p)], false, p);
                 }
             } else {
-                if (hand != null) {
-                    const n = Array.isArray(hand) ? hand.length : hand;
-                    renderHandLineHidden(el, pname, n, p);
-                }
+                _makePlayerRows(el, pname, false, p);
             }
-        }
-        if (phase === 'playing') {
-            // Show current trick cards; if trick just completed, show last_trick instead
-            let trickCards = state.trick_cards || [];
-            if (trickCards.length === 0 && state.play_result && state.play_result.trick_complete) {
-                trickCards = state.last_trick || [];
+
+            // Build role/decision summary
+            const s = state.scoring;
+            const pd = s && s.players ? s.players[String(p)] : null;
+            const wa = state.whist_actions || {};
+            let role;
+            if (p === state.declarer) {
+                role = contractStr(state.contract);
+            } else if (wa[String(p)]) {
+                const action = wa[String(p)];
+                role = action === 'Pass' ? '!follow' : action.toLowerCase();
+            } else if (state.followers && state.followers.includes(p)) {
+                role = pd && pd.role ? pd.role : 'follow';
+            } else {
+                role = '!follow';
             }
-            const tc = trickCards.find(tc => tc.player === p);
-            if (tc) {
-                const cardsRow = el.querySelector('.player-cards-row');
-                if (cardsRow) {
-                    const trickSpan = document.createElement('span');
-                    trickSpan.className = 'trick-card-played';
-                    trickSpan.innerHTML = cardHtml(tc.card);
-                    cardsRow.appendChild(trickSpan);
-                }
-            }
+            const score = pd ? (pd.score || 0) : 0;
+            const sign = score >= 0 ? '+' : '';
+            const scoreColor = score > 0 ? '#4f4' : score < -10 ? '#f55' : score < 0 ? '#fa0' : '#fff';
+            const scoreHtml = '<span style="color:' + scoreColor + '">' + sign + score + '</span>';
+            appendLastActionHtml(el, role + '  tricks: ' + tricks + '  ' + scoreHtml);
         } else {
-            appendLastAction(el, lastActions[String(p)]);
+            // Non-scoring phases (also used for last-trick pause when entering scoring)
+            const showTricks = phase === 'playing' || showCompletedTrick;
+            const pname = showTricks ? playerName(p) + ' [' + tricks + ']' : playerName(p);
+            let rendered = false;
+
+            if (p === human) {
+                // Human hand (use exchange_cards during discard phase to show all 12)
+                const humanHand = (phase === 'exchange_cards' && Array.isArray(state.exchange_cards) && state.exchange_cards.length > 0)
+                    ? state.exchange_cards
+                    : state.hands[String(human)];
+                if (Array.isArray(humanHand) && humanHand.length > 0) {
+                    rendered = true;
+                    const isHumanMove = state.player_on_move === human;
+                    if (isHumanMove && phase === 'playing') {
+                        renderHandLineClickable(el, pname, humanHand, {
+                            legalCards: state.commands || [],
+                            onCardClick: (cardId) => playCard(human, cardId),
+                        }, p);
+                    } else if (phase === 'exchange_cards' && state.declarer === human) {
+                        renderHandLineClickable(el, pname, humanHand, {
+                            selectedCards: exchangeSelected,
+                            onCardClick: (cardId) => toggleExchange(cardId),
+                            discardScores: state.discard_scores,
+                        }, p);
+                    } else {
+                        renderHandLine(el, pname, humanHand.length, humanHand, false, p);
+                    }
+                }
+            } else {
+                // Opponent hand
+                const hand = state.hands[String(p)];
+                if (state.debug) {
+                    if (Array.isArray(hand) && hand.length > 0) {
+                        rendered = true;
+                        renderHandLine(el, pname, hand.length, hand, true, p);
+                    }
+                } else {
+                    if (hand != null) {
+                        const n = Array.isArray(hand) ? hand.length : hand;
+                        if (n > 0) {
+                            rendered = true;
+                            renderHandLineHidden(el, pname, n, p);
+                        }
+                    }
+                }
+            }
+            // If hands are empty (last trick of game), still create player rows for trick card display
+            if (!rendered && showCompletedTrick) {
+                _makePlayerRows(el, pname, false, p);
+            }
+            if (phase === 'playing' || showCompletedTrick) {
+                // Show current trick cards; if trick just completed, show last_trick only during pause
+                let trickCards = state.trick_cards || [];
+                if (trickCards.length === 0 && showCompletedTrick) {
+                    trickCards = state.last_trick || [];
+                }
+                const tc = trickCards.find(tc => tc.player === p);
+                if (tc) {
+                    const cardsRow = el.querySelector('.player-cards-row');
+                    if (cardsRow) {
+                        const trickSpan = document.createElement('span');
+                        trickSpan.className = 'trick-card-played';
+                        trickSpan.innerHTML = cardHtml(tc.card);
+                        cardsRow.appendChild(trickSpan);
+                    }
+                }
+                // Show role status
+                if (p === state.declarer) {
+                    appendLastAction(el, contractStr(state.contract));
+                } else if (state.followers && state.followers.includes(p)) {
+                    appendLastAction(el, 'follow');
+                } else if (state.followers) {
+                    appendLastAction(el, 'not follow');
+                }
+            } else {
+                appendLastAction(el, lastActions[String(p)]);
+            }
         }
 
         // Role highlights
@@ -266,8 +339,8 @@ function renderGameState() {
         }
     }
 
-    // Talon line: last trick during playing
-    if (phase === 'playing') {
+    // Talon line: last trick during playing (or last-trick pause before scoring)
+    if (phase === 'playing' || (phase === 'scoring' && showCompletedTrick)) {
         if (state.last_trick && state.last_trick.length > 0) {
             const prevNum = state.tricks_played;
             talonLine.appendChild(nameLabel('Trick ' + prevNum));
@@ -314,7 +387,19 @@ function renderGameState() {
             talonLine.appendChild(document.createTextNode('\uD83C\uDCA0 \uD83C\uDCA0'));
         }
     }
-    // scoring / no game: talon line stays empty (hidden via CSS)
+    else if (phase === 'scoring') {
+        // Show talon if there was no exchange (all pass or in-hand contract)
+        const it = state.initial_talon;
+        const discarded = state.discarded || [];
+        const hadExchange = state.declarer && Array.isArray(it) && it.length > 0 && discarded.length > 0;
+        if (!hadExchange && Array.isArray(it) && it.length > 0) {
+            talonLine.appendChild(nameLabel('Talon'));
+            const span = document.createElement('span');
+            span.className = 'cards';
+            span.innerHTML = formatCardsHtml(it);
+            talonLine.appendChild(span);
+        }
+    }
 
     // Remaining cards line (playing phase, human player)
     if (phase === 'playing' && human) {
@@ -386,7 +471,7 @@ function _makePlayerRows(el, name, dim, playerPos) {
     infoRow.className = 'player-info-row';
     infoRow.appendChild(nameLabel(name));
     // Hand probabilities on the right
-    if (playerPos && handProbs[playerPos]) {
+    if (playerPos && handProbs[playerPos] && state && state.phase === 'auction') {
         const hp = handProbs[playerPos];
         const pct = v => (v * 100).toFixed(0);
         const probSpan = document.createElement('span');
@@ -584,8 +669,12 @@ function scheduleAiMove() {
                 log('\u2192 ' + playerName(state.play_result.winner) + ' wins trick ' + state.tricks_played, 'green');
                 sep();
                 // Show completed trick briefly before moving on
-                renderGameState();
+                renderGameState(true);
                 await new Promise(r => setTimeout(r, 1200));
+                // Clear trick cards before next move
+                state.play_result = null;
+                renderGameState();
+                await new Promise(r => setTimeout(r, 400));
             }
 
             // Log phase transitions
@@ -795,8 +884,14 @@ async function playCard(player, card) {
             sep();
         }
         // Show state after human play (same as AI)
-        renderGameState();
+        renderGameState(pr && pr.trick_complete);
         await new Promise(r => setTimeout(r, pr && pr.trick_complete ? 1200 : 800));
+        if (pr && pr.trick_complete) {
+            // Clear trick cards before showing next move
+            state.play_result = null;
+            renderGameState();
+            await new Promise(r => setTimeout(r, 400));
+        }
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
@@ -806,10 +901,12 @@ async function playCard(player, card) {
 // ── SCORING ─────────────────────────────────────────────────────────
 
 function renderScoring() {
-    renderCommandBar([]);
-
-    // Show initial hands in the hand lines during scoring
-    renderInitialHands();
+    // Show Save button for non-all-pass games
+    const buttons = [];
+    if (!state.all_pass) {
+        buttons.push({label: 'Save to Benchmark', action: saveBenchmark});
+    }
+    renderCommandBar(buttons);
 
     sep();
     if (state.all_pass) {
@@ -883,6 +980,17 @@ function renderHandLineWithDiscards(el, name, cards, discardedSet, talonSet, pla
     span.className = 'cards';
     span.innerHTML = formatCardsHtml(cards, discardedSet, talonSet);
     cardsRow.appendChild(span);
+}
+
+async function saveBenchmark() {
+    try {
+        const resp = await api('/api/game/save-benchmark', {});
+        if (resp.ok) {
+            log('Game saved to benchmark', 'green');
+        }
+    } catch (e) {
+        log('Save failed: ' + e.message, 'red');
+    }
 }
 
 function renderScoreTable() {
