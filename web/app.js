@@ -5,7 +5,6 @@ const commandBar = document.getElementById('command-bar');
 const gameStateEl = document.getElementById('game-state');
 const handEls = {1: document.getElementById('hand-p1'), 2: document.getElementById('hand-p2'), 3: document.getElementById('hand-p3')};
 const talonLine = document.getElementById('talon-line');
-const prevTrickLine = document.getElementById('prev-trick-line');
 const remainingLine = document.getElementById('remaining-line');
 const gameInfo = document.getElementById('game-info');
 
@@ -180,7 +179,6 @@ function renderCommandBar(buttons) {
 function renderGameState() {
     for (const p of [1, 2, 3]) { handEls[p].innerHTML = ''; handEls[p].className = 'player-block'; }
     talonLine.innerHTML = '';
-    prevTrickLine.innerHTML = '';
     remainingLine.innerHTML = '';
     remainingLine.className = 'hand-line dim';
     gameInfo.innerHTML = '';
@@ -239,19 +237,21 @@ function renderGameState() {
                 }
             }
         }
-        // During playing: show play order in current trick instead of last action
         if (phase === 'playing') {
-            const trickCards = state.trick_cards || [];
-            const orderIdx = trickCards.findIndex(tc => tc.player === p);
-            if (orderIdx >= 0) {
-                const infoRow = el.querySelector('.player-info-row');
-                const target = infoRow || el;
-                const span = document.createElement('span');
-                span.className = 'last-action';
-                span.textContent = ' (' + (orderIdx + 1) + ')';
-                target.appendChild(span);
-                if (orderIdx === 0) el.classList.add('move-first');
-                if (orderIdx === 1) el.classList.add('move-second');
+            // Show current trick cards; if trick just completed, show last_trick instead
+            let trickCards = state.trick_cards || [];
+            if (trickCards.length === 0 && state.play_result && state.play_result.trick_complete) {
+                trickCards = state.last_trick || [];
+            }
+            const tc = trickCards.find(tc => tc.player === p);
+            if (tc) {
+                const cardsRow = el.querySelector('.player-cards-row');
+                if (cardsRow) {
+                    const trickSpan = document.createElement('span');
+                    trickSpan.className = 'trick-card-played';
+                    trickSpan.innerHTML = cardHtml(tc.card);
+                    cardsRow.appendChild(trickSpan);
+                }
             }
         } else {
             appendLastAction(el, lastActions[String(p)]);
@@ -266,37 +266,22 @@ function renderGameState() {
         }
     }
 
-    // Talon line: talon cards before playing, current trick + prev trick during playing
+    // Talon line: last trick during playing
     if (phase === 'playing') {
-        const trickNum = state.tricks_played + 1;
-        const inTrick = state.trick_cards || [];
-        if (inTrick.length > 0) {
-            talonLine.appendChild(nameLabel('Trick ' + trickNum));
-            for (const tc of inTrick) {
+        if (state.last_trick && state.last_trick.length > 0) {
+            const prevNum = state.tricks_played;
+            talonLine.appendChild(nameLabel('Trick ' + prevNum));
+            for (const tc of state.last_trick) {
                 const cardSpan = document.createElement('span');
                 cardSpan.className = 'cards';
                 cardSpan.innerHTML = cardHtml(tc.card);
                 talonLine.appendChild(cardSpan);
             }
-        } else {
-            talonLine.appendChild(nameLabel('Trick ' + trickNum));
-            talonLine.appendChild(document.createTextNode('\u2014'));
-        }
-        // Previous trick (on separate line below)
-        if (state.last_trick && state.last_trick.length > 0) {
-            const prevNum = state.tricks_played;
-            prevTrickLine.appendChild(nameLabel('Prev ' + prevNum));
-            for (const tc of state.last_trick) {
-                const cardSpan = document.createElement('span');
-                cardSpan.className = 'cards dim-cards';
-                cardSpan.innerHTML = cardHtml(tc.card);
-                prevTrickLine.appendChild(cardSpan);
-            }
             if (state.last_trick_winner) {
                 const winSpan = document.createElement('span');
                 winSpan.className = 'last-action';
                 winSpan.textContent = ' \u2192 ' + playerName(state.last_trick_winner);
-                prevTrickLine.appendChild(winSpan);
+                talonLine.appendChild(winSpan);
             }
         }
     } else if (phase === 'exchange_cards' || phase === 'exchanging' || phase === 'whisting') {
@@ -598,6 +583,9 @@ function scheduleAiMove() {
             if (state.play_result && state.play_result.trick_complete) {
                 log('\u2192 ' + playerName(state.play_result.winner) + ' wins trick ' + state.tricks_played, 'green');
                 sep();
+                // Show completed trick briefly before moving on
+                renderGameState();
+                await new Promise(r => setTimeout(r, 1200));
             }
 
             // Log phase transitions
@@ -798,6 +786,7 @@ function renderPlaying() {
 async function playCard(player, card) {
     try {
         log(playerName(player) + ' plays ' + cardName(card), 'bright');
+
         state = await api('/api/game/execute', {player, card});
 
         const pr = state.play_result;
@@ -805,6 +794,9 @@ async function playCard(player, card) {
             log('\u2192 ' + playerName(pr.winner) + ' wins trick ' + state.tricks_played, 'green');
             sep();
         }
+        // Show state after human play (same as AI)
+        renderGameState();
+        await new Promise(r => setTimeout(r, pr && pr.trick_complete ? 1200 : 800));
         render();
     } catch (e) {
         log('ERROR: ' + e.message, 'red');
@@ -854,18 +846,23 @@ function renderInitialHands() {
     // Did declarer go through exchange? (has talon cards and discards)
     const hadExchange = decl && Array.isArray(it) && it.length > 0 && discarded.length > 0;
 
+    const tpp = state.tricks_per_player || {};
+
     for (const p of [1, 2, 3]) {
         const el = handEls[p];
         let cards = ih[String(p)];
         if (!Array.isArray(cards) || cards.length === 0) continue;
 
+        const tricks = tpp[String(p)] || 0;
+        const pname = playerName(p) + ' [' + tricks + ']';
+
         if (hadExchange && p === decl) {
             // Merge talon into declarer's hand, show discards with strikethrough
             const merged = _sort_cards(cards.concat(it));
             const talonSet = new Set(it);
-            renderHandLineWithDiscards(el, playerName(p), merged, discardedSet, talonSet, p);
+            renderHandLineWithDiscards(el, pname, merged, discardedSet, talonSet, p);
         } else {
-            renderHandLine(el, playerName(p), cards.length, cards, false, p);
+            renderHandLine(el, pname, cards.length, cards, false, p);
         }
         if (decl && decl === p) el.classList.add('declarer');
     }

@@ -63,8 +63,7 @@ body {
     padding: 6px 12px;
     background: #111;
     flex-shrink: 0;
-    height: auto;
-    min-height: 40px;
+    height: 44px;
     border-bottom: 1px solid #333;
     overflow-x: auto;
 }
@@ -136,7 +135,17 @@ body {
     flex-wrap: wrap;
     line-height: 1.2;
     padding: 1px 0 2px;
-    min-height: 36px;
+    height: 46px;
+    overflow: hidden;
+}
+
+.player-cards-row .card-rank {
+    font-size: 22px;
+    height: 22px;
+}
+
+.player-cards-row .card-suit {
+    font-size: 16px;
 }
 
 .player-cards-row .cards {
@@ -162,41 +171,6 @@ body {
     padding-left: 8px;
 }
 
-/* First played card in trick — white bar */
-.player-block.move-first {
-    border-left: 6px solid #fff;
-    padding-left: 8px;
-}
-
-/* Second played card in trick — light gray bar */
-.player-block.move-second {
-    border-left: 6px solid #888;
-    padding-left: 8px;
-}
-
-/* Role + played combinations: role bar outer, played bar inset */
-.player-block.declarer.move-first {
-    border-left: 6px solid #f5a;
-    box-shadow: inset 6px 0 0 0 #fff;
-    padding-left: 14px;
-    background: #1a0a15;
-}
-.player-block.declarer.move-second {
-    border-left: 6px solid #f5a;
-    box-shadow: inset 6px 0 0 0 #888;
-    padding-left: 14px;
-    background: #1a0a15;
-}
-.player-block.follower.move-first {
-    border-left: 6px solid #8e8;
-    box-shadow: inset 6px 0 0 0 #fff;
-    padding-left: 14px;
-}
-.player-block.follower.move-second {
-    border-left: 6px solid #8e8;
-    box-shadow: inset 6px 0 0 0 #888;
-    padding-left: 14px;
-}
 
 .player-name {
     display: inline-block;
@@ -240,20 +214,6 @@ body {
     margin: 0 4px;
 }
 
-/* ── Previous trick (inline on talon line) ───────────────────── */
-
-.prev-trick-sep {
-    margin: 0 16px;
-    color: #444;
-    font-size: 14px;
-    vertical-align: middle;
-}
-
-.prev-trick-label {
-    color: #666;
-    font-size: 12px;
-    vertical-align: middle;
-}
 
 #remaining-line .cards {
     opacity: 0.6;
@@ -274,17 +234,22 @@ body {
 /* ── Talon / discarded card markers in scoring hand ──────────── */
 
 .card-talon {
-    border: 1px solid #5ff;
-    border-radius: 3px;
-    padding: 0 2px;
+    border-color: #5ff;
 }
 
 .card-discarded {
     text-decoration: line-through;
     opacity: 0.4;
-    border: 1px solid #f55;
-    border-radius: 3px;
-    padding: 0 2px;
+    border-color: #f55;
+}
+
+/* ── Trick card played (right side of hand area) ─────────────── */
+
+.trick-card-played {
+    margin-left: auto;
+    padding: 2px 6px;
+    border-left: 2px solid #444;
+    opacity: 0.85;
 }
 
 /* ── Clickable card buttons in hand ───────────────────────────── */
@@ -294,8 +259,8 @@ body {
     background: #1a1a1a;
     border: 2px solid #333;
     cursor: pointer;
-    padding: 2px 3px;
-    margin: 0 1px;
+    padding: 2px 0;
+    margin: 0;
     border-radius: 4px;
     vertical-align: top;
     transition: background 0.1s, border-color 0.1s;
@@ -303,7 +268,7 @@ body {
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    min-width: 20px;
+    width: 26px;
 }
 
 .card-btn .card-rank {
@@ -317,7 +282,6 @@ body {
 
 .card-btn:hover:not(.disabled) {
     background: #2a2a2a;
-    border-color: #5ff;
 }
 
 .card-btn.disabled {
@@ -428,6 +392,13 @@ body {
     text-align: center;
 }
 
+.player-cards-row .card-col {
+    width: 26px;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    padding: 2px 0;
+}
+
 .card-rank {
     font-size: 36px;
     line-height: 1;
@@ -445,7 +416,7 @@ body {
 
 .suit-gap-2row {
     display: inline-block;
-    width: 10px;
+    width: 0;
 }
 
 .card-gap {
@@ -455,7 +426,7 @@ body {
 
 .suit-gap {
     display: inline-block;
-    width: 14px;
+    width: 0;
 }
 
 /* ── Agent Panel (collapsible) ────────────────────────────────── */
