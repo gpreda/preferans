@@ -77,7 +77,7 @@ class BasePlayer:
     def _should_follow_heuristic(self, hand, trump_suit):
         """Deterministic follow heuristic based on trump tricks and side-suit reasons.
 
-        Returns (should_follow: bool, n_trump_tricks: int, sum_reasons: float)
+        Returns (should_follow: bool, n_trump_tricks: float, sum_reasons: float)
         or (False, 0, 0.0) if not applicable (no hand or no trump).
 
         Rules (any player):
@@ -95,7 +95,7 @@ class BasePlayer:
         for s, cards in by_suit.items():
             if s != trump_suit:
                 sum_reasons += _suit_reason(cards)
-        if len(trump_cards) >= 3 and n_trump_tricks == 0:
+        if len(trump_cards) >= 3 and n_trump_tricks < 1:
             sum_reasons += 0.25
         should = (n_trump_tricks >= 2
                   or sum_reasons >= 3
@@ -1080,6 +1080,37 @@ class CardPlayContext:
     is_declarer: bool
     tricks_played: int         # completed tricks count
     my_hand: list              # full hand for suit counting
+    talon_cards: list = None    # talon cards (shown in non-in-hand games, empty otherwise)
+    is_in_hand: bool = False   # True if contract is played in-hand (talon not picked up)
+    remaining_cards: list = None  # cards not yet played and not in my hand (opponents' cards + unknown)
+    played_tricks: list = None  # list of completed tricks: [[(player_id, Card), ...], ...]
+
+
+def _compute_known_voids(played_tricks, trick_cards, trump_suit):
+    """Derive which suits each player is known to be void in.
+
+    Examines completed tricks (and the current in-progress trick): if a player
+    did not follow the led suit, they are void in that suit.  In a trump game,
+    if they also didn't play a trump, they are void in the trump suit too.
+
+    Returns {player_id: set_of_void_suits}.
+    """
+    voids = {}  # pid -> set of Suit
+    all_tricks = list(played_tricks or [])
+    if trick_cards:
+        all_tricks.append(trick_cards)
+    for trick in all_tricks:
+        if not trick:
+            continue
+        led_suit = trick[0][1].suit
+        for pid, card in trick[1:]:  # skip the lead player
+            if card.suit != led_suit:
+                # Player didn't follow suit — void in led suit
+                voids.setdefault(pid, set()).add(led_suit)
+                # In a trump game, if they also didn't play trump, void in trump too
+                if trump_suit and card.suit != trump_suit and led_suit != trump_suit:
+                    voids[pid].add(trump_suit)
+    return voids
 
 
 def _ctx_trick_winner(ctx):
@@ -1232,6 +1263,96 @@ def _ctx_higher_unaccounted(card, ctx):
         if r not in accounted:
             count += 1
     return count
+
+
+def _ctx_unaccounted_ranks(suit, ctx):
+    """Return set of ranks in this suit that are unaccounted for (not in hand, not played, not in trick)."""
+    accounted = set()
+    for c in ctx.my_hand:
+        if c.suit == suit:
+            accounted.add(c.rank)
+    for c in ctx.played_cards:
+        if c.suit == suit:
+            accounted.add(c.rank)
+    for _, c in ctx.trick_cards:
+        if c.suit == suit:
+            accounted.add(c.rank)
+    return {r for r in range(1, 9) if r not in accounted}
+
+
+def _ctx_my_ranks_in_suit(suit, ctx):
+    """Return sorted list of ranks (high to low) in this suit from our hand."""
+    return sorted([c.rank for c in ctx.my_hand if c.suit == suit], reverse=True)
+
+
+def _ctx_top_connected(my_ranks, unaccounted):
+    """Count how many of our top cards form a connected sequence considering unaccounted.
+
+    Two cards are 'connected' if there are no unaccounted ranks between them.
+    E.g., AQ with K played = connected (K accounted). AQ with K unaccounted = gap.
+    Returns the number of connected top cards.
+    """
+    if not my_ranks:
+        return 0
+    count = 1
+    for i in range(len(my_ranks) - 1):
+        high = my_ranks[i]
+        low = my_ranks[i + 1]
+        # Check if any unaccounted rank exists between high and low
+        gap = any(r in unaccounted for r in range(low + 1, high))
+        if gap:
+            break
+        count += 1
+    return count
+
+
+def _ctx_suit_danger(my_ranks, unaccounted, n_active_players):
+    """Assess danger of leading from a suit holding.
+
+    Returns a danger score (lower = safer to lead from).
+    Considers gaps, tenace positions, and number of active players.
+    """
+    if not my_ranks:
+        return 100.0  # no cards, can't lead
+
+    top = my_ranks[0]
+    connected = _ctx_top_connected(my_ranks, unaccounted)
+
+    # Fully connected top sequence — safe
+    if connected == len(my_ranks):
+        # All cards connected from top, no gaps
+        return 0.0
+
+    # Master card (nothing higher unaccounted) — safe
+    if not any(r > top for r in unaccounted):
+        return 0.0
+
+    danger = 0.0
+
+    # AQ without K (tenace) — dangerous in 2-player, very dangerous in 3-player
+    # because with 3 players one opponent likely has Kx
+    if 8 in my_ranks and 6 in my_ranks and 7 in unaccounted:
+        danger += 30.0 if n_active_players >= 3 else 20.0
+
+    # AJx without K,Q — dangerous
+    if 8 in my_ranks and 5 in my_ranks and 7 in unaccounted and 6 in unaccounted:
+        danger += 35.0
+
+    # A without K in 3-player — opponent likely has Kx, leading A lets them
+    # set up K as winner; holding A controls their K
+    if 8 in my_ranks and 7 in unaccounted and n_active_players >= 3:
+        danger += 15.0
+
+    # Kx with A unaccounted — dangerous (opponent has A, leading K loses it)
+    if 7 in my_ranks and 8 in unaccounted:
+        danger += 25.0
+
+    # Qxx with higher cards unaccounted
+    if 6 in my_ranks and (7 in unaccounted or 8 in unaccounted):
+        n_higher = sum(1 for r in unaccounted if r > 6)
+        danger += 15.0 + n_higher * 5.0
+
+    return danger
 
 
 def _ctx_count_sequential_winners(suit, hand, ctx):
@@ -2064,104 +2185,227 @@ def _score_cant_follow(legal_cards, ctx, is_declarer, trump_val, params):
 
 
 def _score_whister_lead(legal_cards, ctx, trump_val):
-    """Score each legal card when whister is leading."""
+    """Score each legal card when whister is leading.
+
+    Key principles:
+    - Connected top cards (no unaccounted gaps) are safe to lead
+    - Tenace positions (AQ, AJx) are dangerous — hold back, don't break them
+    - Through declarer: lead low from weak suits
+    - Through other follower: lead high
+    - Kxx with A+2 remaining: lead middle card to avoid losing all tricks
+    - One-on-one (2 players): always lead higher card
+    """
     if trump_val is None and ctx is not None and ctx.trump_suit is not None:
         trump_val = ctx.trump_suit
     groups = _helper_suit_groups(legal_cards)
     hand = ctx.my_hand if ctx else legal_cards
+    hand_groups = _helper_suit_groups(hand)
     scores = {c.id: 0.0 for c in legal_cards}
-
-    # Helpers for scoring bonuses
-    def _master_trump_bonus(c):
-        if trump_val is not None and ctx and c.suit == trump_val and _ctx_is_master_trump(c, ctx):
-            return 95.0
-        return 0.0
-
-    def _ace_bonus(c, through_declarer):
-        if c.rank != 8 or c.suit == trump_val:
-            return 0.0
-        if not ctx:
-            return 80.0
-        remaining = _ctx_suit_remaining(c.suit, ctx)
-        if remaining <= 0:
-            return 30.0  # depleted suit ace — risky
-        if through_declarer:
-            return 75.0 + remaining * 2.0  # prefer more remaining
-        return 80.0 + remaining
-
-    def _master_bonus(c):
-        if c.rank >= 8 or c.suit == trump_val or not ctx:
-            return 0.0
-        if not _ctx_is_master_in_suit(c, ctx):
-            return 0.0
-        remaining = _ctx_suit_remaining(c.suit, ctx)
-        trumps_out = _ctx_trumps_remaining(ctx) if trump_val is not None else 0
-        if trumps_out >= 2 and remaining < 2:
-            return 20.0  # risky — depleted suit with trumps out
-        seq = _ctx_count_sequential_winners(c.suit, hand, ctx)
-        return 65.0 + seq * 5.0 + remaining * 1.5
-
-    # Check if leading through declarer
+    n_active = len(ctx.active_players) if ctx else 3
     through_declarer = _ctx_is_through_declarer(ctx) if ctx else False
+    trumps_out = _ctx_trumps_remaining(ctx) if (trump_val is not None and ctx) else 0
 
-    # Check master trump opportunity
+    # Pre-compute per-suit analysis
+    suit_info = {}
+    for suit in set(c.suit for c in hand):
+        my_ranks = _ctx_my_ranks_in_suit(suit, ctx) if ctx else sorted(
+            [c.rank for c in hand if c.suit == suit], reverse=True)
+        unaccounted = _ctx_unaccounted_ranks(suit, ctx) if ctx else set()
+        remaining = _ctx_suit_remaining(suit, ctx) if ctx else 4
+        connected = _ctx_top_connected(my_ranks, unaccounted)
+        danger = _ctx_suit_danger(my_ranks, unaccounted, n_active)
+        seq_winners = _ctx_count_sequential_winners(suit, hand, ctx) if ctx else 0
+        suit_info[suit] = {
+            'my_ranks': my_ranks,
+            'unaccounted': unaccounted,
+            'remaining': remaining,
+            'connected': connected,
+            'danger': danger,
+            'seq_winners': seq_winners,
+            'n_cards': len(my_ranks),
+        }
+
+    # === 1. Master trump draws — always top priority ===
     if trump_val is not None and ctx:
-        trumps_out = _ctx_trumps_remaining(ctx)
         should_draw = (trumps_out >= 1 and
-                       (len(ctx.active_players) == 2 or trumps_out <= 2))
+                       (n_active == 2 or trumps_out <= 2))
         for c in legal_cards:
             if should_draw and c.suit == trump_val and _ctx_is_master_trump(c, ctx):
-                scores[c.id] = max(scores[c.id], 95.0)
+                scores[c.id] = 95.0
 
     for c in legal_cards:
-        # Master trump (already scored above, but ensure it's considered)
-        mt = _master_trump_bonus(c)
-        if mt > scores[c.id]:
-            scores[c.id] = mt
+        si = suit_info.get(c.suit)
+        if not si:
+            continue
+        my_ranks = si['my_ranks']
+        unaccounted = si['unaccounted']
+        remaining = si['remaining']
+        connected = si['connected']
+        danger = si['danger']
+        seq_winners = si['seq_winners']
+        n_cards = si['n_cards']
 
-        # Ace leads
-        ab = _ace_bonus(c, through_declarer)
-        if ab > scores[c.id]:
-            scores[c.id] = ab
-
-        # Master non-ace leads
-        mb = _master_bonus(c)
-        if mb > scores[c.id]:
-            scores[c.id] = mb
-
-        # King leads
-        if c.rank == 7 and c.suit != trump_val:
-            is_supported = not _ctx_is_unsupported_king(c, hand)
-            if is_supported:
-                suit_len = len(groups.get(c.suit, []))
-                scores[c.id] = max(scores[c.id], 45.0 + suit_len * 2.0)
-            else:
-                scores[c.id] = max(scores[c.id], 15.0)
-
-        # Trump leads (non-master) — generally bad through declarer
-        if c.suit == trump_val and scores[c.id] < 10.0:
+        # === 2. Non-master trump leads ===
+        if c.suit == trump_val:
+            if scores[c.id] >= 90.0:
+                continue  # already scored as master trump
             if through_declarer:
-                scores[c.id] = max(scores[c.id], 5.0)
+                scores[c.id] = 5.0  # never lead non-master trump through declarer
             else:
-                scores[c.id] = max(scores[c.id], 25.0 + c.rank * 0.5)
+                scores[c.id] = 25.0 + c.rank * 0.5
+            continue
 
-        # Low cards from weak suits — reasonable through declarer
-        if scores[c.id] < 10.0:
-            suit_len = len(groups.get(c.suit, []))
-            has_ace = any(x.rank == 8 for x in groups.get(c.suit, []))
-            if c.suit != trump_val and not has_ace:
-                if through_declarer:
-                    # Prefer shortest weak suit, lowest card
-                    remaining = _ctx_suit_remaining(c.suit, ctx) if ctx else 3
-                    if remaining > 0 or (trump_val is None):
-                        scores[c.id] = max(scores[c.id], 40.0 - suit_len * 3.0 - c.rank * 0.5)
-                    else:
-                        scores[c.id] = max(scores[c.id], 10.0 - suit_len)
+        # === 3. Connected top cards — safe to lead ===
+        # If our top N cards form a connected sequence with no unaccounted gaps,
+        # leading the highest is safe (guaranteed winner or forces higher card)
+        if seq_winners > 0 and c.rank == my_ranks[0]:
+            # Master card with sequential winners — very safe
+            base = 80.0 + seq_winners * 3.0 + remaining * 1.0
+            if remaining <= 0 and trumps_out > 0:
+                base = 25.0  # depleted suit, will get trumped
+            scores[c.id] = max(scores[c.id], base)
+            continue
+
+        if connected >= 2 and c.rank == my_ranks[0] and danger < 5.0:
+            # Top card of connected pair, no significant danger
+            scores[c.id] = max(scores[c.id], 75.0 + remaining * 1.0)
+            continue
+
+        # === 4. Ace handling — context-dependent ===
+        if c.rank == 8:
+            if remaining <= 0:
+                scores[c.id] = max(scores[c.id], 25.0)  # depleted, risky
+                continue
+
+            # AK in hand — safe, play ace (connected)
+            if 7 in my_ranks:
+                scores[c.id] = max(scores[c.id], 85.0 + remaining * 1.0)
+                continue
+
+            # AQ without K (tenace) — hold back ace, K is out there
+            if 6 in my_ranks and 7 in unaccounted:
+                # Don't play ace — playing it wastes the tenace advantage
+                # Score it low so we lead something else
+                scores[c.id] = max(scores[c.id], 30.0 - n_cards)
+                continue
+
+            # AJx without K,Q — similar tenace, hold ace
+            if 5 in my_ranks and 7 in unaccounted and 6 in unaccounted:
+                scores[c.id] = max(scores[c.id], 28.0 - n_cards)
+                continue
+
+            # A without K, 3 players — dangerous: opponent has Kx,
+            # leading A lets them set up K as winner next time
+            if 7 in unaccounted and n_active >= 3:
+                # Penalize but don't completely suppress — depends on suit length
+                if n_cards <= 2:
+                    scores[c.id] = max(scores[c.id], 55.0 + remaining * 1.0)
                 else:
-                    scores[c.id] = max(scores[c.id], 30.0 - suit_len * 2.0 - c.rank * 0.5)
-            elif c.suit != trump_val:
-                # Have ace in this suit but card isn't ace — low priority
-                scores[c.id] = max(scores[c.id], 20.0 - c.rank)
+                    scores[c.id] = max(scores[c.id], 50.0 + remaining * 1.0)
+                continue
+
+            # A without K, 2 players — safe, just play it (one-on-one)
+            if n_active == 2:
+                scores[c.id] = max(scores[c.id], 85.0 + remaining * 1.0)
+                continue
+
+            # Default ace scoring
+            if through_declarer:
+                scores[c.id] = max(scores[c.id], 70.0 + remaining * 2.0)
+            else:
+                scores[c.id] = max(scores[c.id], 80.0 + remaining * 1.0)
+            continue
+
+        # === 5. King handling ===
+        if c.rank == 7:
+            # Kx with A unaccounted — dangerous
+            if 8 in unaccounted:
+                # Singleton king — very dangerous
+                if n_cards == 1:
+                    scores[c.id] = max(scores[c.id], 12.0)
+                    continue
+
+                # Kxx with A + 2 more remaining: play middle card instead
+                # E.g., KJ8 vs AQ9 — play J to avoid losing all 3
+                if n_cards >= 3 and remaining >= 3:
+                    # Don't lead king, lead middle card — handled below
+                    scores[c.id] = max(scores[c.id], 20.0)
+                    continue
+
+                # Kx — supported but still risky
+                scores[c.id] = max(scores[c.id], 35.0 + n_cards * 2.0)
+                continue
+
+            # K is master (A already played/accounted)
+            if _ctx_is_master_in_suit(c, ctx):
+                scores[c.id] = max(scores[c.id], 80.0 + seq_winners * 3.0 + remaining * 1.0)
+                continue
+
+            # K with A in our hand — don't lead K, lead A first
+            if 8 in my_ranks:
+                scores[c.id] = max(scores[c.id], 20.0)
+                continue
+
+            # K supported but not master
+            scores[c.id] = max(scores[c.id], 40.0 + n_cards * 2.0)
+            continue
+
+        # === 6. Middle cards (Q, J, 10) ===
+        # Kxx with A unaccounted — prefer middle card over king
+        if 7 in my_ranks and 8 in unaccounted and n_cards >= 3:
+            # Middle card from Kxx holding — this is the safer lead
+            # KJ10: at least one trick guaranteed (10 forces A or Q)
+            # KJ9: less safe, 9 likely loses
+            has_10 = 4 in my_ranks
+            if c.rank == my_ranks[1]:  # second-highest = middle card
+                base = 50.0
+                if has_10 and c.rank >= 4:
+                    base += 5.0  # KJ10 safer than KJ9
+                scores[c.id] = max(scores[c.id], base)
+                continue
+
+        # Queen with higher cards unaccounted
+        if c.rank == 6:
+            n_higher_out = sum(1 for r in unaccounted if r > 6)
+            if n_higher_out >= 2:
+                scores[c.id] = max(scores[c.id], 15.0)  # Qxx with AK out — bad
+            elif n_higher_out == 1:
+                scores[c.id] = max(scores[c.id], 40.0)  # Q with one higher out
+            else:
+                scores[c.id] = max(scores[c.id], 75.0)  # Q is master
+            continue
+
+        # === 7. Low cards from weak suits ===
+        has_ace = 8 in my_ranks
+        if not has_ace:
+            if through_declarer:
+                # Through declarer: lead LOW from weak suit
+                if remaining > 0 or trump_val is None:
+                    scores[c.id] = max(scores[c.id], 45.0 - n_cards * 3.0 - c.rank * 0.5)
+                else:
+                    scores[c.id] = max(scores[c.id], 10.0 - n_cards)
+            else:
+                # Through other follower: lead HIGH
+                if n_active == 2:
+                    # One-on-one: always play higher card
+                    scores[c.id] = max(scores[c.id], 35.0 + c.rank * 2.0)
+                else:
+                    scores[c.id] = max(scores[c.id], 35.0 + c.rank * 1.0)
+        else:
+            # Have ace in suit — low cards here are low priority
+            scores[c.id] = max(scores[c.id], 15.0 - c.rank)
+
+    # === Final: suit-level danger adjustment ===
+    # Penalize cards from dangerous suits (tenace positions) and
+    # boost cards from safe suits (connected tops)
+    for c in legal_cards:
+        if c.suit == trump_val:
+            continue
+        si = suit_info.get(c.suit)
+        if not si:
+            continue
+        # Apply a mild penalty proportional to suit danger
+        scores[c.id] -= si['danger'] * 0.3
 
     return scores
 
@@ -2407,7 +2651,10 @@ class PlayerAlice(WeightedRandomPlayer):
         self._trump_leads = 0         # track trump leads as declarer for smart management
         self._ctx = None              # CardPlayContext set before choose_card
         self._bid_intent_type = None  # set by bid_intent: 'betl','in_hand','sans','suit', or None
+        self._bid_intent_computed = False  # True after first bid_intent call in a round
+        self._bid_max_level = 0       # max suit level willing to bid
         self._strongest_suit = None   # real Suit enum of strongest suit
+        self._suit_order = []         # canonical suit ordering (strongest first)
 
     # ------------------------------------------------------------------
     # Hand evaluation helpers
@@ -2642,12 +2889,16 @@ class PlayerAlice(WeightedRandomPlayer):
                     else:
                         tricks += 0.1  # singleton King easily trumped
                         unsupported_kings += 1
-                elif c.rank == 6 and len(cards) >= 3:  # Queen with length
+                elif c.rank == 6:  # Queen
                     if in_trump and has_ace and has_king:
-                        # Iter60: AKQ♣ in trump → after AK clear 2 opponent trumps,
+                        # AKQ♣ in trump → after AK clear 2 opponent trumps,
                         # Q is master or near-master. ~0.35 trick value.
                         tricks += 0.35
-                    else:
+                    elif in_trump and has_ace:
+                        # AQ in trump: after A clears one opponent trump, Q
+                        # has ~40% chance of winning (only loses to K).
+                        tricks += 0.30
+                    elif len(cards) >= 3:
                         tricks += 0.05 if in_trump else 0.15
                 elif in_trump and c.rank >= 4:  # J/10 in trump suit
                     tricks += 0.05  # near-worthless in declarer's trump
@@ -2904,16 +3155,16 @@ class PlayerAlice(WeightedRandomPlayer):
 
         pairs.sort(key=lambda p: (-len(p[1]), [CARD_ORDER[c] for c in p[1]]))
 
-        # First suit in canonical order = strongest suit
-        strongest_suit_name = pairs[0][0]
+        # Full canonical suit ordering (strongest first)
         _NAME_TO_SUIT = {v: k for k, v in SUIT_NAMES.items()}
-        strongest_suit = _NAME_TO_SUIT.get(strongest_suit_name)
+        suit_order = [_NAME_TO_SUIT[s] for s, pat in pairs if s in _NAME_TO_SUIT]
+        strongest_suit = suit_order[0] if suit_order else None
 
         encoding = '-'.join(pat for _, pat in pairs if pat)
         seed = hash(encoding) & 0x7FFFFFFF
         probs = simulate_combination(encoding, seed=seed)
 
-        return probs, strongest_suit
+        return probs, strongest_suit, suit_order
 
     # ------------------------------------------------------------------
     # Bidding — probability-driven
@@ -2937,8 +3188,9 @@ class PlayerAlice(WeightedRandomPlayer):
         if in_hand_declaring:
             # Compute strongest suit if not already known
             if not self._strongest_suit and hand:
-                _, strongest_suit = self._compute_hand_probabilities(hand)
+                _, strongest_suit, suit_order = self._compute_hand_probabilities(hand)
                 self._strongest_suit = strongest_suit
+                self._suit_order = suit_order
 
             target_value = self._SUIT_TO_IN_HAND_VALUE.get(self._strongest_suit, 2)
             # Find the bid with our target value, or the lowest available
@@ -2959,7 +3211,16 @@ class PlayerAlice(WeightedRandomPlayer):
             return {"bid": best_bid,
                     "intent": f"in_hand declaring {suit_name} (strongest={SUIT_NAMES.get(self._strongest_suit, '?')})"}
 
-        # Reset per-round state on first bid call
+        # New round detection: if cards were played, this is a fresh auction
+        if self._cards_played > 0:
+            self._bid_intent_computed = False
+
+        # Subsequent auction call: intent already computed — respect max level
+        if self._bid_intent_computed:
+            return self._bid_intent_subsequent(hand, legal_bids)
+
+        # First auction call — reset per-round state and compute intent
+        self._bid_intent_computed = True
         self._cards_played = 0
         self._is_declarer = False
         self._highest_bid_seen = 0
@@ -2969,12 +3230,8 @@ class PlayerAlice(WeightedRandomPlayer):
         self._trump_leads = 0
         self._bid_intent_type = None
         self._strongest_suit = None
-
-        # Track auction escalation
-        game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
-        if game_bids:
-            min_val = min(b.get("value", 2) for b in game_bids)
-            self._highest_bid_seen = max(self._highest_bid_seen, min_val - 1)
+        self._suit_order = []
+        self._bid_max_level = 0  # max suit level willing to bid
 
         if not hand:
             pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
@@ -2983,8 +3240,9 @@ class PlayerAlice(WeightedRandomPlayer):
             return super().bid_intent(hand, legal_bids)
 
         # Compute probabilities via simulation
-        probs, strongest_suit = self._compute_hand_probabilities(hand)
+        probs, strongest_suit, suit_order = self._compute_hand_probabilities(hand)
         self._strongest_suit = strongest_suit
+        self._suit_order = suit_order
 
         if probs is None:
             pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
@@ -2999,6 +3257,8 @@ class PlayerAlice(WeightedRandomPlayer):
 
         prob_str = (f"suit={p_suit:.0%} inH={p_in_hand:.0%} "
                     f"betl={p_betl:.0%} sans={p_sans:.0%}")
+
+        suit_bid = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
 
         # Check thresholds in priority order
         if p_betl >= self.BETL_THRESHOLD:
@@ -3029,9 +3289,12 @@ class PlayerAlice(WeightedRandomPlayer):
 
         if p_suit >= self.SUIT_THRESHOLD:
             self._bid_intent_type = 'suit'
+            # Max level = strongest suit's level
+            self._bid_max_level = suit_bid.get(self._strongest_suit, 2)
+            game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
             if game_bids:
                 return {"bid": game_bids[0],
-                        "intent": f"game — suit prob {p_suit:.0%} >= {self.SUIT_THRESHOLD:.0%} ({prob_str})"}
+                        "intent": f"game — suit prob {p_suit:.0%} >= {self.SUIT_THRESHOLD:.0%}, max level {self._bid_max_level} ({prob_str})"}
 
         # Below all thresholds — pass
         self._bid_intent_type = None
@@ -3041,6 +3304,49 @@ class PlayerAlice(WeightedRandomPlayer):
                     "intent": f"pass — below thresholds ({prob_str})"}
 
         return super().bid_intent(hand, legal_bids)
+
+    def _bid_intent_subsequent(self, hand, legal_bids):
+        """Handle subsequent auction calls — respect stored bid intent max level."""
+        pass_bid = next((b for b in legal_bids if b["bid_type"] == "pass"), None)
+
+        if self._bid_intent_type == 'betl':
+            betl_bids = [b for b in legal_bids if b["bid_type"] == "betl"]
+            if betl_bids:
+                return {"bid": betl_bids[0], "intent": "betl — continuing intent"}
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids:
+                return {"bid": in_hand_bids[0], "intent": "in_hand — betl intent escalation"}
+            if pass_bid:
+                return {"bid": pass_bid, "intent": "pass — betl intent, no betl/in_hand available"}
+
+        if self._bid_intent_type == 'in_hand':
+            in_hand_bids = [b for b in legal_bids if b["bid_type"] == "in_hand"]
+            if in_hand_bids:
+                return {"bid": in_hand_bids[0], "intent": "in_hand — continuing intent"}
+            if pass_bid:
+                return {"bid": pass_bid, "intent": "pass — in_hand intent, no in_hand available"}
+
+        if self._bid_intent_type == 'sans':
+            sans_bids = [b for b in legal_bids if b["bid_type"] == "sans"]
+            if sans_bids:
+                return {"bid": sans_bids[0], "intent": "sans — continuing intent"}
+            if pass_bid:
+                return {"bid": pass_bid, "intent": "pass — sans intent, no sans available"}
+
+        if self._bid_intent_type == 'suit':
+            game_bids = [b for b in legal_bids if b["bid_type"] == "game"]
+            # Only bid if the required level is within our max
+            affordable = [b for b in game_bids if b.get("value", 2) <= self._bid_max_level]
+            if affordable:
+                return {"bid": affordable[0],
+                        "intent": f"game — suit intent, max level {self._bid_max_level}"}
+            if pass_bid:
+                return {"bid": pass_bid,
+                        "intent": f"pass — suit intent exceeded max level {self._bid_max_level}"}
+
+        if pass_bid:
+            return {"bid": pass_bid, "intent": "pass — no matching intent"}
+        return {"bid": legal_bids[0], "intent": "fallback"}
 
     # ------------------------------------------------------------------
     # Exchange — smart discard: keep trump suit + aces, create voids
@@ -3283,31 +3589,21 @@ class PlayerAlice(WeightedRandomPlayer):
             return {"contract_type": "sans", "trump": None, "level": 7,
                     "intent": "sans — bid_intent"}
 
-        # Suit contract (default): use strongest suit
+        # Suit contract (default): use strongest suit from canonical ordering
         min_bid = winner_bid.effective_value if winner_bid else 0
         suit_bid = {Suit.SPADES: 2, Suit.DIAMONDS: 3, Suit.HEARTS: 4, Suit.CLUBS: 5}
 
-        # Prefer the strongest suit from probability computation if available
-        best_suit = self._strongest_suit
-        if best_suit and suit_bid.get(best_suit, 0) < min_bid:
-            best_suit = None
+        # Walk canonical suit ordering (strongest first), pick first available
+        best_suit = None
+        for suit in (self._suit_order or [self._strongest_suit] if self._strongest_suit else []):
+            if suit and suit_bid.get(suit, 0) >= min_bid:
+                best_suit = suit
+                break
 
-        # Fallback: find best available suit by length + rank
+        # Last resort: pick cheapest available suit
         if best_suit is None:
-            groups = self._suit_groups(hand)
-            best_score = -1
-            for suit, cards in groups.items():
-                if suit_bid.get(suit, 0) < min_bid:
-                    continue
-                score = len(cards) * 100 + sum(c.rank for c in cards)
-                cost_penalty = (suit_bid[suit] - 2) * 10
-                score -= cost_penalty
-                if score > best_score:
-                    best_score = score
-                    best_suit = suit
-            if best_suit is None:
-                best_suit = min((s for s, v in suit_bid.items() if v >= min_bid),
-                                key=lambda s: suit_bid[s])
+            best_suit = min((s for s, v in suit_bid.items() if v >= min_bid),
+                            key=lambda s: suit_bid[s], default=None)
 
         trump_name = SUIT_NAMES[best_suit] if best_suit else "spades"
         self._trump_suit_val = best_suit
@@ -3788,19 +4084,19 @@ class PlayerAlice(WeightedRandomPlayer):
                     )
                     if _has_cashable and trump_count >= 3:
                         rate = max(rate, 0.45)
-                # Trump ace guarantee: when holding the ace of declarer's trump
-                # suit, we have a guaranteed unbeatable trick. Whisting is always
-                # positive EV. Game 4: A♣ in clubs trump, stacked penalties reduced
-                # rate to 25% — but trump ace = guaranteed trick, should whist.
                 # Trump ace guarantee: the ace of declarer's trump suit is
-                # literally unbeatable — guaranteed 1 trick minimum. Whisting
-                # is always +EV. Game 21: A♣ in clubs trump, rate was 0.31
-                # after penalties, floor raised to 0.55, still rolled >55%
-                # and passed → -33. Trump ace = guaranteed trick, raise floor
-                # to 0.75 so Alice almost always whists with it.
+                # literally unbeatable — guaranteed 1 trick minimum. With AQ
+                # in trump, after A clears one opponent trump, Q has ~50% chance
+                # of winning too. Always whist with trump ace.
                 if hand and trump_suit is not None:
-                    if any(c.rank == 8 and c.suit == trump_suit for c in hand):
-                        rate = max(rate, 0.75)
+                    trump_cards = [c for c in hand if c.suit == trump_suit]
+                    has_trump_ace = any(c.rank == 8 for c in trump_cards)
+                    has_trump_queen = any(c.rank == 6 for c in trump_cards)
+                    if has_trump_ace:
+                        if has_trump_queen or len(trump_cards) >= 3:
+                            rate = max(rate, 0.95)  # AQ or A+length = near-certain follow
+                        else:
+                            rate = max(rate, 0.75)
                 # G19 iter9: called twice at 85%*0.45=38% → -72. Tighter
                 # multiplier 0.38: 75%*0.38=28.5% makes double-calls much rarer.
                 if is_repeat_call:
@@ -6545,7 +6841,7 @@ def _sim_playout(hands, active_ids, trick_order_fn, trump_suit, contract_type,
     # Build helper strategy instances for each player
     helpers = {}
     for pid in active_ids:
-        h = helper_cls(f"sim_{pid}")
+        h = helper_cls(name=f"sim_{pid}", seed=rng.randint(0, 2**31))
         h._contract_type = contract_type
         h._trump_suit = trump_suit
         h._is_declarer = (pid == declarer_id)
@@ -6598,6 +6894,7 @@ def _sim_playout(hands, active_ids, trick_order_fn, trump_suit, contract_type,
             ctx.is_declarer = (pid == declarer_id)
             ctx.tricks_played = tricks_played
             ctx.my_hand = hand
+            ctx.played_tricks = None
             h._ctx = ctx
             h._rnd = None
             h._player_id = pid
@@ -6794,27 +7091,86 @@ class Sim3000(WeightedRandomPlayer):
                 order = order[idx:] + order[:idx]
             return order
 
+        # Compute known voids from trick history
+        played_tricks = getattr(ctx, 'played_tricks', None)
+        known_voids = _compute_known_voids(played_tricks, trick_cards, trump_suit)
+
         # Determine number of simulations (adaptive reduces as cards are played)
         n_sims = self.num_simulations
         if self.adaptive and len(unknown_ids) < 22:
             n_sims = int((self.num_simulations - 5) * len(unknown_ids) / 22 + 5)
             n_sims = max(n_sims, 1)
 
-        # Simulate each legal card
-        card_scores = {}
-        for candidate in legal_cards:
-            total_score = 0.0
-            for _ in range(n_sims):
-                # Randomly assign unknown cards to opponents
-                shuffled = list(unknown_cards)
-                self._sim_rng.shuffle(shuffled)
+        # Pre-split unknown cards by suit for void-aware dealing
+        _void_suits_by_player = {o: known_voids.get(o, set()) for o in others}
+        _has_voids = any(v for v in _void_suits_by_player.values())
 
-                sim_hands = {my_id: [c for c in my_hand if c.id != candidate.id]}
+        def _deal_with_voids(unknown, sizes):
+            """Distribute unknown cards to opponents respecting known voids.
+            Returns {pid: [Card, ...]} or None if impossible."""
+            # Partition cards into: restricted (belong to a voided suit for some player)
+            # and unrestricted (can go to anyone)
+            if not _has_voids:
+                # Fast path — no voids, simple slice
+                result = {}
                 idx = 0
                 for o in others:
-                    sz = min(other_hand_sizes.get(o, 0), len(shuffled) - idx)
-                    sim_hands[o] = shuffled[idx:idx + sz]
+                    sz = min(sizes.get(o, 0), len(unknown) - idx)
+                    result[o] = unknown[idx:idx + sz]
                     idx += sz
+                return result
+
+            # For each player, separate cards they CAN vs CANNOT hold
+            eligible = {o: [] for o in others}
+            for c in unknown:
+                for o in others:
+                    if c.suit not in _void_suits_by_player[o]:
+                        eligible[o].append(c)
+
+            # Greedy assignment: assign to the most constrained player first
+            assigned = {o: [] for o in others}
+            used = set()
+            # Sort players by how constrained they are (fewest eligible first)
+            order = sorted(others, key=lambda o: len(eligible[o]))
+            for o in order:
+                needed = sizes.get(o, 0)
+                for c in eligible[o]:
+                    if needed <= 0:
+                        break
+                    if id(c) not in used:
+                        assigned[o].append(c)
+                        used.add(id(c))
+                        needed -= 1
+                if needed > 0:
+                    return None  # impossible deal
+            return assigned
+
+        # Simulate: outer loop = random deal, inner loop = all candidate cards.
+        # This ensures equivalent cards (e.g. AKQ connected) get identical scores
+        # because they are tested against the exact same opponent hands.
+        card_totals = {c.id: 0.0 for c in legal_cards}
+        max_attempts = n_sims * 3  # cap retries to avoid infinite loop
+        valid_sims = 0
+        attempts = 0
+        while valid_sims < n_sims and attempts < max_attempts:
+            attempts += 1
+            # Randomly assign unknown cards to opponents (one deal per sim)
+            shuffled = list(unknown_cards)
+            self._sim_rng.shuffle(shuffled)
+
+            opponent_cards = _deal_with_voids(shuffled, other_hand_sizes)
+            if opponent_cards is None:
+                continue  # void constraints unsatisfiable, reshuffle
+            valid_sims += 1
+
+            # Test each candidate card against this same deal
+            # Save rng state so each candidate gets identical playout randomness
+            rng_state = self._sim_rng.getstate()
+            for candidate in legal_cards:
+                self._sim_rng.setstate(rng_state)
+                sim_hands = {my_id: [c for c in my_hand if c.id != candidate.id]}
+                for o in others:
+                    sim_hands[o] = list(opponent_cards[o])
 
                 # Set up current trick with our candidate card played
                 sim_trick = list(trick_cards) + [(my_id, candidate)]
@@ -6860,28 +7216,76 @@ class Sim3000(WeightedRandomPlayer):
                     sim_tricks_won = result
 
                 # Score: from our perspective
-                my_tricks = sim_tricks_won.get(my_id, 0)
+                decl_tricks = sim_tricks_won.get(declarer_id, 0)
                 if my_id == declarer_id:
                     # Declarer wants to maximize own tricks
                     if contract_type == 'betl':
-                        total_score += (10.0 if my_tricks == 0 else -10.0)
+                        card_totals[candidate.id] += (10.0 if decl_tricks == 0 else -10.0)
                     else:
-                        total_score += my_tricks
+                        card_totals[candidate.id] += decl_tricks
                 else:
-                    # Defender wants to maximize combined defender tricks
-                    defender_tricks = sum(v for k, v in sim_tricks_won.items() if k != declarer_id)
+                    # Defender wants to minimize declarer's tricks
+                    # (not maximize own — avoids sabotaging other follower)
                     if contract_type == 'betl':
-                        # Want declarer to win tricks
-                        decl_tricks = sim_tricks_won.get(declarer_id, 0)
-                        total_score += (10.0 if decl_tricks > 0 else -10.0)
+                        card_totals[candidate.id] += (10.0 if decl_tricks > 0 else -10.0)
                     else:
-                        total_score += defender_tricks
+                        card_totals[candidate.id] -= decl_tricks
 
-            card_scores[candidate.id] = total_score / n_sims
+        actual_sims = max(valid_sims, 1)
+        card_scores = {cid: total / actual_sims for cid, total in card_totals.items()}
 
-        # Pick best card
-        best_id = max(card_scores, key=card_scores.get)
-        return best_id
+        # Equalize scores for connected card groups.
+        # Connected cards are equivalent in trick-taking power, so their
+        # simulation scores should be identical. Playout helper asymmetry
+        # (treating A differently from K) causes small noise — fix it here.
+        accounted = set()
+        for c in my_hand:
+            accounted.add((c.suit, c.rank))
+        for c in played_cards:
+            accounted.add((c.suit, c.rank))
+        for c in trick_card_objs:
+            accounted.add((c.suit, c.rank))
+
+        by_suit = {}
+        for c in legal_cards:
+            by_suit.setdefault(c.suit, []).append(c)
+        for suit, cards in by_suit.items():
+            if len(cards) < 2:
+                continue
+            sorted_cards = sorted(cards, key=lambda c: c.rank, reverse=True)
+            # Build connected groups by walking down from highest
+            groups = [[sorted_cards[0]]]
+            for i in range(1, len(sorted_cards)):
+                prev = sorted_cards[i - 1]
+                curr = sorted_cards[i]
+                # Check if all ranks between curr and prev are accounted for
+                gap_filled = True
+                for r in range(curr.rank + 1, prev.rank):
+                    if (suit, r) not in accounted:
+                        gap_filled = False
+                        break
+                if gap_filled:
+                    groups[-1].append(curr)
+                else:
+                    groups.append([curr])
+            # Equalize scores within each group
+            for group in groups:
+                if len(group) < 2:
+                    continue
+                avg = sum(card_scores[c.id] for c in group) / len(group)
+                for c in group:
+                    card_scores[c.id] = avg
+
+        self._last_card_scores = card_scores
+
+        # Pick best card — deterministic tie-breaking: lowest rank, lowest suit
+        best_score = max(card_scores.values())
+        tied = [c for c in legal_cards if card_scores[c.id] == best_score]
+        if len(tied) == 1:
+            return tied[0].id
+        # Among tied cards: lowest rank, then lowest suit value
+        best = min(tied, key=lambda c: (c.rank, c.suit.value))
+        return best.id
 
 
 def make_simsim_cls(num_simulations: int = 10, helper_cls=None,
@@ -7731,6 +8135,7 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
 
         trick_num = 0
         played_cards_history = []  # track all cards from completed tricks
+        completed_tricks = []  # list of [(pid, Card), ...] for void tracking
         tricks_completed = 0
         # Compute active player IDs (not dropped out)
         active_ids = [p.id for p in sorted(game.players, key=lambda p: p.position)
@@ -7738,6 +8143,14 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
         # Determine trump suit and contract type for context
         ctx_trump = contract.trump_suit if contract.type == ContractType.SUIT else None
         ctx_contract_type = contract.type.value  # "suit", "betl", "sans"
+        ctx_is_in_hand = contract.is_in_hand
+        ctx_talon_cards = [] if ctx_is_in_hand else list(rnd.original_talon)
+        # All cards in the game (active players' hands + played)
+        all_game_cards = set()
+        for p in game.players:
+            if not p.has_dropped_out:
+                for c in p.hand:
+                    all_game_cards.add(c.id)
 
         while rnd.phase == RoundPhase.PLAYING:
             trick = rnd.current_trick
@@ -7766,6 +8179,11 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
                     trick_order.append(pid)
 
             # Build CardPlayContext
+            played_ids = set(c.id for c in played_cards_history)
+            trick_ids = set(c.id for _, c in trick.cards)
+            my_ids = set(c.id for c in player.hand)
+            remaining = [Card.from_id(cid) for cid in all_game_cards
+                         if cid not in played_ids and cid not in trick_ids and cid not in my_ids]
             ctx = CardPlayContext(
                 trick_cards=list(trick.cards),
                 declarer_id=rnd.declarer_id,
@@ -7777,6 +8195,10 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
                 is_declarer=(next_id == rnd.declarer_id),
                 tricks_played=tricks_completed,
                 my_hand=list(player.hand),
+                talon_cards=ctx_talon_cards,
+                is_in_hand=ctx_is_in_hand,
+                remaining_cards=remaining,
+                played_tricks=list(completed_tricks),
             )
 
             strat = strategies[next_id]
@@ -7796,6 +8218,7 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
                 winner = game.get_player(result["trick_winner_id"])
                 emit(f"    => Winner: P{winner.position} {winner.name}")
                 # Track played cards from completed trick
+                completed_tricks.append(list(trick.cards))
                 for _pid, _card in trick.cards:
                     played_cards_history.append(_card)
                 tricks_completed += 1
@@ -7838,6 +8261,998 @@ def play_game(strategies: dict[int, BasePlayer], seed: int = 42) -> tuple[list[s
         compact.append(f"{p.name} score: {p.score}")
 
     return log, compact, timing
+
+
+# ---------------------------------------------------------------------------
+# Trojka — rule-based card player (inherits Alice for bidding/discarding)
+# ---------------------------------------------------------------------------
+
+class Trojka(PlayerAlice):
+    """Rule-based card player.
+
+    Inherits Alice for bidding, discarding, following decisions.
+    Overrides card play with explicit rule-based logic:
+      - Each card is classified as must / safe / risky / dumb
+      - If a must-play exists, play it
+      - Otherwise pick randomly weighted: safe=100, risky=50, dumb=10
+
+    Rules applied (by situation):
+      one_on_one_first_player      — 1v1, leading
+      one_on_one_second_player     — 1v1, responding
+      suit_response_follower_last  — follow suit, follower, 3rd to play
+      suit_response_follower_second_after_follower — follow suit, follower, 2nd, after fellow follower
+      suit_response_follower_second_after_leader   — follow suit, follower, 2nd, after declarer
+      suit_response_leader_last    — follow suit, leader(declarer), 3rd to play
+      suit_response_leader_second  — follow suit, leader(declarer), 2nd to play
+      trump_last                   — respond with trump, 3rd to play
+      trump_follower_second_after_follower — trump, follower, 2nd, after fellow follower
+      trump_follower_second_after_leader   — trump, follower, 2nd, after declarer
+      trump_leader_second          — trump, leader(declarer), 2nd to play
+      response_other_leader        — discard (no suit/trump), leader
+      response_other_follower      — discard (no suit/trump), follower
+      first_follower_through_follower — leading, follower, next player is fellow follower
+      first_follower_through_leader   — leading, follower, next player is declarer
+    """
+
+    WEIGHT_BEST = 500
+    WEIGHT_SAFE = 100
+    WEIGHT_RISKY = 20
+    WEIGHT_DUMB = 1
+
+    def __init__(self, name: str = "Trojka", seed: int | None = None, **kwargs):
+        super().__init__(name=name, seed=seed, **kwargs)
+        self._last_rule = None  # track which rule was used
+
+    def choose_card(self, legal_cards):
+        if len(legal_cards) == 1:
+            self._ranked_cards = [(legal_cards[0].id, 100.0)]
+            self._cards_played += 1
+            self._last_rule = "single_card"
+            return legal_cards[0].id
+
+        ctx = self._ctx
+        classifications, rule = self._classify_cards(legal_cards, ctx)
+        self._last_rule = rule
+
+        # Check for must-play or best pick
+        must_cards = [c for c, cat in classifications if cat == 'must']
+        if must_cards:
+            chosen = must_cards[0]
+            self._ranked_cards = [(chosen.id, 999)]
+            self._cards_played += 1
+            return chosen.id
+
+        best_cards = [c for c, cat in classifications if cat == 'best']
+        if best_cards:
+            chosen = best_cards[0]
+            self._ranked_cards = [(c.id, w) for (c, _), w in
+                                  zip(classifications, [self.WEIGHT_BEST if cat == 'best'
+                                  else self.WEIGHT_SAFE if cat == 'safe'
+                                  else self.WEIGHT_RISKY if cat == 'risky'
+                                  else self.WEIGHT_DUMB for _, cat in classifications])]
+            self._cards_played += 1
+            return chosen.id
+
+        # Weighted random selection
+        weights = []
+        for c, cat in classifications:
+            if cat == 'best':
+                weights.append(self.WEIGHT_BEST)
+            elif cat == 'safe':
+                weights.append(self.WEIGHT_SAFE)
+            elif cat == 'risky':
+                weights.append(self.WEIGHT_RISKY)
+            else:
+                weights.append(self.WEIGHT_DUMB)
+
+        cards = [c for c, _ in classifications]
+        chosen = self.rng.choices(cards, weights=weights, k=1)[0]
+        self._ranked_cards = [(c.id, w) for (c, _), w in zip(classifications, weights)]
+        self._cards_played += 1
+        return chosen.id
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _cards_by_suit(self, cards):
+        """Group cards by suit, each group sorted high rank to low."""
+        groups = {}
+        for c in cards:
+            groups.setdefault(c.suit, []).append(c)
+        for s in groups:
+            groups[s].sort(key=lambda c: c.rank, reverse=True)
+        return groups
+
+    def _remaining_in_suit(self, suit, ctx):
+        """Return list of Card objects remaining in suit (not in hand, not played, not in trick)."""
+        accounted_ranks = set()
+        for c in ctx.my_hand:
+            if c.suit == suit:
+                accounted_ranks.add(c.rank)
+        for c in ctx.played_cards:
+            if c.suit == suit:
+                accounted_ranks.add(c.rank)
+        for _, c in ctx.trick_cards:
+            if c.suit == suit:
+                accounted_ranks.add(c.rank)
+        from models import Card as MCard, Rank
+        remaining = []
+        for r in Rank:
+            if r not in accounted_ranks:
+                remaining.append(Card(rank=r, suit=suit))
+        return remaining
+
+    def _lowest_winning_card(self, legal_cards, ctx):
+        """Return the lowest card from legal_cards that beats the current trick winner, or None."""
+        winner = _ctx_trick_winner(ctx)
+        if winner is None:
+            return None
+        _, winner_card = winner
+        candidates = []
+        for c in legal_cards:
+            if c.suit == ctx.trump_suit and winner_card.suit != ctx.trump_suit:
+                candidates.append(c)
+            elif c.suit == winner_card.suit and c.rank > winner_card.rank:
+                candidates.append(c)
+        if not candidates:
+            return None
+        return min(candidates, key=lambda c: c.rank)
+
+    def _is_connected_high(self, cards_in_suit, ctx):
+        """Return list of connected high cards in a suit (cards at top with no unaccounted gaps)."""
+        if len(cards_in_suit) < 2:
+            return []
+        unaccounted = _ctx_unaccounted_ranks(cards_in_suit[0].suit, ctx)
+        connected = [cards_in_suit[0]]
+        for i in range(len(cards_in_suit) - 1):
+            high_rank = cards_in_suit[i].rank
+            low_rank = cards_in_suit[i + 1].rank
+            gap = any(r in unaccounted for r in range(low_rank + 1, high_rank))
+            if gap:
+                break
+            connected.append(cards_in_suit[i + 1])
+        return connected if len(connected) >= 2 else []
+
+    def _fellow_follower_winning(self, ctx):
+        """True if a fellow follower (not me, not declarer) is winning the trick."""
+        return _ctx_other_follower_winning(ctx)
+
+    def _trick_position(self, ctx):
+        """Return 'first', 'second', or 'last' based on trick_cards count."""
+        n = len(ctx.trick_cards)
+        n_active = len(ctx.active_players)
+        if n == 0:
+            return 'first'
+        elif n == n_active - 1:
+            return 'last'
+        else:
+            return 'second'
+
+    def _who_played_first(self, ctx):
+        """Return player_id of first card in trick, or None."""
+        if ctx.trick_cards:
+            return ctx.trick_cards[0][0]
+        return None
+
+    def _is_one_on_one(self, ctx):
+        """True if only 2 active players."""
+        return len(ctx.active_players) == 2
+
+    def _led_suit(self, ctx):
+        """Return suit of the led card, or None."""
+        if ctx.trick_cards:
+            return ctx.trick_cards[0][1].suit
+        return None
+
+    def _lowest_card(self, cards):
+        """Return card with lowest rank. Among ties, arbitrary."""
+        return min(cards, key=lambda c: (c.rank, c.suit.value))
+
+    def _highest_card(self, cards):
+        """Return card with highest rank."""
+        return max(cards, key=lambda c: (c.rank, c.suit.value))
+
+    # ------------------------------------------------------------------
+    # Main classification router
+    # ------------------------------------------------------------------
+
+    def _classify_cards(self, legal_cards, ctx):
+        """Return list of (card, category) and rule name used."""
+        trick_pos = self._trick_position(ctx)
+        is_leading = trick_pos == 'first'
+        is_follower = not ctx.is_declarer
+        led_suit = self._led_suit(ctx)
+        has_led_suit = led_suit and any(c.suit == led_suit for c in legal_cards)
+        is_trump_response = (not is_leading and led_suit and not has_led_suit
+                             and ctx.trump_suit and any(c.suit == ctx.trump_suit for c in legal_cards)
+                             and all(c.suit == ctx.trump_suit for c in legal_cards))
+        is_other_response = (not is_leading and led_suit and not has_led_suit and not is_trump_response)
+
+        # --- LEADING ---
+        if is_leading:
+            if self._is_one_on_one(ctx):
+                return self._rule_one_on_one_first_player(legal_cards, ctx)
+            if is_follower:
+                if _ctx_is_through_declarer(ctx):
+                    return self._rule_first_follower_through_leader(legal_cards, ctx)
+                else:
+                    return self._rule_first_follower_through_follower(legal_cards, ctx)
+            else:
+                # Declarer leading in 3-player — use one_on_one_first_player rules
+                return self._rule_one_on_one_first_player(legal_cards, ctx)
+
+        # --- FOLLOWING SUIT ---
+        if has_led_suit:
+            if self._is_one_on_one(ctx):
+                return self._rule_one_on_one_second_player(legal_cards, ctx)
+            if is_follower:
+                if trick_pos == 'last':
+                    return self._rule_suit_response_follower_last(legal_cards, ctx)
+                else:  # second
+                    first_player = self._who_played_first(ctx)
+                    if first_player != ctx.declarer_id:
+                        return self._rule_suit_response_follower_second_after_follower(legal_cards, ctx)
+                    else:
+                        return self._rule_suit_response_follower_second_after_leader(legal_cards, ctx)
+            else:  # leader/declarer
+                if trick_pos == 'last':
+                    return self._rule_suit_response_leader_last(legal_cards, ctx)
+                else:
+                    return self._rule_suit_response_leader_second(legal_cards, ctx)
+
+        # --- TRUMP RESPONSE ---
+        if is_trump_response:
+            if self._is_one_on_one(ctx):
+                # 1v1 trump response — treat as last player
+                if is_follower:
+                    return self._rule_trump_last(legal_cards, ctx)
+                else:
+                    return self._rule_trump_last(legal_cards, ctx)
+            if trick_pos == 'last':
+                return self._rule_trump_last(legal_cards, ctx)
+            else:  # second
+                if is_follower:
+                    first_player = self._who_played_first(ctx)
+                    if first_player != ctx.declarer_id:
+                        return self._rule_trump_follower_second_after_follower(legal_cards, ctx)
+                    else:
+                        return self._rule_trump_follower_second_after_leader(legal_cards, ctx)
+                else:
+                    return self._rule_trump_leader_second(legal_cards, ctx)
+
+        # --- OTHER RESPONSE (can't follow suit, no trump) ---
+        if is_other_response:
+            if is_follower:
+                return self._rule_response_other_follower(legal_cards, ctx)
+            else:
+                return self._rule_response_other_leader(legal_cards, ctx)
+
+        # Fallback: all dumb
+        return [(c, 'dumb') for c in legal_cards], 'fallback'
+
+    # ------------------------------------------------------------------
+    # Individual rules
+    # ------------------------------------------------------------------
+
+    def _rule_one_on_one_first_player(self, legal_cards, ctx):
+        """1v1, leading. Two-pass: per-suit classification, then cross-suit best pick.
+
+        Declarer: prioritize leading trump to draw out defenders' trumps.
+        Follower: prioritize singleton aces and leading trump to cut declarer.
+        """
+        by_suit = self._cards_by_suit(legal_cards)
+        result = {c.id: 'dumb' for c in legal_cards}
+        is_declarer = ctx.is_declarer
+        trump = ctx.trump_suit
+
+        # --- Pass 1: Per-suit classification ---
+        if is_declarer:
+            self._classify_declarer_leading(by_suit, result, trump, ctx)
+        else:
+            self._classify_follower_leading(by_suit, result, trump, ctx)
+
+        # --- Pass 2: Cross-suit best pick ---
+        # Promote best suit's cards to 'best' based on strategic priority
+        # All connected equivalents in that suit get promoted together
+        safe_cards = [(c, result[c.id]) for c in legal_cards if result[c.id] == 'safe']
+        if len(safe_cards) > 1:
+            best_card = self._pick_best_lead(safe_cards, by_suit, trump, is_declarer, ctx)
+            if best_card:
+                # Promote all connected equivalents in the same suit
+                suit_cards = by_suit.get(best_card.suit, [])
+                connected = self._is_connected_high(suit_cards, ctx)
+                promoted = set(c.id for c in connected) if len(connected) >= 2 else set()
+                promoted.add(best_card.id)
+                for cid in promoted:
+                    if result.get(cid) == 'safe':
+                        result[cid] = 'best'
+
+        # --- Post-pass: downgrade BEST to safe when safe cards also exist ---
+        # In 1v1 leading, top trumps/BEST cards win regardless of timing,
+        # so leading with safe side-suit cards is equally good or better.
+        # Only keep BEST when there are no safe alternatives.
+        has_best = any(result[c.id] == 'best' for c in legal_cards)
+        has_safe = any(result[c.id] == 'safe' for c in legal_cards)
+        if has_best and has_safe:
+            for c in legal_cards:
+                if result[c.id] == 'best':
+                    result[c.id] = 'safe'
+
+        # --- Post-pass: downgrade safe trumps to risky when non-trump safe/risky exist ---
+        # Extends the "don't lead trumps unnecessarily" principle: safe trumps
+        # are deprioritized when non-trump alternatives are available.
+        if trump and not is_declarer:
+            has_nontrump_safe_or_risky = any(
+                result[c.id] in ('safe', 'risky') and c.suit != trump
+                for c in legal_cards
+            )
+            if has_nontrump_safe_or_risky:
+                for c in legal_cards:
+                    if c.suit == trump and result[c.id] == 'safe':
+                        result[c.id] = 'risky'
+
+        # --- Post-pass: declarer best→safe downgrade ---
+        # When declarer has dumb cards available, guaranteed winners (best)
+        # don't need deterministic priority — downgrade to safe so they
+        # compete in weighted random with other cards instead of being
+        # forced as the lead. Sim50T shows declarers should diversify
+        # opening leads rather than always leading top trumps.
+        if is_declarer:
+            has_dumb = any(result[c.id] == 'dumb' for c in legal_cards)
+            if has_dumb:
+                for c in legal_cards:
+                    if result[c.id] == 'best':
+                        result[c.id] = 'safe'
+
+        classifications = [(c, result[c.id]) for c in legal_cards]
+        return classifications, 'one_on_one_first_player'
+
+    def _classify_declarer_leading(self, by_suit, result, trump, ctx):
+        """Per-suit classification for declarer leading."""
+        # Trump suit
+        if trump and trump in by_suit:
+            cards = by_suit[trump]
+            connected = self._is_connected_high(cards, ctx)
+            if len(connected) >= 2:
+                # All connected trumps are equivalent — mark all safe
+                for c in connected:
+                    result[c.id] = 'safe'
+            elif len(cards) >= 2:
+                ranks = [c.rank for c in cards]
+                if 8 in ranks:
+                    # A + non-connected other(s) → lead A (highest)
+                    result[cards[0].id] = 'safe'
+                else:
+                    result[cards[0].id] = 'safe'
+            elif len(cards) == 1:
+                result[cards[0].id] = 'safe'
+
+        # Non-trump suits
+        for suit, cards in by_suit.items():
+            if suit == trump:
+                continue
+            if len(cards) == 1:
+                if cards[0].rank == 8:
+                    # Singleton ace: guaranteed trick + creates void for trumping
+                    result[cards[0].id] = 'safe'
+                continue
+
+            connected = self._is_connected_high(cards, ctx)
+            if len(connected) >= 2:
+                # Only 'safe' if the top connected card is master (no higher unaccounted)
+                if _ctx_higher_unaccounted(connected[0], ctx) == 0:
+                    for c in connected:
+                        result[c.id] = 'safe'
+                else:
+                    for c in connected:
+                        result[c.id] = 'risky'
+                continue
+
+            ranks = [c.rank for c in cards]
+            if 8 in ranks and any(r <= 4 for r in ranks):
+                result[next(c for c in cards if c.rank == 8).id] = 'safe'
+                continue
+            if all(r <= 4 for r in ranks) and cards:
+                result[cards[0].id] = 'safe'
+                continue
+            if len(cards) >= 3 and cards[0].rank == 7 and all(c.rank <= 5 for c in cards[1:]):
+                result[cards[1].id] = 'risky'
+            elif cards:
+                result[cards[0].id] = 'risky'
+
+    def _classify_follower_leading(self, by_suit, result, trump, ctx):
+        """Per-suit classification for follower/defender leading.
+
+        Key insight: prefer short suits to create voids for trumping.
+        All-low short suits and singletons are safe leads.
+        """
+        for suit, cards in by_suit.items():
+            # Singleton Ace → safe (guaranteed trick + voids suit)
+            if len(cards) == 1 and cards[0].rank == 8:
+                result[cards[0].id] = 'safe'
+                continue
+
+            # Singleton non-ace → safe (voids suit for future trumping)
+            if len(cards) == 1:
+                result[cards[0].id] = 'safe'
+                continue
+
+            # Trump: leading trump cuts declarer's trumps
+            if suit == trump:
+                # Highest trump is safe regardless of rank
+                result[cards[0].id] = 'safe'
+                continue
+
+            # Standard non-trump rules
+            connected = self._is_connected_high(cards, ctx)
+            if len(connected) >= 2:
+                for c in connected:
+                    result[c.id] = 'safe'
+                continue
+
+            ranks = [c.rank for c in cards]
+            # Short suit (2 cards): lead lowest to probe — safe
+            if len(cards) == 2:
+                result[self._lowest_card(cards).id] = 'safe'
+                continue
+
+            # A + low cards → ace is safe
+            if 8 in ranks and any(r <= 4 for r in ranks):
+                result[next(c for c in cards if c.rank == 8).id] = 'safe'
+                continue
+            # All low cards → highest is safe
+            if all(r <= 4 for r in ranks) and cards:
+                result[cards[0].id] = 'safe'
+                continue
+            if len(cards) >= 3 and cards[0].rank == 7 and all(c.rank <= 5 for c in cards[1:]):
+                result[cards[1].id] = 'risky'
+            elif cards:
+                result[cards[0].id] = 'risky'
+
+    def _pick_best_lead(self, safe_cards, by_suit, trump, is_declarer, ctx):
+        """Pick the single best card among safe options.
+
+        Declarer: trump > connected non-trump > ace > shortest suit.
+        Follower: singleton ace > trump > connected > shortest suit.
+        """
+        cards_only = [c for c, _ in safe_cards]
+        if not cards_only:
+            return None
+
+        if is_declarer:
+            # Priority 1: Trump card
+            trump_cards = [c for c in cards_only if c.suit == trump]
+            if trump_cards:
+                return max(trump_cards, key=lambda c: c.rank)
+
+            # Priority 2: Connected high in non-trump
+            for c in cards_only:
+                suit_cards = by_suit.get(c.suit, [])
+                connected = self._is_connected_high(suit_cards, ctx)
+                if len(connected) >= 2 and c in connected:
+                    return connected[0]
+
+            # Priority 3: Side-suit ace
+            for c in cards_only:
+                if c.rank == 8:
+                    return c
+
+            # Priority 4: Shortest suit, highest rank
+            return min(cards_only,
+                       key=lambda c: (len(by_suit.get(c.suit, [])), -c.rank))
+        else:
+            # Priority 1: Singleton ace
+            for c in cards_only:
+                suit_cards = by_suit.get(c.suit, [])
+                if len(suit_cards) == 1 and c.rank == 8:
+                    return c
+
+            # Priority 2: Trump (highest)
+            trump_cards = [c for c in cards_only if c.suit == trump]
+            if trump_cards:
+                return max(trump_cards, key=lambda c: c.rank)
+
+            # Priority 3: Connected high non-trump
+            for c in cards_only:
+                suit_cards = by_suit.get(c.suit, [])
+                connected = self._is_connected_high(suit_cards, ctx)
+                if len(connected) >= 2 and c in connected:
+                    return c
+
+            # Priority 4: Shortest suit, highest rank
+            return min(cards_only,
+                       key=lambda c: (len(by_suit.get(c.suit, [])), -c.rank))
+
+    def _rule_one_on_one_second_player(self, legal_cards, ctx):
+        """1v1, responding (must follow suit).
+
+        1. If winning is possible → lowest winner is must
+        2. If can't win but following suit → lowest in suit is must
+        3. Lowest from longest suit is safe
+        4. Lowest from other suits is risky
+        5. Rest is dumb
+        """
+        led_suit = self._led_suit(ctx)
+        suit_cards = [c for c in legal_cards if c.suit == led_suit]
+
+        if suit_cards:
+            winner = self._lowest_winning_card(suit_cards, ctx)
+            if winner:
+                return [(winner, 'must')], 'one_on_one_second_player'
+            # When declarer can't win a trump trick and has 2+ trumps,
+            # dump second-lowest to preserve lowest trump for future ruffing
+            if (ctx.is_declarer and ctx.trump_suit is not None
+                    and led_suit == ctx.trump_suit and len(suit_cards) >= 2):
+                sorted_by_rank = sorted(suit_cards, key=lambda c: c.rank)
+                return [(sorted_by_rank[1], 'must')], 'one_on_one_second_player'
+            return [(self._lowest_card(suit_cards), 'must')], 'one_on_one_second_player'
+
+        # Can't follow — weighted discard
+        by_suit = self._cards_by_suit(legal_cards)
+        max_len = max(len(cards) for cards in by_suit.values())
+        longest_suits = [s for s, cards in by_suit.items() if len(cards) == max_len]
+
+        result = {c.id: 'dumb' for c in legal_cards}
+        # Safe: lowest from longest suit(s)
+        for s in longest_suits:
+            lowest = self._lowest_card(by_suit[s])
+            result[lowest.id] = 'safe'
+        # Risky: lowest from other suits
+        for s, cards in by_suit.items():
+            if s not in longest_suits:
+                lowest = self._lowest_card(cards)
+                if result[lowest.id] == 'dumb':
+                    result[lowest.id] = 'risky'
+
+        return [(c, result[c.id]) for c in legal_cards], 'one_on_one_second_player'
+
+    def _rule_suit_response_follower_last(self, legal_cards, ctx):
+        """Follow suit, follower, last to play.
+
+        1. Fellow follower not winning + can win → lowest winner is must
+        2. Otherwise → lowest is must
+        """
+        suit_cards = [c for c in legal_cards if c.suit == self._led_suit(ctx)]
+        if not suit_cards:
+            suit_cards = legal_cards
+
+        fellow_winning = self._fellow_follower_winning(ctx)
+        if not fellow_winning:
+            winner = self._lowest_winning_card(suit_cards, ctx)
+            if winner:
+                return [(winner, 'must')], 'suit_response_follower_last'
+
+        return [(self._lowest_card(suit_cards), 'must')], 'suit_response_follower_last'
+
+    def _rule_suit_response_follower_second_after_follower(self, legal_cards, ctx):
+        """Follow suit, follower, 2nd player, after fellow follower.
+
+        1. Fellow follower played highest remaining → lowest is must
+        2. Gap between my highest and fellow's card with remaining card in gap → highest is must
+        3. Otherwise → lowest is must
+        """
+        led_suit = self._led_suit(ctx)
+        suit_cards = [c for c in legal_cards if c.suit == led_suit]
+        if not suit_cards:
+            suit_cards = legal_cards
+
+        fellow_card = ctx.trick_cards[0][1]  # first card played by fellow follower
+        remaining = self._remaining_in_suit(led_suit, ctx)
+        remaining_ranks = {c.rank for c in remaining}
+
+        # Check if fellow played highest remaining
+        if not any(r > fellow_card.rank for r in remaining_ranks):
+            return [(self._lowest_card(suit_cards), 'must')], 'suit_response_follower_second_after_follower'
+
+        # Check for gap: my highest vs fellow's card
+        my_highest = self._highest_card(suit_cards)
+        if my_highest.rank > fellow_card.rank:
+            gap_ranks = {r for r in remaining_ranks if fellow_card.rank < r < my_highest.rank}
+            if gap_ranks:
+                return [(my_highest, 'must')], 'suit_response_follower_second_after_follower'
+
+        return [(self._lowest_card(suit_cards), 'must')], 'suit_response_follower_second_after_follower'
+
+    def _rule_suit_response_follower_second_after_leader(self, legal_cards, ctx):
+        """Follow suit, follower, 2nd player, after the leader (declarer).
+
+        1. Trump suit + Q played + A,K not played → lowest is must (svaka_dama_se_jase_sem_adutske)
+        2. Have higher card → lowest higher is must
+        3. Otherwise → lowest is must
+        """
+        led_suit = self._led_suit(ctx)
+        suit_cards = [c for c in legal_cards if c.suit == led_suit]
+        if not suit_cards:
+            suit_cards = legal_cards
+
+        leader_card = ctx.trick_cards[0][1]
+
+        # Rule 1: svaka_dama_se_jase_sem_adutske
+        if (ctx.trump_suit and led_suit == ctx.trump_suit
+                and leader_card.rank == 6):  # Q
+            # Check if A and K haven't been played yet
+            played_ranks = {c.rank for c in ctx.played_cards if c.suit == led_suit}
+            trick_ranks = {c.rank for _, c in ctx.trick_cards if c.suit == led_suit}
+            all_seen = played_ranks | trick_ranks
+            if 8 not in all_seen and 7 not in all_seen:  # A and K not played
+                return [(self._lowest_card(suit_cards), 'must')], 'suit_response_follower_second_after_leader'
+
+        # Rule 2: have higher card → lowest higher
+        higher = [c for c in suit_cards if c.rank > leader_card.rank]
+        if higher:
+            return [(self._lowest_card(higher), 'must')], 'suit_response_follower_second_after_leader'
+
+        # Rule 3: lowest
+        return [(self._lowest_card(suit_cards), 'must')], 'suit_response_follower_second_after_leader'
+
+    def _rule_suit_response_leader_last(self, legal_cards, ctx):
+        """Follow suit, leader/declarer, last to play.
+
+        1. Can win → lowest winner is must
+        2. Otherwise → lowest is must
+        """
+        suit_cards = [c for c in legal_cards if c.suit == self._led_suit(ctx)]
+        if not suit_cards:
+            suit_cards = legal_cards
+
+        winner = self._lowest_winning_card(suit_cards, ctx)
+        if winner:
+            return [(winner, 'must')], 'suit_response_leader_last'
+        return [(self._lowest_card(suit_cards), 'must')], 'suit_response_leader_last'
+
+    def _rule_suit_response_leader_second(self, legal_cards, ctx):
+        """Follow suit, leader/declarer, 2nd to play.
+
+        1. Card < Q played + have AQ + K among remaining → Q is must
+        2. Have higher card → highest is must
+        3. Otherwise → lowest is must
+        """
+        led_suit = self._led_suit(ctx)
+        suit_cards = [c for c in legal_cards if c.suit == led_suit]
+        if not suit_cards:
+            suit_cards = legal_cards
+
+        first_card = ctx.trick_cards[0][1]
+        my_ranks = {c.rank for c in suit_cards}
+        remaining = self._remaining_in_suit(led_suit, ctx)
+        remaining_ranks = {c.rank for c in remaining}
+
+        # Rule 1: card < Q played, have AQ, K remaining
+        if first_card.rank < 6 and 8 in my_ranks and 6 in my_ranks and 7 in remaining_ranks:
+            q_card = next(c for c in suit_cards if c.rank == 6)
+            return [(q_card, 'must')], 'suit_response_leader_second'
+
+        # Rule 2: highest card
+        higher = [c for c in suit_cards if c.rank > first_card.rank]
+        if higher:
+            return [(self._highest_card(higher), 'must')], 'suit_response_leader_second'
+
+        # Rule 3: lowest
+        return [(self._lowest_card(suit_cards), 'must')], 'suit_response_leader_second'
+
+    def _rule_trump_last(self, legal_cards, ctx):
+        """Respond with trump, last player.
+
+        1. Follower + fellow follower winning → lowest trump is must
+        2. Lowest card that wins trick is must
+        3. Otherwise → lowest is must
+        """
+        if not ctx.is_declarer and self._fellow_follower_winning(ctx):
+            return [(self._lowest_card(legal_cards), 'must')], 'trump_last'
+
+        winner = self._lowest_winning_card(legal_cards, ctx)
+        if winner:
+            # Declarer ruffing a non-trump trick with 2+ trumps: use second-lowest
+            # to preserve the lowest trump for cheaper future ruffing
+            trick_winner = _ctx_trick_winner(ctx)
+            if (ctx.is_declarer and trick_winner and
+                    trick_winner[1].suit != ctx.trump_suit and
+                    len(legal_cards) >= 2 and
+                    all(c.suit == ctx.trump_suit for c in legal_cards)):
+                sorted_trumps = sorted(legal_cards, key=lambda c: c.rank)
+                return [(sorted_trumps[1], 'must')], 'trump_last'
+            return [(winner, 'must')], 'trump_last'
+
+        return [(self._lowest_card(legal_cards), 'must')], 'trump_last'
+
+    def _rule_trump_follower_second_after_follower(self, legal_cards, ctx):
+        """Trump response, follower, 2nd, after fellow follower.
+
+        1. More than 1 remaining card in led suit → lowest is must
+        2. Otherwise → highest is must
+        """
+        led_suit = self._led_suit(ctx)
+        remaining = self._remaining_in_suit(led_suit, ctx)
+
+        if len(remaining) > 1:
+            return [(self._lowest_card(legal_cards), 'must')], 'trump_follower_second_after_follower'
+        return [(self._highest_card(legal_cards), 'must')], 'trump_follower_second_after_follower'
+
+    def _rule_trump_follower_second_after_leader(self, legal_cards, ctx):
+        """Trump response, follower, 2nd, after declarer.
+
+        1. Lowest is must
+        """
+        return [(self._lowest_card(legal_cards), 'must')], 'trump_follower_second_after_leader'
+
+    def _rule_trump_leader_second(self, legal_cards, ctx):
+        """Trump response, leader/declarer, 2nd to play.
+
+        1. More than 1 remaining card in led suit → lowest is must
+        2. Otherwise → highest is must
+        """
+        led_suit = self._led_suit(ctx)
+        remaining = self._remaining_in_suit(led_suit, ctx)
+
+        if len(remaining) > 1:
+            return [(self._lowest_card(legal_cards), 'must')], 'trump_leader_second'
+        return [(self._highest_card(legal_cards), 'must')], 'trump_leader_second'
+
+    def _rule_response_other_leader(self, legal_cards, ctx):
+        """Discard (no suit/trump available), leader/declarer.
+
+        1. Lowest from weak suit → safe (≤3 cards, 2+ higher unaccounted excluding top card)
+        2. Lowest from other suits → risky
+        3. Rest → dumb
+        """
+        by_suit = self._cards_by_suit(legal_cards)
+        result = {c.id: 'dumb' for c in legal_cards}
+
+        for suit, cards in by_suit.items():
+            if len(cards) <= 3:
+                top_card = cards[0]  # highest in suit
+                higher_unaccounted = _ctx_higher_unaccounted(top_card, ctx)
+                if higher_unaccounted >= 2:
+                    lowest = self._lowest_card(cards)
+                    result[lowest.id] = 'safe'
+                    continue
+            lowest = self._lowest_card(cards)
+            if result[lowest.id] == 'dumb':
+                result[lowest.id] = 'risky'
+
+        return [(c, result[c.id]) for c in legal_cards], 'response_other_leader'
+
+    def _rule_response_other_follower(self, legal_cards, ctx):
+        """Discard (no suit/trump), follower.
+
+        1. Lowest from longest suit(s) → safe
+        2. Lowest from other suits → risky
+        3. Rest → dumb
+        """
+        by_suit = self._cards_by_suit(legal_cards)
+        max_len = max(len(cards) for cards in by_suit.values())
+        longest_suits = [s for s, cards in by_suit.items() if len(cards) == max_len]
+
+        result = {c.id: 'dumb' for c in legal_cards}
+        for s in longest_suits:
+            lowest = self._lowest_card(by_suit[s])
+            result[lowest.id] = 'safe'
+        for s, cards in by_suit.items():
+            if s not in longest_suits:
+                lowest = self._lowest_card(cards)
+                if result[lowest.id] == 'dumb':
+                    result[lowest.id] = 'risky'
+
+        return [(c, result[c.id]) for c in legal_cards], 'response_other_follower'
+
+    def _rule_first_follower_through_follower(self, legal_cards, ctx):
+        """Leading, follower, next player is fellow follower (declarer plays last).
+
+        1. Singleton A (any suit) → safe (guaranteed trick)
+        2. Connected high (2+) in non-trump → second-highest safe
+        3. Low cards from short non-trump suit → safe
+        4. A in trump if solo → safe
+        5. Rest → dumb
+        """
+        by_suit = self._cards_by_suit(legal_cards)
+        result = {c.id: 'dumb' for c in legal_cards}
+
+        for suit, cards in by_suit.items():
+            # Singleton Ace in any suit → safe
+            if len(cards) == 1 and cards[0].rank == 8:
+                result[cards[0].id] = 'safe'
+                continue
+
+            if suit == ctx.trump_suit:
+                # Non-singleton trump → risky at best (don't waste)
+                if len(cards) == 1:
+                    result[cards[0].id] = 'risky'
+                continue
+
+            # Non-trump suits
+            connected = self._is_connected_high(cards, ctx)
+            if len(connected) >= 2:
+                # All connected cards are equivalent — mark all safe
+                for c in connected:
+                    result[c.id] = 'safe'
+                continue
+
+            if len(cards) <= 2:
+                # Short suit — lead lowest to probe
+                lowest = self._lowest_card(cards)
+                result[lowest.id] = 'safe'
+            else:
+                # Longer suit — lead lowest
+                lowest = self._lowest_card(cards)
+                result[lowest.id] = 'risky'
+
+        # Cross-suit best pick: singleton A > short non-trump lowest
+        # Promote all connected equivalents in the chosen suit
+        safe_cards = [c for c in legal_cards if result[c.id] == 'safe']
+        if len(safe_cards) > 1:
+            best_card = None
+            # Prefer singleton ace
+            for c in safe_cards:
+                sc = by_suit.get(c.suit, [])
+                if len(sc) == 1 and c.rank == 8:
+                    best_card = c
+                    break
+            if best_card is None:
+                # Prefer shortest non-trump suit's card
+                non_trump_safe = [c for c in safe_cards if c.suit != ctx.trump_suit]
+                if non_trump_safe:
+                    best_card = min(non_trump_safe, key=lambda c: (len(by_suit.get(c.suit, [])), c.rank))
+            if best_card:
+                suit_cards = by_suit.get(best_card.suit, [])
+                connected = self._is_connected_high(suit_cards, ctx)
+                promoted = set(c.id for c in connected) if len(connected) >= 2 else set()
+                promoted.add(best_card.id)
+                for cid in promoted:
+                    if result.get(cid) == 'safe':
+                        result[cid] = 'best'
+
+        return [(c, result[c.id]) for c in legal_cards], 'first_follower_through_follower'
+
+    def _rule_first_follower_through_leader(self, legal_cards, ctx):
+        """Leading, follower, next player is declarer.
+
+        1. Singleton A → safe (guaranteed trick)
+        2. Connected high (2+) → lowest of the connected group safe
+        3. Short suit (1-2 cards) → lowest safe
+        4. Longer suit → lowest risky
+        5. Rest → dumb
+        """
+        by_suit = self._cards_by_suit(legal_cards)
+        result = {c.id: 'dumb' for c in legal_cards}
+
+        for suit, cards in by_suit.items():
+            # Singleton Ace → guaranteed trick
+            if len(cards) == 1 and cards[0].rank == 8:
+                result[cards[0].id] = 'safe'
+                continue
+
+            connected = self._is_connected_high(cards, ctx)
+            if len(connected) >= 2:
+                # All connected cards are equivalent — mark all safe
+                for c in connected:
+                    result[c.id] = 'safe'
+                continue
+
+            if len(cards) <= 2:
+                # Short suit — lead lowest to probe
+                lowest = self._lowest_card(cards)
+                result[lowest.id] = 'safe'
+            else:
+                # Longer suit — lowest is risky
+                lowest = self._lowest_card(cards)
+                result[lowest.id] = 'risky'
+
+        # Cross-suit best pick: singleton A > shortest suit lowest
+        # Promote all connected equivalents in the chosen suit
+        safe_cards = [c for c in legal_cards if result[c.id] == 'safe']
+        if len(safe_cards) > 1:
+            best_card = None
+            for c in safe_cards:
+                sc = by_suit.get(c.suit, [])
+                if len(sc) == 1 and c.rank == 8:
+                    best_card = c
+                    break
+            if best_card is None:
+                best_card = min(safe_cards, key=lambda c: (len(by_suit.get(c.suit, [])), c.rank))
+            if best_card:
+                suit_cards = by_suit.get(best_card.suit, [])
+                connected = self._is_connected_high(suit_cards, ctx)
+                promoted = set(c.id for c in connected) if len(connected) >= 2 else set()
+                promoted.add(best_card.id)
+                for cid in promoted:
+                    if result.get(cid) == 'safe':
+                        result[cid] = 'best'
+
+        return [(c, result[c.id]) for c in legal_cards], 'first_follower_through_leader'
+
+
+# ---------------------------------------------------------------------------
+# TrojkaD — deterministic Trojka (no randomness in card selection)
+# ---------------------------------------------------------------------------
+
+class TrojkaD(Trojka):
+    """Deterministic variant of Trojka.
+
+    Reuses all Trojka heuristics and classification logic, but instead of
+    weighted random selection among same-category cards, picks the strongest
+    card deterministically:
+      - must → play it (same as Trojka)
+      - best → play it (same as Trojka)
+      - Among safe cards: pick highest suit, highest rank
+      - Among risky cards (if no safe): pick highest suit, highest rank
+      - Among dumb cards (if nothing else): pick highest suit, highest rank
+    """
+
+    def choose_card(self, legal_cards):
+        if len(legal_cards) == 1:
+            self._ranked_cards = [(legal_cards[0].id, 100.0)]
+            self._cards_played += 1
+            self._last_rule = "single_card"
+            return legal_cards[0].id
+
+        ctx = self._ctx
+        classifications, rule = self._classify_cards(legal_cards, ctx)
+        self._last_rule = rule
+
+        # Build weights for ranked_cards output
+        cat_weight = {'must': 999, 'best': self.WEIGHT_BEST,
+                      'safe': self.WEIGHT_SAFE, 'risky': self.WEIGHT_RISKY,
+                      'dumb': self.WEIGHT_DUMB}
+
+        self._ranked_cards = [(c.id, cat_weight.get(cat, 1)) for c, cat in classifications]
+
+        # Deterministic selection: must > best > safe > risky > dumb
+        # Within each category, pick lowest rank, then lowest suit value
+        def _card_key(card):
+            return (card.rank, card.suit.value)
+
+        for category in ('must', 'best', 'safe', 'risky', 'dumb'):
+            cards_in_cat = [c for c, cat in classifications if cat == category]
+            if cards_in_cat:
+                chosen = min(cards_in_cat, key=_card_key)
+                chosen = self._lowest_connected(chosen, legal_cards, ctx)
+                self._cards_played += 1
+                return chosen.id
+
+        # Fallback (should never reach)
+        self._cards_played += 1
+        return legal_cards[0].id
+
+    def _lowest_connected(self, card, legal_cards, ctx):
+        """Return the lowest card connected to `card` among legal_cards.
+
+        Two cards are connected if they are the same suit and every rank
+        between them is either in the player's hand or already played.
+        """
+        suit = card.suit
+        same_suit = sorted([c for c in legal_cards if c.suit == suit],
+                           key=lambda c: c.rank)
+        if len(same_suit) <= 1:
+            return card
+
+        # Ranks accounted for: in hand or already played (completed tricks)
+        # Do NOT include trick_cards — those are still in play on the table
+        accounted = set()
+        for c in ctx.my_hand:
+            if c.suit == suit:
+                accounted.add(c.rank)
+        for c in ctx.played_cards:
+            if c.suit == suit:
+                accounted.add(c.rank)
+
+        # Walk down from card.rank, checking that every rank in the gap is accounted for
+        best = card
+        for c in same_suit:
+            if c.rank >= card.rank:
+                continue
+            # Check all ranks between c and card are accounted for
+            gap_filled = True
+            for r in range(c.rank + 1, card.rank):
+                if r not in accounted:
+                    gap_filled = False
+                    break
+            if gap_filled:
+                best = c
+            else:
+                break  # gap found, stop descending
+
+        return best
 
 
 # ---------------------------------------------------------------------------

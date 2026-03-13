@@ -4,14 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preferans</title>
-    <link rel="stylesheet" href="style.css?v=23">
+    <link rel="stylesheet" href="style.css?v=103">
 </head>
 <body>
     <div id="page-container">
         <!-- 1. Toolbar -->
         <div id="toolbar">
-            <span class="title">preferans</span>
-            <button id="new-game-btn">New Game</button>
+            <div id="toolbar-row1">
+                <button id="new-game-btn">New Game</button>
+                <span id="game-id-label">game: <span id="game-id-display">—</span></span>
+            </div>
+            <div id="toolbar-row2">
+                <select id="player-p1" class="player-select"></select>
+                <select id="player-p2" class="player-select"></select>
+                <select id="player-p3" class="player-select"></select>
+            </div>
         </div>
 
         <!-- 2. Command bar (fixed, always present) -->
@@ -51,6 +58,6 @@
             document.getElementById('agent-panel').style.display = 'none';
         }
     </script>
-    <script src="app.js?v=35"></script>
+    <script src="app.js?v=42"></script>
 </body>
 </html>

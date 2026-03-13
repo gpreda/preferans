@@ -2,6 +2,9 @@ from flask import Flask, send_from_directory, jsonify, Response, request
 from flask_cors import CORS
 import os
 import random
+import logging
+import time
+from datetime import datetime
 import requests as http
 
 # Get absolute path to web folder
@@ -11,7 +14,7 @@ WEB_DIR = os.path.join(BASE_DIR, 'web')
 # Import player strategy classes
 import sys as _sys
 _sys.path.insert(0, BASE_DIR)
-from PrefTestSingleGame import PlayerAlice, PlayerBob, PlayerCarol, NeuralPlayer, Sim3000, make_simsim_cls, CardPlayContext, BasePlayer
+from PrefTestSingleGame import PlayerAlice, PlayerBob, PlayerCarol, NeuralPlayer, Sim3000, make_simsim_cls, CardPlayContext, BasePlayer, Trojka
 from models import Card as _Card, NAME_TO_SUIT as _NAME_TO_SUIT
 
 PLAYER_CLASSES = {
@@ -82,8 +85,33 @@ def handle_exception(e):
 # Engine service URL (unified)
 ENGINE_URL = os.environ.get('ENGINE_URL', 'http://localhost:3001')
 
-# Single game session
-session = None
+# Game sessions: {game_id: session_dict}
+sessions = {}
+MAX_SESSIONS = 100
+SESSION_TIMEOUT = 3600  # 1 hour
+
+
+def _get_session(game_id=None):
+    """Resolve session from explicit game_id, request param, or request body."""
+    if game_id is None:
+        game_id = request.args.get('game_id')
+    if game_id is None:
+        data = request.get_json(silent=True) or {}
+        game_id = data.get('game_id')
+    if game_id and game_id in sessions:
+        return sessions[game_id]
+    return None
+
+
+def _cleanup_sessions():
+    """Remove old sessions if too many exist."""
+    if len(sessions) <= MAX_SESSIONS:
+        return
+    now = time.time()
+    expired = [gid for gid, s in sessions.items()
+               if now - s.get('_created_at', 0) > SESSION_TIMEOUT]
+    for gid in expired:
+        del sessions[gid]
 
 # Agent service URL (independent process)
 AGENT_URL = os.environ.get('AGENT_URL', 'http://localhost:3002')
@@ -304,7 +332,7 @@ def _safe_json(r):
         return {'error': r.text or 'Unknown engine error'}
 
 
-def _engine_commands():
+def _engine_commands(session):
     """Get current state from unified engine service."""
     try:
         r = http.get(f'{ENGINE_URL}/commands',
@@ -315,7 +343,7 @@ def _engine_commands():
         raise RuntimeError(f'Engine service error (commands): {e}')
 
 
-def _engine_execute(cmd_idx):
+def _engine_execute(session, cmd_idx):
     """Execute a command on the unified engine service."""
     try:
         r = http.post(f'{ENGINE_URL}/execute', json={
@@ -327,9 +355,9 @@ def _engine_execute(cmd_idx):
         raise RuntimeError(f'Engine service error (execute): {e}')
 
 
-def _fetch_scoring():
+def _fetch_scoring(session):
     """Fetch scoring results from engine and store in session."""
-    cmds = _engine_commands()
+    cmds = _engine_commands(session)
     scoring = cmds.get('scoring')
     if scoring:
         session['scoring_data'] = scoring
@@ -337,28 +365,175 @@ def _fetch_scoring():
 
 AI_NAMES = ['S50S20a-A', 'S20S10a-A', 'Alice', 'Sim50-Alice', 'Sim10-Alice']
 
+# ---------------------------------------------------------------------------
+# Game logging
+# ---------------------------------------------------------------------------
+GAME_LOG_DIR = os.path.join(BASE_DIR, 'logs', 'games')
+os.makedirs(GAME_LOG_DIR, exist_ok=True)
+
+_game_logger = logging.getLogger('game_log')
+_game_logger.setLevel(logging.INFO)
+_game_log_handler = logging.FileHandler(
+    os.path.join(GAME_LOG_DIR, 'games.log'), encoding='utf-8')
+_game_log_handler.setFormatter(logging.Formatter('%(message)s'))
+_game_logger.addHandler(_game_log_handler)
+_game_logger.propagate = False
+
+
+BENCHMARK_FILE = os.path.join(BASE_DIR, 'games_benchmark.txt')
+
+
+def _append_benchmark(session):
+    """Append game data to benchmark file for offline re-evaluation."""
+    import json
+    s = session
+    if not s:
+        return
+    reason = s.get('scoring_reason')
+    if reason == 'all_pass':
+        return  # skip redeals — no meaningful game to replay
+
+    initial_hands = s.get('initial_hands', {})
+    initial_talon = s.get('initial_talon', [])
+    contract = s.get('contract')
+    declarer = s.get('declarer')
+    followers = s.get('followers', [])
+    whist_actions = s.get('whist_actions', {})
+    discarded = s.get('discarded', [])
+    scoring = s.get('scoring_data')
+    tricks_per_player = s.get('tricks_per_player', {})
+
+    record = {
+        'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'hands': initial_hands,
+        'talon': initial_talon,
+        'declarer': declarer,
+        'contract': contract,
+        'followers': followers,
+        'whist_actions': whist_actions,
+        'discarded': discarded,
+        'tricks_per_player': tricks_per_player,
+        'scoring': scoring,
+        'no_followers': reason == 'no_followers',
+    }
+
+    try:
+        with open(BENCHMARK_FILE, 'a') as f:
+            f.write(json.dumps(record) + '\n')
+    except Exception as e:
+        logging.getLogger(__name__).error(f'Failed to write benchmark: {e}')
+
+
+def _write_game_log(session):
+    """Write a concise game summary to the log file."""
+    s = session
+    if not s:
+        return
+    ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    players = s.get('players', {})
+    lines = [
+        f'=== Game {s.get("game_id", "?")} | {ts} ===',
+        f'Players: {", ".join(f"P{p} {n}" for p, n in sorted(players.items()))}',
+        f'Human: P{s.get("human", "?")}',
+    ]
+
+    # Initial hands
+    for p in sorted(players):
+        h = s.get('initial_hands', {}).get(str(p), [])
+        lines.append(f'P{p} hand: {" ".join(h)}')
+    talon = s.get('initial_talon', [])
+    if talon:
+        lines.append(f'Talon: {" ".join(talon)}')
+
+    # Contract
+    contract = s.get('contract')
+    declarer = s.get('declarer')
+    reason = s.get('scoring_reason')
+    if reason == 'all_pass':
+        lines.append('Result: All pass (redeal)')
+    elif reason == 'no_followers':
+        lines.append(f'Declarer: P{declarer} | Contract: {contract} | No followers')
+    elif contract:
+        ctype = contract.get('type', '?')
+        trump = contract.get('trump', '')
+        level = contract.get('level', '')
+        lines.append(f'Declarer: P{declarer} | Contract: {ctype} {trump} level={level}')
+        followers = s.get('followers', [])
+        whist_actions = s.get('whist_actions', {})
+        lines.append(f'Followers: {followers} | Whist: {whist_actions}')
+        discarded = s.get('discarded', [])
+        if discarded:
+            lines.append(f'Discarded: {" ".join(discarded)}')
+
+    # Tricks from action_log
+    action_log = s.get('action_log', [])
+    trick_num = 0
+    trick_plays = []
+    for entry in action_log:
+        if entry.get('phase') != 'playing':
+            continue
+        p = entry.get('player')
+        action = entry.get('action', '')
+        trick_plays.append(f'P{p} {action}')
+        # Check if trick is complete (2 or 3 players depending on active)
+        active_count = len(s.get('active', [1, 2, 3]))
+        if len(trick_plays) >= active_count:
+            trick_num += 1
+            lines.append(f'  Trick {trick_num}: {" | ".join(trick_plays)}')
+            trick_plays = []
+    if trick_plays:
+        trick_num += 1
+        lines.append(f'  Trick {trick_num}: {" | ".join(trick_plays)} (incomplete)')
+
+    # Scoring
+    scoring = s.get('scoring_data')
+    tpp = s.get('tricks_per_player', {})
+    if tpp:
+        lines.append(f'Tricks: {", ".join(f"P{p}={t}" for p, t in sorted(tpp.items()))}')
+    if scoring:
+        lines.append(f'Scoring: {scoring}')
+
+    lines.append('')  # blank line separator
+    _game_logger.info('\n'.join(lines))
+
 
 @app.route('/api/game/new', methods=['POST'])
 def new_game():
-    global session
+    _cleanup_sessions()
 
     data = request.get_json() or {}
     debug = bool(data.get('debug'))
+    picked = data.get('players')  # e.g. ['Sim50T', 'Alice', 'Human']
 
     r = http.post(f'{ENGINE_URL}/new-game', json={}).json()
 
-    ai_names = random.sample(AI_NAMES, 2)
-
-    # Randomise human position (1, 2, or 3)
-    positions = [1, 2, 3]
-    random.shuffle(positions)
-    human = positions[0]
-    players = {human: 'You', positions[1]: ai_names[0], positions[2]: ai_names[1]}
+    # Build player map from client selection (or fall back to random)
+    if picked and len(picked) == 3:
+        # Shuffle positions randomly
+        positions = [1, 2, 3]
+        random.shuffle(positions)
+        players = {}
+        human = None
+        for i, name in enumerate(picked):
+            pos = positions[i]
+            if name == 'Human':
+                players[pos] = 'You'
+                human = pos
+            else:
+                players[pos] = name
+        if human is None:
+            human = 0  # all-AI game
+    else:
+        ai_names = random.sample(AI_NAMES, 2)
+        positions = [1, 2, 3]
+        random.shuffle(positions)
+        human = positions[0]
+        players = {human: 'You', positions[1]: ai_names[0], positions[2]: ai_names[1]}
 
     # Instantiate AI strategies
     strategies = {}
     for pos, name in players.items():
-        if pos == human:
+        if name == 'You':
             continue
         if name == 'S50S20a-A':
             helper_cls = make_simsim_cls(num_simulations=20, helper_cls=PlayerAlice, adaptive=True)
@@ -367,21 +542,36 @@ def new_game():
             helper_cls = make_simsim_cls(num_simulations=10, helper_cls=PlayerAlice, adaptive=True)
             strategies[pos] = Sim3000(name, num_simulations=20, helper_cls=helper_cls, adaptive=True)
         elif name == 'Alice':
-            strategies[pos] = PlayerAlice(name)
+            strategies[pos] = PlayerAlice(name=name)
+        elif name == 'Trojka':
+            strategies[pos] = Trojka(name=name)
         elif name == 'Sim10-Alice':
             strategies[pos] = Sim3000(name, num_simulations=10, helper_cls=PlayerAlice)
         elif name == 'Sim50-Alice':
             strategies[pos] = Sim3000(name, num_simulations=50, helper_cls=PlayerAlice)
+        elif name == 'Sim50T':
+            strategies[pos] = Sim3000(name, num_simulations=50, helper_cls=Trojka)
         elif name == 'Neural':
             profile_name, aggr = random.choice(NEURAL_PROFILES)
             players[pos] = profile_name
             strategies[pos] = NeuralPlayer(profile_name, aggressiveness=aggr)
+        elif name.startswith('Bot:'):
+            from bot_db import get_bot, get_bot_functions
+            bot_id = int(name.split(':')[1])
+            bot = get_bot(bot_id)
+            if bot:
+                funcs = get_bot_functions(bot_id)
+                func_code = {f['function_name']: f['code'] for f in funcs}
+                from prefbot import PrefBot
+                strategies[pos] = PrefBot(bot['name'], func_code)
+                players[pos] = bot['name']
         elif name in PLAYER_CLASSES:
             strategies[pos] = PLAYER_CLASSES[name]()
 
     import copy
+    game_id = r['game_id']
     session = {
-        'game_id': r['game_id'],
+        'game_id': game_id,
         'phase': 'auction',
         'hands': r['hands'],
         'talon': r['talon'],
@@ -394,21 +584,24 @@ def new_game():
         'trick_cards': [],
         'tricks_played': 0,
         'played_cards_history': [],
+        'played_tricks': [],  # list of completed tricks: [[(player, card_id), ...], ...]
         'players': players,
         'human': human,
         'discarded': [],
         'debug': debug,
         'action_log': [],
         'strategies': strategies,
+        '_created_at': time.time(),
     }
+    sessions[game_id] = session
 
-    return jsonify(_build_state())
+    return jsonify(_build_state(session))
 
 
 @app.route('/api/game/ai-move', methods=['POST'])
 def ai_move():
     """AI auto-plays: pick a random valid command/card."""
-    global session
+    session = _get_session()
     if not session:
         return jsonify({'error': 'No active game'}), 400
 
@@ -416,7 +609,7 @@ def ai_move():
     human = session.get('human', 1)
 
     if phase in ('auction', 'exchanging', 'whisting'):
-        cmds = _engine_commands()
+        cmds = _engine_commands(session)
         player = cmds.get('player_position')
         if player == human:
             return jsonify({'error': 'Not AI turn'}), 400
@@ -474,7 +667,7 @@ def ai_move():
 
         chosen = commands[cmd_idx - 1]
         session['_ai_action'] = {'player': player, 'command': chosen}
-        return _exec_bidding_phase({'command_id': cmd_idx})
+        return _exec_bidding_phase(session, {'command_id': cmd_idx})
 
     elif phase == 'playing':
         active = session.get('active', [1, 2, 3])
@@ -519,6 +712,26 @@ def ai_move():
                 _Card.from_id(cid)
                 for cid in session.get('played_cards_history', [])
             ]
+            # Talon and remaining cards
+            is_in_hand = contract.get('is_in_hand', False) if contract else False
+            talon_cards = [] if is_in_hand else [
+                _Card.from_id(cid) for cid in session.get('initial_talon', [])
+            ]
+            # Remaining cards: all active hands minus my hand, minus played, minus trick
+            played_ids = set(c.id for c in played_card_objs)
+            trick_card_ids = set(c.id for _, c in trick_cards_tuples)
+            my_ids = set(c.id for c in strat._hand)
+            remaining = []
+            for pos_str, hand_ids in session.get('hands', {}).items():
+                for cid in hand_ids:
+                    if cid not in played_ids and cid not in trick_card_ids and cid not in my_ids:
+                        remaining.append(_Card.from_id(cid))
+            # Build played_tricks for void tracking
+            played_tricks_ctx = []
+            for pt in session.get('played_tricks', []):
+                played_tricks_ctx.append([
+                    (p, _Card.from_id(c)) for p, c in pt
+                ])
             ctx = CardPlayContext(
                 trick_cards=trick_cards_tuples,
                 declarer_id=session.get('declarer', 1),
@@ -530,6 +743,10 @@ def ai_move():
                 is_declarer=(current == session.get('declarer')),
                 tricks_played=session.get('tricks_played', 0),
                 my_hand=strat._hand,
+                talon_cards=talon_cards,
+                is_in_hand=is_in_hand,
+                remaining_cards=remaining,
+                played_tricks=played_tricks_ctx,
             )
             strat._ctx = ctx
             # Pass tricks-per-player for Sim3000 (no _rnd in web context)
@@ -539,21 +756,22 @@ def ai_move():
         else:
             card = random.choice(legal)
         session['_ai_action'] = {'player': current, 'card': card}
-        return _exec_play({'player': current, 'card': card})
+        return _exec_play(session, {'player': current, 'card': card})
 
     return jsonify({'error': f'Cannot AI move in phase {phase}'}), 400
 
 
 @app.route('/api/game/state')
 def game_state():
+    session = _get_session()
     if not session:
         return jsonify({'error': 'No active game'}), 400
-    return jsonify(_build_state())
+    return jsonify(_build_state(session))
 
 
 @app.route('/api/game/execute', methods=['POST'])
 def game_execute():
-    global session
+    session = _get_session()
     if not session:
         return jsonify({'error': 'No active game'}), 400
 
@@ -562,9 +780,9 @@ def game_execute():
 
     # Pre-play phases all route through the bidding engine
     if phase in ('auction', 'exchanging', 'whisting'):
-        return _exec_bidding_phase(data)
+        return _exec_bidding_phase(session, data)
     elif phase == 'exchange_cards':
-        return _exec_exchange_cards(data)
+        return _exec_exchange_cards(session, data)
     elif phase == 'playing':
         # Translate command_id into player + card for human plays
         cmd_idx = data.get('command_id')
@@ -584,19 +802,19 @@ def game_execute():
                     return jsonify({'error': 'Invalid command_id'}), 400
             else:
                 return jsonify({'error': 'Could not get legal cards'}), 400
-        return _exec_play(data)
+        return _exec_play(session, data)
     elif phase == 'scoring':
         return jsonify({'error': 'Game is over'}), 400
     else:
         return jsonify({'error': f'Unknown phase {phase}'}), 400
 
 
-def _exec_bidding_phase(data):
+def _exec_bidding_phase(session, data):
     """Execute a command on the engine service, then sync phase."""
     cmd_idx = data.get('command_id')
 
     # Before executing, check if this is a suit choice — remember it
-    cmds = _engine_commands()
+    cmds = _engine_commands(session)
     commands = cmds.get('commands', [])
     suit_map = {'Spades': 'spades', 'Diamonds': 'diamonds',
                 'Clubs': 'clubs', 'Hearts': 'hearts'}
@@ -618,17 +836,17 @@ def _exec_bidding_phase(data):
         'phase': session['phase'],
     })
 
-    r = _engine_execute(cmd_idx)
+    r = _engine_execute(session, cmd_idx)
     if not r.ok:
         return jsonify(_safe_json(r)), r.status_code
 
-    _sync_phase()
-    return jsonify(_build_state())
+    _sync_phase(session)
+    return jsonify(_build_state(session))
 
 
-def _sync_phase():
+def _sync_phase(session):
     """Read engine service state and update session phase accordingly."""
-    cmds = _engine_commands()
+    cmds = _engine_commands(session)
     engine_phase = cmds.get('phase', '')
     ctx = cmds.get('context')
     commands = cmds.get('commands', [])
@@ -647,6 +865,7 @@ def _sync_phase():
         if not ctx or ctx[0] is None:
             session['phase'] = 'scoring'
             session['scoring_reason'] = 'all_pass'
+            _write_game_log(session)
         else:
             # ctx = [declarer_pos, contract_type, [[player_pos, action], ...]]
             declarer = ctx[0]
@@ -658,21 +877,23 @@ def _sync_phase():
             session['contract_type_raw'] = ctype  # 'suit' or 'betl' or 'sans'
 
             # Determine contract details
+            is_in_hand = cmds.get('is_in_hand', False)
             if ctype == 'betl':
-                session['contract'] = {'type': 'betl', 'trump': None, 'level': 6}
+                session['contract'] = {'type': 'betl', 'trump': None, 'level': 6, 'is_in_hand': is_in_hand}
             elif ctype == 'sans':
-                session['contract'] = {'type': 'sans', 'trump': None, 'level': 7}
+                session['contract'] = {'type': 'sans', 'trump': None, 'level': 7, 'is_in_hand': is_in_hand}
             else:
                 # Suit contract — trump from exchange phase or engine (in-hand)
                 trump = session.get('chosen_trump') or cmds.get('trump')
-                level = SUIT_TO_LEVEL.get(trump, 2)
-                session['contract'] = {'type': 'suit', 'trump': trump, 'level': level}
+                level = cmds.get('bid_level') or SUIT_TO_LEVEL.get(trump, 2)
+                session['contract'] = {'type': 'suit', 'trump': trump, 'level': level, 'is_in_hand': is_in_hand}
 
             # If no followers, declarer wins without playing
             if not followers:
                 session['phase'] = 'scoring'
                 session['scoring_reason'] = 'no_followers'
-                _fetch_scoring()
+                _fetch_scoring(session)
+                _write_game_log(session)
                 return
 
             session['active'] = [declarer] + followers
@@ -708,7 +929,7 @@ def _sync_phase():
             human = session.get('human', 1)
             if declarer != human:
                 session['phase'] = 'exchange_cards'
-                _ai_exchange()
+                _ai_exchange(session)
             else:
                 session['phase'] = 'exchange_cards'
         else:
@@ -730,12 +951,13 @@ def _sync_phase():
         # All players passed — treat as all-pass scoring
         session['phase'] = 'scoring'
         session['scoring_reason'] = 'all_pass'
+        _write_game_log(session)
 
     else:
         session['phase'] = engine_phase
 
 
-def _exec_exchange_cards(data):
+def _exec_exchange_cards(session, data):
     """Player discards 2 cards via SM execute flow."""
     cards = data.get('cards', [])
     if len(cards) != 2:
@@ -745,7 +967,7 @@ def _exec_exchange_cards(data):
     decl = session['declarer']
 
     # Get current available cards from engine (hand + talon, as indices)
-    cmds1 = _engine_commands()
+    cmds1 = _engine_commands(session)
     commands1 = cmds1.get('commands', [])
 
     # Get actual card list from engine to map card IDs to indices
@@ -760,17 +982,17 @@ def _exec_exchange_cards(data):
         idx1 = all_cards.index(cards[0]) + 1
     except ValueError:
         return jsonify({'error': f'Card {cards[0]} not found'}), 400
-    _engine_execute(idx1)
+    _engine_execute(session, idx1)
 
     # Second discard: get updated available list and find index
-    cmds2 = _engine_commands()
+    cmds2 = _engine_commands(session)
     commands2 = cmds2.get('commands', [])
     remaining = [c for c in all_cards if c != cards[0]]
     try:
         idx2 = remaining.index(cards[1]) + 1
     except ValueError:
         return jsonify({'error': f'Card {cards[1]} not found'}), 400
-    _engine_execute(idx2)
+    _engine_execute(session, idx2)
 
     # Update session
     r = http.get(f'{ENGINE_URL}/hand', params={'game_id': gid, 'player': decl})
@@ -780,12 +1002,12 @@ def _exec_exchange_cards(data):
     session['discarded'] = cards
 
     # Sync to next phase (contract selection)
-    _sync_phase()
+    _sync_phase(session)
 
-    return jsonify(_build_state())
+    return jsonify(_build_state(session))
 
 
-def _ai_exchange():
+def _ai_exchange(session):
     """AI declarer auto-discards 2 random cards via SM execute flow."""
     gid = session['game_id']
     decl = session['declarer']
@@ -809,7 +1031,7 @@ def _ai_exchange():
             idx1 = all_cards.index(discard_ids[0]) + 1
         except (ValueError, IndexError):
             idx1 = 1
-        _engine_execute(idx1)
+        _engine_execute(session, idx1)
 
         # Second discard (re-index after first removal)
         remaining = [c for c in all_cards if c != discard_ids[0]]
@@ -817,22 +1039,22 @@ def _ai_exchange():
             idx2 = remaining.index(discard_ids[1]) + 1
         except (ValueError, IndexError):
             idx2 = 1
-        _engine_execute(idx2)
+        _engine_execute(session, idx2)
     else:
         # Fallback to random
-        cmds1 = _engine_commands()
+        cmds1 = _engine_commands(session)
         commands1 = cmds1.get('commands', [])
         if not commands1:
             return
         idx1 = random.randint(1, len(commands1))
-        _engine_execute(idx1)
+        _engine_execute(session, idx1)
 
-        cmds2 = _engine_commands()
+        cmds2 = _engine_commands(session)
         commands2 = cmds2.get('commands', [])
         if not commands2:
             return
         idx2 = random.randint(1, len(commands2))
-        _engine_execute(idx2)
+        _engine_execute(session, idx2)
 
     # Update session hands from engine
     r = http.get(f'{ENGINE_URL}/hand', params={'game_id': gid, 'player': decl})
@@ -846,10 +1068,10 @@ def _ai_exchange():
     session['talon'] = []
 
     # Sync to next phase (contract selection)
-    _sync_phase()
+    _sync_phase(session)
 
 
-def _exec_play(data):
+def _exec_play(session, data):
     card = data.get('card')
     player = data.get('player')
 
@@ -883,7 +1105,10 @@ def _exec_play(data):
         tpp = session.setdefault('tricks_per_player', {str(p): 0 for p in [1, 2, 3]})
         tpp[str(winner)] = tpp.get(str(winner), 0) + 1
         session['trick_lead'] = winner
-        # Track played cards for CardPlayContext
+        # Track played cards and completed trick for CardPlayContext
+        session.setdefault('played_tricks', []).append(
+            [(tc['player'], tc['card']) for tc in session['trick_cards']]
+        )
         for tc in session['trick_cards']:
             session.setdefault('played_cards_history', []).append(tc['card'])
         session['last_trick'] = session['trick_cards']
@@ -898,14 +1123,15 @@ def _exec_play(data):
                               params={'game_id': session['game_id']}).json()
             session['tricks_won'] = tricks['tricks']
             session['phase'] = 'scoring'
-            _fetch_scoring()
+            _fetch_scoring(session)
+            _write_game_log(session)
 
-    state = _build_state()
+    state = _build_state(session)
     state['play_result'] = result
     return jsonify(state)
 
 
-def _build_state():
+def _build_state(session):
     s = session
     human = s.get('human', 1)
     players = s.get('players', {1: 'You', 2: 'P2', 3: 'P3'})
@@ -962,7 +1188,7 @@ def _build_state():
 
     if s['phase'] in ('auction', 'exchanging', 'whisting'):
         # These phases are driven by the engine service
-        cmds = _engine_commands()
+        cmds = _engine_commands(session)
         state['commands'] = cmds.get('commands', [])
         state['player_on_move'] = cmds.get('player_position')
         state['be_phase'] = cmds.get('phase')
@@ -1014,6 +1240,42 @@ def _build_state():
         state['initial_talon'] = s.get('initial_talon', [])
 
     return state
+
+
+# === Save Game to Benchmark ===
+
+@app.route('/api/game/save-benchmark', methods=['POST'])
+def save_benchmark():
+    """Save current game to benchmark file for offline re-evaluation."""
+    import json as _json
+    s = _get_session()
+    if not s or s.get('phase') != 'scoring':
+        return jsonify({'error': 'No completed game to save'}), 400
+
+    reason = s.get('scoring_reason')
+    if reason == 'all_pass':
+        return jsonify({'error': 'All-pass games cannot be benchmarked'}), 400
+
+    record = {
+        'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'hands': s.get('initial_hands', {}),
+        'talon': s.get('initial_talon', []),
+        'declarer': s.get('declarer'),
+        'contract': s.get('contract'),
+        'followers': s.get('followers', []),
+        'whist_actions': s.get('whist_actions', {}),
+        'discarded': s.get('discarded', []),
+        'tricks_per_player': s.get('tricks_per_player', {}),
+        'scoring': s.get('scoring_data'),
+        'no_followers': reason == 'no_followers',
+    }
+
+    try:
+        with open(BENCHMARK_FILE, 'a') as f:
+            f.write(_json.dumps(record) + '\n')
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # === Simulations Tests Page ===
@@ -1086,7 +1348,7 @@ def delete_sim_step(step_id):
 
 # ── Agent endpoints (proxy to agent_service on port 3002) ─────────────
 
-def _build_agent_prompt(question):
+def _build_agent_prompt(session, question):
     """Build the prompt string with game context for the agent service."""
     parts = []
 
@@ -1163,7 +1425,8 @@ def agent_ask():
     if not question:
         return jsonify({'error': 'No question provided'}), 400
 
-    prompt = _build_agent_prompt(question)
+    session = _get_session(data.get('game_id'))
+    prompt = _build_agent_prompt(session, question)
     try:
         r = http.post(f'{AGENT_URL}/ask',
                        json={'prompt': prompt, 'question': question}, timeout=5)
@@ -1255,6 +1518,361 @@ def hand_probability():
 
     result['encoding'] = encoding
     return jsonify(result)
+
+
+# ── Available Players ──────────────────────────────────────────────────
+
+@app.route('/api/players', methods=['GET'])
+def list_players():
+    """List all available player types (built-in + user bots)."""
+    from bot_db import get_all_bots
+    builtin = ['Sim50T', 'Alice', 'Trojka', 'Sim50-Alice', 'Human']
+    bots = get_all_bots()
+    bot_entries = [{'name': f'Bot:{b["id"]}', 'label': b['name']} for b in bots]
+    result = [{'name': n, 'label': n} for n in builtin] + bot_entries
+    return jsonify(result)
+
+
+# ── Bot Editor ─────────────────────────────────────────────────────────
+
+@app.route('/bot')
+def bot_editor():
+    """Serve the bot editor page."""
+    return send_from_directory(WEB_DIR, 'bot.html')
+
+
+@app.route('/api/bots', methods=['GET'])
+def list_bots():
+    """List all bots."""
+    from bot_db import get_all_bots
+    bots = get_all_bots()
+    return jsonify([dict(b) for b in bots])
+
+
+@app.route('/api/bots', methods=['POST'])
+def create_bot():
+    """Create a new bot."""
+    from bot_db import create_bot as db_create_bot
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    try:
+        bot = db_create_bot(name)
+        return jsonify(dict(bot)), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/bots/<int:bot_id>', methods=['GET'])
+def get_bot(bot_id):
+    """Get a bot with all its functions."""
+    from bot_db import get_bot as db_get_bot, get_bot_functions
+    bot = db_get_bot(bot_id)
+    if not bot:
+        return jsonify({'error': 'Bot not found'}), 404
+    result = dict(bot)
+    funcs = get_bot_functions(bot_id)
+    result['functions'] = {f['function_name']: f['code'] for f in funcs}
+    return jsonify(result)
+
+
+@app.route('/api/bots/<int:bot_id>', methods=['DELETE'])
+def delete_bot_route(bot_id):
+    """Delete a bot."""
+    from bot_db import delete_bot as db_delete_bot
+    if db_delete_bot(bot_id):
+        return jsonify({'success': True})
+    return jsonify({'error': 'Bot not found'}), 404
+
+
+@app.route('/api/bots/<int:bot_id>', methods=['PATCH'])
+def update_bot_route(bot_id):
+    """Rename a bot."""
+    from bot_db import rename_bot
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    try:
+        result = rename_bot(bot_id, name)
+        if result:
+            return jsonify(dict(result))
+        return jsonify({'error': 'Bot not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/bots/<int:bot_id>/functions/<function_name>', methods=['PUT'])
+def save_bot_function(bot_id, function_name):
+    """Save a bot function's code."""
+    from bot_db import upsert_bot_function, get_bot as db_get_bot
+    valid_functions = ['choose_bid', 'choose_discard', 'choose_contract',
+                       'choose_whist_action', 'choose_card']
+    if function_name not in valid_functions:
+        return jsonify({'error': f'Invalid function name. Must be one of: {valid_functions}'}), 400
+    bot = db_get_bot(bot_id)
+    if not bot:
+        return jsonify({'error': 'Bot not found'}), 404
+    data = request.get_json()
+    code = data.get('code', '')
+    # Validate syntax
+    if code.strip():
+        try:
+            compile(code, f'<bot:{bot["name"]}:{function_name}>', 'exec')
+        except SyntaxError as e:
+            return jsonify({'error': f'Syntax error at line {e.lineno}: {e.msg}'}), 400
+    result = upsert_bot_function(bot_id, function_name, code)
+    return jsonify(dict(result))
+
+
+# ── Bot Benchmark ──────────────────────────────────────────────────────
+
+@app.route('/api/bots/<int:bot_id>/benchmark', methods=['POST'])
+def benchmark_bot(bot_id):
+    """Run a quick benchmark: Bot vs Alice vs Sim50T across all 6 permutations."""
+    import json as _json
+    import time as _time
+    from itertools import permutations as _perms
+    from bot_db import get_bot as db_get_bot, get_bot_functions
+    from prefbot import PrefBot
+    from game_engine_service import GameSession
+    from models import Card as _Card, Contract, RoundPhase, ContractType, NAME_TO_SUIT as _NTS
+
+    bot = db_get_bot(bot_id)
+    if not bot:
+        return jsonify({'error': 'Bot not found'}), 404
+
+    funcs = get_bot_functions(bot_id)
+    func_code = {f['function_name']: f['code'] for f in funcs}
+    bot_name = bot['name']
+
+    benchmark_file = os.path.join(BASE_DIR, 'games_benchmark.txt')
+    if not os.path.exists(benchmark_file):
+        return jsonify({'error': 'No benchmark file found'}), 404
+
+    with open(benchmark_file) as f:
+        records = [_json.loads(line) for line in f if line.strip()]
+
+    if not records:
+        return jsonify({'error': 'No games in benchmark file'}), 400
+
+    player_types = [bot_name, 'Alice', 'Sim50T']
+    all_perms = list(_perms(player_types, 3))
+
+    def make_strat(ptype, name):
+        if ptype == bot_name:
+            return PrefBot(name, func_code)
+        elif ptype == 'Alice':
+            return PlayerAlice(name=name)
+        elif ptype == 'Sim50T':
+            return Sim3000(name, num_simulations=50, helper_cls=Trojka)
+        raise ValueError(f"Unknown: {ptype}")
+
+    type_scores = {pt: 0.0 for pt in player_types}
+    type_games = {pt: 0 for pt in player_types}
+    type_dcl_scores = {pt: 0.0 for pt in player_types}
+    type_dcl_count = {pt: 0 for pt in player_types}
+    type_def_scores = {pt: 0.0 for pt in player_types}
+    type_def_count = {pt: 0 for pt in player_types}
+    errors = []
+
+    t_start = _time.time()
+
+    for gi, rec in enumerate(records):
+        dcl_pos = rec.get('declarer', 1)
+        no_followers = rec.get('no_followers', False)
+
+        for perm in all_perms:
+            if no_followers:
+                for pos in [1, 2, 3]:
+                    ptype = perm[pos - 1]
+                    type_games[ptype] += 1
+                    if pos == dcl_pos:
+                        type_dcl_count[ptype] += 1
+                    else:
+                        type_def_count[ptype] += 1
+                continue
+
+            try:
+                # Replay logic (same as eval_benchmark.py)
+                hands = rec['hands']
+                talon = rec['talon']
+                orig_contract = rec['contract']
+                orig_declarer = dcl_pos
+                orig_followers = rec.get('followers', [])
+                orig_whist_actions = rec.get('whist_actions', {})
+                orig_discarded = rec.get('discarded', [])
+                is_in_hand = orig_contract.get('is_in_hand', False)
+
+                import random as _rng
+                _rng.seed(0)
+                sess = GameSession(["P1", "P2", "P3"])
+                eng = sess.engine
+                gm = eng.game
+                rnd = gm.current_round
+
+                pos_to_id = {p.position: p.id for p in gm.players}
+                declarer_id = pos_to_id[orig_declarer]
+
+                ctype = ContractType(orig_contract['type'])
+                trump_suit = _NTS.get(orig_contract.get('trump')) if orig_contract.get('trump') else None
+                bid_value = orig_contract.get('level', 2)
+
+                if orig_discarded and not is_in_hand:
+                    dcl_cards = set(hands[str(orig_declarer)] + talon) - set(orig_discarded)
+                    dcl_hand = [_Card.from_id(cid) for cid in dcl_cards]
+                else:
+                    dcl_hand = [_Card.from_id(cid) for cid in hands[str(orig_declarer)]]
+
+                for p in gm.players:
+                    if p.position == orig_declarer:
+                        p.hand = dcl_hand
+                    else:
+                        p.hand = [_Card.from_id(cid) for cid in hands[str(p.position)]]
+                    p.sort_hand()
+
+                rnd.declarer_id = declarer_id
+                rnd.contract = Contract(type=ctype, trump_suit=trump_suit,
+                                        bid_value=bid_value, is_in_hand=is_in_hand)
+                rnd.talon = []
+                rnd.original_talon = [_Card.from_id(cid) for cid in talon]
+                rnd.discarded = [_Card.from_id(cid) for cid in orig_discarded]
+
+                follower_ids = [pos_to_id[f] for f in orig_followers]
+                rnd.whist_followers = follower_ids
+                rnd.whist_declarations = {}
+                for ps, act in orig_whist_actions.items():
+                    rnd.whist_declarations[pos_to_id[int(ps)]] = act
+
+                gm.get_player(declarer_id).is_declarer = True
+                for p in gm.players:
+                    p.has_dropped_out = (p.id != declarer_id and p.id not in follower_ids)
+
+                rnd.phase = RoundPhase.PLAYING
+                first_lead = eng._get_first_lead_player_id(declarer_id, ctype)
+                rnd.start_new_trick(lead_player_id=first_lead)
+
+                strategies = {}
+                for p in gm.players:
+                    s = make_strat(perm[p.position - 1], f"{perm[p.position - 1]}-P{p.position}")
+                    s._cards_played = 0
+                    s._total_hand_size = len(p.hand)
+                    strategies[p.id] = s
+
+                active_ids = [p.id for p in sorted(gm.players, key=lambda p: p.position)
+                              if not p.has_dropped_out]
+                ctx_trump = trump_suit if ctype == ContractType.SUIT else None
+                ctx_contract_type = ctype.value
+                played_cards_history = []
+                tricks_completed = 0
+                ccw = [1, 3, 2, 1, 3, 2]
+
+                while rnd.phase == RoundPhase.PLAYING:
+                    trick = rnd.current_trick
+                    if trick is None:
+                        break
+                    next_id = eng._get_next_player_in_trick(trick)
+                    player = gm.get_player(next_id)
+                    legal_cards = eng.get_legal_cards(next_id)
+                    if not legal_cards:
+                        break
+
+                    lead_id = trick.lead_player_id
+                    lead_pos = gm.get_player(lead_id).position
+                    start = ccw.index(lead_pos)
+                    trick_order = []
+                    for p_pos in ccw[start:start + 3]:
+                        pid = next((pl.id for pl in gm.players if pl.position == p_pos), None)
+                        if pid and pid in active_ids:
+                            trick_order.append(pid)
+
+                    played_ids = set(c.id for c in played_cards_history)
+                    trick_ids = set(c.id for _, c in trick.cards)
+                    my_ids = set(c.id for c in player.hand)
+                    all_active_cids = set()
+                    for p in gm.players:
+                        if not p.has_dropped_out:
+                            for c in p.hand:
+                                all_active_cids.add(c.id)
+                    remaining = [_Card.from_id(cid) for cid in all_active_cids
+                                 if cid not in played_ids and cid not in trick_ids and cid not in my_ids]
+                    ctx_talon = [] if is_in_hand else [_Card.from_id(cid) for cid in talon]
+
+                    from PrefTestSingleGame import CardPlayContext as _CPC
+                    ctx = _CPC(
+                        trick_cards=list(trick.cards),
+                        declarer_id=declarer_id, my_id=next_id,
+                        active_players=trick_order,
+                        played_cards=list(played_cards_history),
+                        trump_suit=ctx_trump, contract_type=ctx_contract_type,
+                        is_declarer=(next_id == declarer_id),
+                        tricks_played=tricks_completed,
+                        my_hand=list(player.hand),
+                        talon_cards=ctx_talon, is_in_hand=is_in_hand,
+                        remaining_cards=remaining,
+                    )
+
+                    strat = strategies[next_id]
+                    strat._rnd = rnd
+                    strat._player_id = next_id
+                    strat._ctx = ctx
+                    strat._hand = list(player.hand)
+                    strat._contract_type = ctx_contract_type
+                    strat._trump_suit = ctx_trump
+                    strat._is_declarer = (next_id == declarer_id)
+                    strat._total_hand_size = len(player.hand) + strat._cards_played
+                    card_id = strat.choose_card(legal_cards)
+                    result = eng.play_card(next_id, card_id)
+                    if result.get("trick_complete"):
+                        for _pid, _card in trick.cards:
+                            played_cards_history.append(_card)
+                        tricks_completed += 1
+
+                scores = {p.position: p.score for p in gm.players}
+
+                for pos in [1, 2, 3]:
+                    ptype = perm[pos - 1]
+                    sc = scores.get(pos, 0)
+                    type_scores[ptype] += sc
+                    type_games[ptype] += 1
+                    if pos == dcl_pos:
+                        type_dcl_scores[ptype] += sc
+                        type_dcl_count[ptype] += 1
+                    else:
+                        type_def_scores[ptype] += sc
+                        type_def_count[ptype] += 1
+
+            except Exception as e:
+                import traceback
+                errors.append(f"Game {gi+1}: {e}")
+                traceback.print_exc()
+
+    elapsed = _time.time() - t_start
+    total_replays = len(records) * len(all_perms)
+
+    results = []
+    for pt in player_types:
+        n = type_games[pt]
+        total = type_scores[pt]
+        avg_sc = total / n if n else 0
+        dcl_avg = type_dcl_scores[pt] / type_dcl_count[pt] if type_dcl_count[pt] else 0
+        def_avg = type_def_scores[pt] / type_def_count[pt] if type_def_count[pt] else 0
+        results.append({
+            'name': pt,
+            'games': n,
+            'total_score': round(total, 1),
+            'avg_score': round(avg_sc, 2),
+            'dcl_avg': round(dcl_avg, 2),
+            'def_avg': round(def_avg, 2),
+        })
+
+    return jsonify({
+        'results': results,
+        'total_replays': total_replays,
+        'elapsed': round(elapsed, 1),
+        'errors': errors[:5],
+    })
 
 
 if __name__ == '__main__':

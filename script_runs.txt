@@ -1,0 +1,2 @@
+2026-03-13 16:10 | align_trojkad.py | rewrote patterns.md to stabilize intent, ban one_on_one_first_player trump oscillation, redirect focus to other rules
+2026-03-13 16:47 | eval_benchmark.py | added void-aware MC simulation dealing, multi-session server

@@ -30,6 +30,7 @@ let state = null;
 let exchangeSelected = [];
 let aiTimer = null;
 let handProbs = {};  // {playerPosition: {w2, w1, wh, f, b, s}}
+let gameId = sessionStorage.getItem('pref_game_id') || null;
 
 // ── helpers ─────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ function playerVerb(p) {
 }
 
 function isAI(p) {
-    return state && state.human && p !== state.human;
+    return state && state.human != null && p !== state.human;
 }
 
 // ── logging ─────────────────────────────────────────────────────────
@@ -211,7 +212,7 @@ function renderGameState(showCompletedTrick) {
 
         if (phase === 'scoring' && !showCompletedTrick) {
             // Scoring: show initial hands with role, tricks, and score
-            const pname = playerName(p);
+            const pname = playerName(p) + ' [' + tricks + ']';
             const ih = state.initial_hands;
             const it = state.initial_talon;
             const discarded = state.discarded || [];
@@ -249,7 +250,7 @@ function renderGameState(showCompletedTrick) {
             const sign = score >= 0 ? '+' : '';
             const scoreColor = score > 0 ? '#4f4' : score < -10 ? '#f55' : score < 0 ? '#fa0' : '#fff';
             const scoreHtml = '<span style="color:' + scoreColor + '">' + sign + score + '</span>';
-            appendLastActionHtml(el, role + '  tricks: ' + tricks + '  ' + scoreHtml);
+            appendLastActionHtml(el, role + '  ' + scoreHtml);
         } else {
             // Non-scoring phases (also used for last-trick pause when entering scoring)
             const showTricks = phase === 'playing' || showCompletedTrick;
@@ -297,8 +298,8 @@ function renderGameState(showCompletedTrick) {
                     }
                 }
             }
-            // If hands are empty (last trick of game), still create player rows for trick card display
-            if (!rendered && showCompletedTrick) {
+            // Always create player rows during playing/last-trick so trick cards can attach
+            if (!rendered && (phase === 'playing' || showCompletedTrick)) {
                 _makePlayerRows(el, pname, false, p);
             }
             if (phase === 'playing' || showCompletedTrick) {
@@ -470,8 +471,10 @@ function _makePlayerRows(el, name, dim, playerPos) {
     const infoRow = document.createElement('div');
     infoRow.className = 'player-info-row';
     infoRow.appendChild(nameLabel(name));
-    // Hand probabilities on the right
-    if (playerPos && handProbs[playerPos] && state && state.phase === 'auction') {
+    // Hand probabilities on the right (auction: all players; scoring: leader only)
+    const showProbs = playerPos && handProbs[playerPos] && state &&
+        (state.phase === 'auction' || (state.phase === 'scoring' && playerPos === state.declarer));
+    if (showProbs) {
         const hp = handProbs[playerPos];
         const pct = v => (v * 100).toFixed(0);
         const probSpan = document.createElement('span');
@@ -573,6 +576,16 @@ function renderHandLineClickable(el, name, cards, options, playerPos) {
 // ── API ─────────────────────────────────────────────────────────────
 
 async function api(path, body) {
+    if (body !== undefined) {
+        // POST — inject game_id into body
+        if (gameId && !body.game_id) body.game_id = gameId;
+    } else {
+        // GET — append game_id as query param
+        if (gameId) {
+            const sep = path.includes('?') ? '&' : '?';
+            path = path + sep + 'game_id=' + gameId;
+        }
+    }
     const opts = body !== undefined
         ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}
         : {};
@@ -694,7 +707,15 @@ async function newGame(debug = false) {
         clearAiTimer();
         sep();
         log(debug ? 'NEW DEBUG GAME' : 'NEW GAME', 'green');
-        state = await api('/api/game/new', {debug});
+        const players = [
+            document.getElementById('player-p1').value,
+            document.getElementById('player-p2').value,
+            document.getElementById('player-p3').value,
+        ];
+        state = await api('/api/game/new', {debug, players});
+        gameId = state.game_id;
+        sessionStorage.setItem('pref_game_id', gameId);
+        updateGameIdDisplay();
 
         // Log player names
         const names = state.players || {};
@@ -1144,5 +1165,62 @@ if (agentInput) agentInput.addEventListener('keydown', async (e) => {
 
 // ── init ────────────────────────────────────────────────────────────
 
-log('ready', 'green');
+function updateGameIdDisplay() {
+    const el = document.getElementById('game-id-display');
+    if (el) el.textContent = gameId ? gameId.substring(0, 8) : '—';
+}
+
+// Populate player dropdowns from API
+const PLAYER_DEFAULTS = { 'player-p1': 'Sim50T', 'player-p2': 'Alice', 'player-p3': 'Human' };
+
+async function loadPlayerSelects() {
+    try {
+        const resp = await fetch('/api/players');
+        const players = await resp.json();
+        for (const selId of ['player-p1', 'player-p2', 'player-p3']) {
+            const sel = document.getElementById(selId);
+            sel.innerHTML = '';
+            for (const p of players) {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = p.label;
+                if (p.name === PLAYER_DEFAULTS[selId]) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        }
+    } catch (e) {
+        // Fallback: hardcoded options
+        const fallback = ['Sim50T', 'Alice', 'Trojka', 'Sim50-Alice', 'Human'];
+        for (const selId of ['player-p1', 'player-p2', 'player-p3']) {
+            const sel = document.getElementById(selId);
+            sel.innerHTML = '';
+            for (const name of fallback) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                if (name === PLAYER_DEFAULTS[selId]) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        }
+    }
+}
+
+loadPlayerSelects();
+updateGameIdDisplay();
 document.getElementById('new-game-btn').addEventListener('click', () => newGame(IS_DEBUG));
+
+// Restore game state on page load if we have a game_id
+if (gameId) {
+    api('/api/game/state').then(s => {
+        state = s;
+        log('restored game ' + gameId.substring(0, 8), 'green');
+        render();
+    }).catch(() => {
+        gameId = null;
+        sessionStorage.removeItem('pref_game_id');
+        updateGameIdDisplay();
+        log('ready', 'green');
+    });
+} else {
+    log('ready', 'green');
+}
